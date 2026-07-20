@@ -77,8 +77,8 @@ type Project struct {
 // current_snapshot_id 与 project_template_snapshots 互相约束由迁移显式建立，
 // 避免让 GORM 在 SQLite 上为循环外键重建表。
 type ProjectTemplate struct {
-	ID                   string  `gorm:"primaryKey"`
-	WorkspaceID          string  `gorm:"not null;uniqueIndex:idx_project_templates_ws_key,priority:1;index:idx_project_templates_ws_status,priority:1"`
+	ID                   string  `gorm:"primaryKey;uniqueIndex:idx_project_templates_id_workspace,priority:1"`
+	WorkspaceID          string  `gorm:"not null;uniqueIndex:idx_project_templates_ws_key,priority:1;uniqueIndex:idx_project_templates_id_workspace,priority:2;index:idx_project_templates_ws_status,priority:1"`
 	Key                  string  `gorm:"not null;uniqueIndex:idx_project_templates_ws_key,priority:2"`
 	Name                 string  `gorm:"not null"`
 	Description          string  `gorm:"not null;default:''"`
@@ -97,9 +97,9 @@ type ProjectTemplate struct {
 // ProjectTemplateSnapshot 保存不可变的原始 Snapshot JSON。
 // Storage 只把 SnapshotJSON 当作 TEXT 载荷，内容的编解码和校验归 projecttemplate 包。
 type ProjectTemplateSnapshot struct {
-	ID                   string  `gorm:"primaryKey"`
-	WorkspaceID          string  `gorm:"not null;index:idx_project_template_snapshots_ws_template,priority:1"`
-	TemplateID           string  `gorm:"not null;uniqueIndex:idx_project_template_snapshots_template_version,priority:1;uniqueIndex:idx_project_template_snapshots_template_snapshot_hash,priority:1;index:idx_project_template_snapshots_ws_template,priority:2"`
+	ID                   string  `gorm:"primaryKey;uniqueIndex:idx_project_template_snapshots_id_template_workspace,priority:1"`
+	WorkspaceID          string  `gorm:"not null;uniqueIndex:idx_project_template_snapshots_id_template_workspace,priority:3;index:idx_project_template_snapshots_ws_template,priority:1"`
+	TemplateID           string  `gorm:"not null;uniqueIndex:idx_project_template_snapshots_template_version,priority:1;uniqueIndex:idx_project_template_snapshots_template_snapshot_hash,priority:1;uniqueIndex:idx_project_template_snapshots_id_template_workspace,priority:2;index:idx_project_template_snapshots_ws_template,priority:2"`
 	Version              int64   `gorm:"not null;uniqueIndex:idx_project_template_snapshots_template_version,priority:2"`
 	SourceProjectID      string  `gorm:"not null"`
 	SnapshotJSON         string  `gorm:"not null;type:text"`

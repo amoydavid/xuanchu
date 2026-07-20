@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -17,6 +18,13 @@ func newProjectTemplateRepoTest(t *testing.T) (*Store, *ProjectTemplateRepositor
 	t.Cleanup(func() { _ = store.Close() })
 	ws, err := store.LocalWorkspace()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Create(&Project{
+		ID: "project-source", WorkspaceID: ws.ID, Slug: "source", Name: "模板来源项目",
+		Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1,
+		CreatedAt: 100, ModifiedAt: 100,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	return store, NewProjectTemplateRepository(store.DB()), ws
@@ -127,6 +135,30 @@ func TestProjectTemplateRepositoryMapsUniqueConflicts(t *testing.T) {
 	}
 }
 
+func TestProjectTemplateRepositoryListOrdersByModifiedAtThenID(t *testing.T) {
+	_, repo, ws := newProjectTemplateRepoTest(t)
+	for _, row := range []ProjectTemplate{
+		{ID: "template-c", WorkspaceID: ws.ID, Key: "alpha", Name: "alpha", Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 200},
+		{ID: "template-a", WorkspaceID: ws.ID, Key: "zulu", Name: "zulu", Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 300},
+		{ID: "template-b", WorkspaceID: ws.ID, Key: "bravo", Name: "bravo", Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 200},
+	} {
+		if err := repo.Create(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, err := repo.List(ProjectTemplateListOptions{WorkspaceID: ws.ID, Limit: 2, Offset: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 {
+		t.Fatalf("total = %d, want 3", page.Total)
+	}
+	if got, want := []string{page.Items[0].ID, page.Items[1].ID}, []string{"template-b", "template-c"}; !slices.Equal(got, want) {
+		t.Fatalf("page IDs = %#v, want %#v", got, want)
+	}
+}
+
 func TestProjectTemplateRepositoryConcurrentSQLiteAppendAllocatesDistinctVersions(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seed, err := Open(dbPath)
@@ -136,6 +168,13 @@ func TestProjectTemplateRepositoryConcurrentSQLiteAppendAllocatesDistinctVersion
 	t.Cleanup(func() { _ = seed.Close() })
 	ws, err := seed.LocalWorkspace()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.DB().Create(&Project{
+		ID: "project-source", WorkspaceID: ws.ID, Slug: "source", Name: "模板来源项目",
+		Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1,
+		CreatedAt: 100, ModifiedAt: 100,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := NewProjectTemplateRepository(seed.DB()).Create(templateRow("tpl-1", ws.ID, "launch")); err != nil {

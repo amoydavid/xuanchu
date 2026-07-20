@@ -15,6 +15,7 @@ import (
 
 const m5ProjectsAppliedMetaKey = "migration.m5.projects.applied"
 const taskSlugMigrationMetaKey = "migration.v0.1.1.task_slug.applied"
+const projectTemplateWorkspaceFKMigrationMetaKey = "migration.project_templates.workspace_fk.applied"
 
 var m5ProjectSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
@@ -61,12 +62,80 @@ func (s *Store) migrateSQLite() error {
 	return nil
 }
 
-// prepareProjectTemplateSchemaSQLite 显式建表以保留 Template 与 Snapshot 的循环
-// ON DELETE RESTRICT 外键。GORM 在 SQLite 上处理这种循环时可能通过 rebuild 表来
-// 迁移，因此这里不使用 AutoMigrate。
+// prepareProjectTemplateSchemaSQLite 显式建表并在既有库中重建两张循环引用的表。
+// 复合外键把 Snapshot 的 workspace 与 Template、来源 Project 绑定，并把 Template
+// 的 current_snapshot_id 绑定到同一 Template/workspace 的 Snapshot。GORM 无法安全
+// 地把这些循环外键补到 SQLite 既有表，因此这里在单连接写事务内完成迁移。
 func (s *Store) prepareProjectTemplateSchemaSQLite() error {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	began := false
+	committed := false
+	defer func() {
+		if began && !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+		_, _ = conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	}()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	began = true
+
+	tx := m5MigrationTx{ctx: ctx, conn: conn}
+	applied, err := metaKeyApplied(tx, projectTemplateWorkspaceFKMigrationMetaKey)
+	if err != nil {
+		return err
+	}
+	if !applied {
+		templatesExist, err := tableExists(tx, "project_templates")
+		if err != nil {
+			return err
+		}
+		snapshotsExist, err := tableExists(tx, "project_template_snapshots")
+		if err != nil {
+			return err
+		}
+		switch {
+		case !templatesExist && !snapshotsExist:
+			if err := createProjectTemplateSchemaSQLite(tx); err != nil {
+				return err
+			}
+		case templatesExist && snapshotsExist:
+			if err := rebuildProjectTemplateSchemaSQLite(tx); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("project template migration: incomplete legacy tables")
+		}
+		if err := assertNoProjectTemplateForeignKeyViolations(tx); err != nil {
+			return err
+		}
+		if err := setMetaInTx(tx, projectTemplateWorkspaceFKMigrationMetaKey, "true"); err != nil {
+			return err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func createProjectTemplateSchemaSQLite(tx m5MigrationTx) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS project_templates (
+		`CREATE TABLE project_templates (
 id TEXT PRIMARY KEY,
 workspace_id TEXT NOT NULL,
 key TEXT NOT NULL,
@@ -82,9 +151,10 @@ created_by_token_prefix TEXT,
 created_at INTEGER NOT NULL,
 modified_at INTEGER NOT NULL,
 archived_at INTEGER,
-FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT
+UNIQUE (id, workspace_id),
+FOREIGN KEY (current_snapshot_id, id, workspace_id) REFERENCES project_template_snapshots(id, template_id, workspace_id) ON DELETE RESTRICT
 )`,
-		`CREATE TABLE IF NOT EXISTS project_template_snapshots (
+		`CREATE TABLE project_template_snapshots (
 id TEXT PRIMARY KEY,
 workspace_id TEXT NOT NULL,
 template_id TEXT NOT NULL,
@@ -98,17 +168,84 @@ created_by_token_id TEXT,
 created_by_token_name TEXT,
 created_by_token_prefix TEXT,
 created_at INTEGER NOT NULL,
-FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+UNIQUE (id, template_id, workspace_id),
+FOREIGN KEY (template_id, workspace_id) REFERENCES project_templates(id, workspace_id) ON DELETE RESTRICT,
+FOREIGN KEY (source_project_id, workspace_id) REFERENCES projects(id, workspace_id) ON DELETE RESTRICT
 )`,
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_id_workspace ON project_templates(id, workspace_id)",
 		"CREATE INDEX IF NOT EXISTS idx_project_templates_ws_status ON project_templates(workspace_id, status)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_id_template_workspace ON project_template_snapshots(id, template_id, workspace_id)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
 	}
 	for _, statement := range statements {
-		if err := s.db.Exec(statement).Error; err != nil {
+		if err := tx.exec(statement); err != nil {
 			return fmt.Errorf("project template migration: %w", err)
+		}
+	}
+	return nil
+}
+
+func rebuildProjectTemplateSchemaSQLite(tx m5MigrationTx) error {
+	if err := tx.exec("ALTER TABLE project_templates RENAME TO project_templates_legacy_workspace_fk"); err != nil {
+		return err
+	}
+	if err := tx.exec("ALTER TABLE project_template_snapshots RENAME TO project_template_snapshots_legacy_workspace_fk"); err != nil {
+		return err
+	}
+	if err := createProjectTemplateSchemaSQLite(tx); err != nil {
+		return err
+	}
+	if err := tx.exec(`INSERT INTO project_templates (
+id, workspace_id, key, name, description, status, current_snapshot_id,
+created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name,
+created_by_token_prefix, created_at, modified_at, archived_at
+)
+SELECT id, workspace_id, key, name, description, status, current_snapshot_id,
+created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name,
+created_by_token_prefix, created_at, modified_at, archived_at
+FROM project_templates_legacy_workspace_fk`); err != nil {
+		return err
+	}
+	if err := tx.exec(`INSERT INTO project_template_snapshots (
+id, workspace_id, template_id, version, source_project_id, snapshot_json, snapshot_hash,
+created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name,
+created_by_token_prefix, created_at
+)
+SELECT id, workspace_id, template_id, version, source_project_id, snapshot_json, snapshot_hash,
+created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name,
+created_by_token_prefix, created_at
+FROM project_template_snapshots_legacy_workspace_fk`); err != nil {
+		return err
+	}
+	if err := tx.exec("DROP TABLE project_template_snapshots_legacy_workspace_fk"); err != nil {
+		return err
+	}
+	return tx.exec("DROP TABLE project_templates_legacy_workspace_fk")
+}
+
+func assertNoProjectTemplateForeignKeyViolations(tx m5MigrationTx) error {
+	for _, table := range []string{"project_templates", "project_template_snapshots"} {
+		rows, err := tx.query("PRAGMA foreign_key_check(" + table + ")")
+		if err != nil {
+			return err
+		}
+		if rows.Next() {
+			var violatingTable string
+			var rowID int64
+			var parent string
+			var fkID int
+			err = rows.Scan(&violatingTable, &rowID, &parent, &fkID)
+			_ = rows.Close()
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("project template migration: foreign key violation table=%s rowid=%d parent=%s fk=%d", violatingTable, rowID, parent, fkID)
+		}
+		if err := rows.Close(); err != nil {
+			return err
 		}
 	}
 	return nil

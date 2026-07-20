@@ -63,6 +63,14 @@ func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceProject := storage.Project{
+		ID: "source-project", WorkspaceID: ws.ID, Slug: "source", Name: "模板来源项目",
+		Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1,
+		CreatedAt: 100, ModifiedAt: 100,
+	}
+	if err := store.DB().Create(&sourceProject).Error; err != nil {
+		t.Fatal(err)
+	}
 	repo := storage.NewProjectTemplateRepository(store.DB())
 	template := storage.ProjectTemplate{
 		ID: "postgres-template", WorkspaceID: ws.ID, Key: "launch", Name: "PostgreSQL 模板",
@@ -108,9 +116,63 @@ func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
 	if versions != 2 {
 		t.Fatalf("distinct versions = %d, want 2", versions)
 	}
+	assertPostgresProjectTemplateForeignKey(t, store, "project_templates", "current_snapshot_id,id,workspace_id", "project_template_snapshots", "id,template_id,workspace_id")
+	assertPostgresProjectTemplateForeignKey(t, store, "project_template_snapshots", "template_id,workspace_id", "project_templates", "id,workspace_id")
+	assertPostgresProjectTemplateForeignKey(t, store, "project_template_snapshots", "source_project_id,workspace_id", "projects", "id,workspace_id")
+	if err := store.DB().Where("id = ?", "postgres-snapshot-2").Delete(&storage.ProjectTemplateSnapshot{}).Error; err == nil {
+		t.Fatal("delete current snapshot succeeded, want RESTRICT failure")
+	}
+	if err := store.DB().Where("id = ?", template.ID).Delete(&storage.ProjectTemplate{}).Error; err == nil {
+		t.Fatal("delete template with snapshots succeeded, want RESTRICT failure")
+	}
+	if err := store.DB().Where("id = ?", sourceProject.ID).Delete(&storage.Project{}).Error; err == nil {
+		t.Fatal("delete source project with snapshot succeeded, want RESTRICT failure")
+	}
 	if _, err := repo.GetByRef("other-workspace", template.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("cross-workspace template lookup err=%v, want ErrNotFound", err)
 	}
+}
+
+func assertPostgresProjectTemplateForeignKey(t *testing.T, store *storage.Store, table, columns, targetTable, targetColumns string) {
+	t.Helper()
+	rows, err := store.DB().Raw(`
+SELECT
+  string_agg(source_column.attname, ',' ORDER BY source_key.ordinality) AS columns,
+  target_table.relname AS target_table,
+  string_agg(target_column.attname, ',' ORDER BY source_key.ordinality) AS target_columns,
+  constraint.confdeltype
+FROM pg_constraint AS constraint
+JOIN pg_class AS source_table ON source_table.oid = constraint.conrelid
+JOIN pg_namespace AS source_schema ON source_schema.oid = source_table.relnamespace
+JOIN pg_class AS target_table ON target_table.oid = constraint.confrelid
+JOIN unnest(constraint.conkey) WITH ORDINALITY AS source_key(attnum, ordinality) ON TRUE
+JOIN pg_attribute AS source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = source_key.attnum
+JOIN unnest(constraint.confkey) WITH ORDINALITY AS target_key(attnum, ordinality) ON target_key.ordinality = source_key.ordinality
+JOIN pg_attribute AS target_column ON target_column.attrelid = target_table.oid AND target_column.attnum = target_key.attnum
+WHERE constraint.contype = 'f'
+  AND source_schema.nspname = current_schema()
+  AND source_table.relname = ?
+GROUP BY constraint.oid, target_table.relname, constraint.confdeltype`, table).Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var gotColumns, gotTargetTable, gotTargetColumns, deleteType string
+		if err := rows.Scan(&gotColumns, &gotTargetTable, &gotTargetColumns, &deleteType); err != nil {
+			t.Fatal(err)
+		}
+		if gotColumns == columns && gotTargetTable == targetTable && gotTargetColumns == targetColumns {
+			if deleteType != "r" {
+				t.Fatalf("%s.(%s) ON DELETE code = %q, want r (RESTRICT)", table, columns, deleteType)
+			}
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%s.(%s) -> %s.(%s) foreign key missing", table, columns, targetTable, targetColumns)
 }
 
 func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {

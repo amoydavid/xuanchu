@@ -80,7 +80,7 @@ func (r *ProjectTemplateRepository) List(options ProjectTemplateListOptions) (Pr
 	if page.Offset > 0 {
 		query = query.Offset(page.Offset)
 	}
-	if err := query.Order("key ASC").Find(&page.Items).Error; err != nil {
+	if err := query.Order("modified_at DESC").Order("id ASC").Find(&page.Items).Error; err != nil {
 		return ProjectTemplatePage{}, err
 	}
 	return page, nil

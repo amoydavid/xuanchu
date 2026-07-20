@@ -38,8 +38,10 @@ func (s *Store) migratePostgres() error {
 	return s.prepareActorColumnsForP2Postgres()
 }
 
-// prepareProjectTemplateSchemaPostgres 分两步建立循环 RESTRICT 外键：先建
-// Snapshot -> Template，再向 Template 补 current_snapshot_id 的引用。
+// prepareProjectTemplateSchemaPostgres 使用 workspace-aware 复合外键：Snapshot
+// 必须属于同一 Template 和来源 Project，Template 的 current_snapshot_id 也只能
+// 指向自己的 Snapshot。旧版单列外键会在此处被替换，因而既有 PostgreSQL 数据库
+// 不会只停留在 CREATE TABLE IF NOT EXISTS 的旧约束上。
 func (s *Store) prepareProjectTemplateSchemaPostgres() error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS project_templates (
@@ -57,7 +59,8 @@ created_by_token_name text,
 created_by_token_prefix text,
 created_at bigint NOT NULL,
 modified_at bigint NOT NULL,
-archived_at bigint
+archived_at bigint,
+CONSTRAINT uq_project_templates_id_workspace UNIQUE (id, workspace_id)
 )`,
 		`CREATE TABLE IF NOT EXISTS project_template_snapshots (
 id text PRIMARY KEY,
@@ -73,18 +76,24 @@ created_by_token_id text,
 created_by_token_name text,
 created_by_token_prefix text,
 created_at bigint NOT NULL,
-CONSTRAINT fk_project_template_snapshots_template FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+CONSTRAINT uq_project_template_snapshots_id_template_workspace UNIQUE (id, template_id, workspace_id)
 )`,
-		`DO $$ BEGIN
-ALTER TABLE project_templates ADD CONSTRAINT fk_project_templates_current_snapshot
-FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$`,
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_id_workspace ON project_templates(id, workspace_id)",
 		"CREATE INDEX IF NOT EXISTS idx_project_templates_ws_status ON project_templates(workspace_id, status)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_id_template_workspace ON project_template_snapshots(id, template_id, workspace_id)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
+		"ALTER TABLE project_template_snapshots DROP CONSTRAINT IF EXISTS fk_project_template_snapshots_template",
+		"ALTER TABLE project_template_snapshots DROP CONSTRAINT IF EXISTS fk_project_template_snapshots_source_project",
+		"ALTER TABLE project_templates DROP CONSTRAINT IF EXISTS fk_project_templates_current_snapshot",
+		`ALTER TABLE project_template_snapshots ADD CONSTRAINT fk_project_template_snapshots_template
+FOREIGN KEY (template_id, workspace_id) REFERENCES project_templates(id, workspace_id) ON DELETE RESTRICT`,
+		`ALTER TABLE project_template_snapshots ADD CONSTRAINT fk_project_template_snapshots_source_project
+FOREIGN KEY (source_project_id, workspace_id) REFERENCES projects(id, workspace_id) ON DELETE RESTRICT`,
+		`ALTER TABLE project_templates ADD CONSTRAINT fk_project_templates_current_snapshot
+FOREIGN KEY (current_snapshot_id, id, workspace_id) REFERENCES project_template_snapshots(id, template_id, workspace_id) ON DELETE RESTRICT`,
 	}
 	for _, statement := range statements {
 		if err := s.db.Exec(statement).Error; err != nil {
