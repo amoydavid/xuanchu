@@ -1,9 +1,42 @@
 package storage
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
+
+func TestAutomationTemplateCandidatePageFiltersCountsAndUsesStableTieBreak(t *testing.T) {
+	store := openIdentityTestStore(t)
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewProjectAutomationRuleRepository(store.DB())
+	enabled := true
+	for i := 0; i < 105; i++ {
+		trigger := "schedule"
+		if i%2 == 1 {
+			trigger = "event"
+		}
+		if err := repo.Create(ProjectAutomationRule{
+			ID: fmt.Sprintf("rule-%03d", i), WorkspaceID: ws.ID, ProjectID: "source", Name: fmt.Sprintf("发布 %03d", i),
+			Enabled: &enabled, TriggerType: trigger, TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
+			CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 100,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := repo.ListCandidatePage(ProjectAutomationCandidateListOptions{
+		WorkspaceID: ws.ID, ProjectID: "source", Q: "发布", Enabled: "enabled", TriggerType: "schedule",
+	}, 25, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 53 || len(page.Items) != 25 || page.Items[0].ID != "rule-020" {
+		t.Fatalf("page = %#v", page)
+	}
+}
 
 func newProjectAutomationRepoTest(t *testing.T, workspaceSlug string, projectSlug string) (*Store, Workspace, Project) {
 	t.Helper()
@@ -94,7 +127,7 @@ func TestProjectAutomationDeliveryRepositoryQueueAndState(t *testing.T) {
 		DedupeKey:            ws.ID + ":" + project.ID + ":rule-1:2026-07-08:09:30",
 		Status:               DeliveryStatusQueued,
 		ResolvedURL:          "https://agent.example.com/v1/chat/completions",
-		RenderedMethod:       "POST",
+		RenderedMethod:        "POST",
 		RenderedHeadersJSON:  `{"Content-Type":["application/json"],"Authorization":["Bearer ****"]}`,
 		RequestBodyJSON:      `{"model":"project-operator"}`,
 		RequestBodyPreview:   `{"model":"project-operator"}`,

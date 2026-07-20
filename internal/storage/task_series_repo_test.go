@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -140,6 +141,33 @@ func TestTaskSeriesRepositoryListCandidatesFilters(t *testing.T) {
 	}
 	if len(weeklyOnly) != 1 || weeklyOnly[0].Title != "周报" {
 		t.Fatalf("q candidates = %#v", weeklyOnly)
+	}
+}
+
+func TestTaskSeriesTemplateCandidatePageCountsFiltersAndUsesStableTieBreak(t *testing.T) {
+	store, ws, project, _ := newTaskSeriesRepoFixture(t)
+	repo := NewTaskSeriesRepository(store.DB())
+	for i := 0; i < 105; i++ {
+		seq := int64(i + 2)
+		if _, err := repo.Create(taskseries.Series{
+			ID: fmt.Sprintf("series-%03d", i), WorkspaceID: ws.ID, ProjectID: project.ID,
+			Title: "上线例行", Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 2000,
+			ProjectSeq: &seq, CreatedBy: "user-1", CreatedAt: 100, ModifiedAt: 100,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := repo.ListCandidatePage(TaskSeriesListOptions{
+		WorkspaceID: ws.ID, ProjectID: project.ID, Status: "active", Q: "上线", Sort: "modified",
+	}, 50, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 105 || len(page.Items) != 50 {
+		t.Fatalf("page = %#v", page)
+	}
+	if page.Items[0].ID != "series-050" || page.Items[49].ID != "series-099" {
+		t.Fatalf("stable page refs = %q...%q", page.Items[0].ID, page.Items[49].ID)
 	}
 }
 

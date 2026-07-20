@@ -29,6 +29,33 @@ type ListOptions struct {
 	Dialect        string
 }
 
+// TaskCandidateListOptions 是项目模板普通任务候选的数据库筛选条件。
+// WorkspaceID、ProjectID 和 normal/non-deleted 边界由 repository 强制施加，
+// Query 只能在该边界内继续收窄结果。
+type TaskCandidateListOptions struct {
+	WorkspaceID     string
+	ProjectID       string
+	Q               string
+	Status          string
+	Priority        string
+	AssigneeUserIDs []string
+	Tags            []string
+	DueAfter        *int64
+	DueBefore       *int64
+	Query           query.Expr
+	Sort            string
+	NowUnix         int64
+	UDADefinitions  map[string]string
+	Dialect         string
+}
+
+type TaskCandidatePage struct {
+	Items  []domain.Task
+	Total  int64
+	Limit  int
+	Offset int
+}
+
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
 	return &TaskRepository{db: db, taskLinkRepo: NewTaskLinkRepository(db)}
 }
@@ -103,6 +130,81 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 		out = append(out, fromModel(model, usersByID, linksByTask))
 	}
 	return out, nil
+}
+
+// ListCandidatePage 在数据库中完成模板普通任务候选的筛选、计数与分页。
+func (r *TaskRepository) ListCandidatePage(opts TaskCandidateListOptions, limit, offset int) (TaskCandidatePage, error) {
+	base := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project_id = ? AND series_id IS NULL AND status <> ?", opts.WorkspaceID, opts.ProjectID, domain.StatusDeleted)
+	if opts.Status != "" && opts.Status != "all" {
+		base = base.Where("status = ?", opts.Status)
+	}
+	if q := strings.TrimSpace(opts.Q); q != "" {
+		like := "%" + q + "%"
+		base = base.Where("(LOWER(title) LIKE LOWER(?) OR LOWER(COALESCE(description, '')) LIKE LOWER(?))", like, like)
+	}
+	if priority := strings.TrimSpace(opts.Priority); priority != "" && priority != "all" {
+		base = base.Where("priority = ?", priority)
+	}
+	if len(opts.AssigneeUserIDs) > 0 {
+		base = base.Where("uuid IN (SELECT task_uuid FROM task_assignees WHERE user_id IN ?)", opts.AssigneeUserIDs)
+	}
+	for _, tag := range opts.Tags {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			base = base.Where("uuid IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", tag)
+		}
+	}
+	if opts.DueAfter != nil {
+		base = base.Where("due >= ?", *opts.DueAfter)
+	}
+	if opts.DueBefore != nil {
+		base = base.Where("due < ?", *opts.DueBefore)
+	}
+	if opts.Query != nil {
+		base = ApplyQuery(base, opts.Query, QueryCompileOptions{WorkspaceID: opts.WorkspaceID, NowUnix: opts.NowUnix, UDADefinitions: opts.UDADefinitions, Dialect: opts.Dialect})
+	}
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return TaskCandidatePage{}, err
+	}
+	var models []Task
+	pageQuery := base.Session(&gorm.Session{}).
+		Preload("Tags").Preload("Annotations").Preload("Depends").Preload("Assignees").Preload("UDAs")
+	pageQuery = orderTaskCandidateQuery(pageQuery, opts.Sort).Limit(limit).Offset(offset)
+	if err := pageQuery.Find(&models).Error; err != nil {
+		return TaskCandidatePage{}, err
+	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return TaskCandidatePage{}, err
+	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return TaskCandidatePage{}, err
+	}
+	items := make([]domain.Task, 0, len(models))
+	for _, model := range models {
+		items = append(items, fromModel(model, usersByID, linksByTask))
+	}
+	return TaskCandidatePage{Items: items, Total: total, Limit: limit, Offset: offset}, nil
+}
+
+func orderTaskCandidateQuery(db *gorm.DB, sortKey string) *gorm.DB {
+	switch sortKey {
+	case "source":
+		db = db.Order("project_seq IS NULL ASC").Order("project_seq ASC")
+	case "due":
+		db = db.Order("due IS NULL ASC").Order("due ASC")
+	case "wait":
+		db = db.Order("wait IS NULL ASC").Order("wait ASC")
+	case "completed":
+		db = db.Order("end_ts IS NULL ASC").Order("end_ts DESC")
+	case "urgency":
+		db = db.Order("CASE priority WHEN 'H' THEN 3 WHEN 'M' THEN 2 WHEN 'L' THEN 1 ELSE 0 END DESC").Order("due IS NULL ASC").Order("due ASC").Order("entry ASC")
+	default:
+		db = db.Order("entry ASC")
+	}
+	return db.Order("uuid ASC")
 }
 
 // ListDependents 返回依赖指定任务（depends_on = taskUUID）的活任务列表，

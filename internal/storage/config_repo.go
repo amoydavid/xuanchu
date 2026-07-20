@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -31,6 +32,25 @@ type ConfigKey struct {
 
 type ConfigRepository struct {
 	db *gorm.DB
+}
+
+type ConfigCandidateListOptions struct {
+	WorkspaceID string
+	ProjectID   string
+	Q           string
+	Mode        string // all|literal|secret
+}
+
+type ConfigCandidate struct {
+	Config     Config
+	Definition ConfigDefinition
+}
+
+type ConfigCandidatePage struct {
+	Items  []ConfigCandidate
+	Total  int64
+	Limit  int
+	Offset int
 }
 
 func NewConfigRepository(db *gorm.DB) *ConfigRepository {
@@ -114,6 +134,50 @@ func (r *ConfigRepository) ListScope(workspaceID string, scope ConfigScope, scop
 		out[row.Key] = row.Value
 	}
 	return out, nil
+}
+
+// ListCandidatePage 只列出源项目显式保存的 project-scope 配置，并批量加载定义。
+func (r *ConfigRepository) ListCandidatePage(opts ConfigCandidateListOptions, limit, offset int) (ConfigCandidatePage, error) {
+	base := r.db.Model(&Config{}).
+		Joins("JOIN config_definitions ON config_definitions.workspace_id = configs.workspace_id AND config_definitions.key = configs.key").
+		Where("configs.workspace_id = ? AND configs.scope = ? AND configs.scope_id = ?", opts.WorkspaceID, string(ConfigScopeProject), opts.ProjectID)
+	if q := strings.TrimSpace(opts.Q); q != "" {
+		like := "%" + q + "%"
+		base = base.Where("(LOWER(configs.key) LIKE LOWER(?) OR LOWER(config_definitions.label) LIKE LOWER(?))", like, like)
+	}
+	switch opts.Mode {
+	case "secret":
+		base = base.Where("config_definitions.secret = ?", true)
+	case "literal":
+		base = base.Where("config_definitions.secret = ?", false)
+	}
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return ConfigCandidatePage{}, err
+	}
+	var configs []Config
+	if err := base.Session(&gorm.Session{}).Select("configs.*").Order("configs.key ASC").Limit(limit).Offset(offset).Find(&configs).Error; err != nil {
+		return ConfigCandidatePage{}, err
+	}
+	keys := make([]string, 0, len(configs))
+	for _, row := range configs {
+		keys = append(keys, row.Key)
+	}
+	definitions := make(map[string]ConfigDefinition, len(keys))
+	if len(keys) > 0 {
+		var rows []ConfigDefinition
+		if err := r.db.Where("workspace_id = ? AND key IN ?", opts.WorkspaceID, keys).Find(&rows).Error; err != nil {
+			return ConfigCandidatePage{}, err
+		}
+		for _, row := range rows {
+			definitions[row.Key] = row
+		}
+	}
+	items := make([]ConfigCandidate, 0, len(configs))
+	for _, row := range configs {
+		items = append(items, ConfigCandidate{Config: row, Definition: definitions[row.Key]})
+	}
+	return ConfigCandidatePage{Items: items, Total: total, Limit: limit, Offset: offset}, nil
 }
 
 func (r *ConfigRepository) CountByKey(workspaceID, key string) (workspaceCount int64, projectCount int64, err error) {

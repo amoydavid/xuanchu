@@ -29,6 +29,14 @@ type TaskSeriesListOptions struct {
 	Status         string // active|ended|stopped|all；空或 all 表示不筛选
 	Q              string // title/description 大小写不敏感包含
 	AssigneeUserID string // 按负责人 user id 过滤
+	Sort           string // next|title|modified|source
+}
+
+type TaskSeriesCandidatePage struct {
+	Items  []taskseries.Series
+	Total  int64
+	Limit  int
+	Offset int
 }
 
 // Create 在一个事务内创建 series 行、初始 rule version、关联字段。
@@ -183,7 +191,23 @@ func enrichProjectSlugs(workspaceID string, models []TaskSeries, db *gorm.DB) er
 
 // ListCandidates 返回过滤后的候选 series（含关联），不分页、不排序。
 func (r *TaskSeriesRepository) ListCandidates(opts TaskSeriesListOptions) ([]taskseries.Series, error) {
-	q := r.db.Model(&TaskSeries{}).Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues")
+	q := r.candidateQuery(opts).Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues")
+	var models []TaskSeries
+	if err := q.Order("id ASC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	if err := enrichProjectSlugs(opts.WorkspaceID, models, r.db); err != nil {
+		return nil, err
+	}
+	out := make([]taskseries.Series, 0, len(models))
+	for _, m := range models {
+		out = append(out, seriesFromModel(m))
+	}
+	return out, nil
+}
+
+func (r *TaskSeriesRepository) candidateQuery(opts TaskSeriesListOptions) *gorm.DB {
+	q := r.db.Model(&TaskSeries{})
 	if opts.WorkspaceID != "" {
 		q = q.Where("workspace_id = ?", opts.WorkspaceID)
 	}
@@ -200,18 +224,39 @@ func (r *TaskSeriesRepository) ListCandidates(opts TaskSeriesListOptions) ([]tas
 	if opts.AssigneeUserID != "" {
 		q = q.Where("id IN (SELECT series_id FROM task_series_assignees WHERE user_id = ?)", opts.AssigneeUserID)
 	}
+	return q
+}
+
+// ListCandidatePage 在数据库中完成 series 候选的筛选、计数与分页。
+func (r *TaskSeriesRepository) ListCandidatePage(opts TaskSeriesListOptions, limit, offset int) (TaskSeriesCandidatePage, error) {
+	base := r.candidateQuery(opts)
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return TaskSeriesCandidatePage{}, err
+	}
 	var models []TaskSeries
-	if err := q.Order("id ASC").Find(&models).Error; err != nil {
-		return nil, err
+	q := base.Session(&gorm.Session{}).Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues")
+	switch opts.Sort {
+	case "source":
+		q = q.Order("project_seq IS NULL ASC").Order("project_seq ASC")
+	case "next":
+		q = q.Order("first_due ASC")
+	case "title":
+		q = q.Order("title ASC")
+	default:
+		q = q.Order("modified_at DESC")
+	}
+	if err := q.Order("id ASC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return TaskSeriesCandidatePage{}, err
 	}
 	if err := enrichProjectSlugs(opts.WorkspaceID, models, r.db); err != nil {
-		return nil, err
+		return TaskSeriesCandidatePage{}, err
 	}
 	out := make([]taskseries.Series, 0, len(models))
 	for _, m := range models {
 		out = append(out, seriesFromModel(m))
 	}
-	return out, nil
+	return TaskSeriesCandidatePage{Items: out, Total: total, Limit: limit, Offset: offset}, nil
 }
 
 // Update 更新 series 行 + 关联字段（不含 rule versions，rule version 追加用 AppendRuleVersion）。

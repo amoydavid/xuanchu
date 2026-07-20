@@ -2,12 +2,28 @@ package storage
 
 import (
 	"errors"
+	"strings"
 
 	"gorm.io/gorm"
 )
 
 // ProjectAutomationRuleRepository 负责项目自动化规则的持久化。
 type ProjectAutomationRuleRepository struct{ db *gorm.DB }
+
+type ProjectAutomationCandidateListOptions struct {
+	WorkspaceID string
+	ProjectID   string
+	Q           string
+	Enabled     string // enabled|disabled|all
+	TriggerType string // schedule|event|all
+}
+
+type ProjectAutomationCandidatePage struct {
+	Items  []ProjectAutomationRule
+	Total  int64
+	Limit  int
+	Offset int
+}
 
 // NewProjectAutomationRuleRepository 基于已有 *gorm.DB 构建规则仓储。
 func NewProjectAutomationRuleRepository(db *gorm.DB) *ProjectAutomationRuleRepository {
@@ -41,6 +57,33 @@ func (r *ProjectAutomationRuleRepository) List(workspaceID string, projectID *st
 	var rows []ProjectAutomationRule
 	err := query.Order("created_at ASC").Find(&rows).Error
 	return rows, err
+}
+
+// ListCandidatePage 在数据库内完成项目自动化候选的过滤、计数和分页。
+func (r *ProjectAutomationRuleRepository) ListCandidatePage(opts ProjectAutomationCandidateListOptions, limit, offset int) (ProjectAutomationCandidatePage, error) {
+	base := r.db.Model(&ProjectAutomationRule{}).Where("workspace_id = ? AND project_id = ?", opts.WorkspaceID, opts.ProjectID)
+	if q := strings.TrimSpace(opts.Q); q != "" {
+		like := "%" + q + "%"
+		base = base.Where("(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?))", like, like)
+	}
+	switch opts.Enabled {
+	case "enabled":
+		base = base.Where("enabled = ?", true)
+	case "disabled":
+		base = base.Where("enabled = ?", false)
+	}
+	if opts.TriggerType != "" && opts.TriggerType != "all" {
+		base = base.Where("trigger_type = ?", opts.TriggerType)
+	}
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return ProjectAutomationCandidatePage{}, err
+	}
+	var rows []ProjectAutomationRule
+	if err := base.Session(&gorm.Session{}).Order("created_at ASC").Order("id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return ProjectAutomationCandidatePage{}, err
+	}
+	return ProjectAutomationCandidatePage{Items: rows, Total: total, Limit: limit, Offset: offset}, nil
 }
 
 // ListEnabled 返回所有启用规则，调度器扫描时使用。
