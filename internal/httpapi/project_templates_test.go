@@ -56,6 +56,54 @@ func TestProjectTemplateResponsesNeverExposeRawSnapshotOrSecrets(t *testing.T) {
 	}
 }
 
+func TestProjectTemplateInstantiateCurrentOnlyRejectsHistoricalSnapshot(t *testing.T) {
+	fixture := newHTTPProjectTemplateFixture(t)
+	historical := seedHTTPProjectTemplate(t, fixture)
+
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := "第二版项目说明"
+	if err := svc.ModifyProject("ops", app.ModifyProjectInput{Description: &description}); err != nil {
+		t.Fatal(err)
+	}
+	input := app.CaptureInput{
+		SourceProjectRef: "ops", AnchorDate: "2026-07-20",
+		Selection:         app.CaptureSelection{ConfigKeys: []string{"template.api_key"}, TaskRefs: []string{}, SeriesRefs: []string{}, AutomationRuleIDs: []string{}},
+		SelectionPresence: app.SelectionPresence{ConfigKeys: true, TaskRefs: true, SeriesRefs: true, AutomationRuleIDs: true},
+	}
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	current, err := svc.CreateProjectTemplateSnapshot(historical.Template.Key, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if historical.Template.CurrentSnapshot.ID == current.Template.CurrentSnapshot.ID {
+		t.Fatal("second snapshot did not advance current snapshot")
+	}
+
+	body := map[string]any{}
+	if err := json.Unmarshal([]byte(instantiateRequestJSON(historical, "remoteold")), &body); err != nil {
+		t.Fatal(err)
+	}
+	body["current_only"] = true
+	raw, _ := json.Marshal(body)
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost,
+		"/api/v1/project-templates/launch/instantiate?workspace=local", string(raw), authHeader(fixture.token))
+	assertHTTPErrorCode(t, rr, http.StatusConflict, "project_template_snapshot_hash_mismatch")
+
+	// Web 治理调用未声明 current_only 时继续允许固定历史 Snapshot。
+	rr = requestHTTPBody(t, fixture.server, http.MethodPost,
+		"/api/v1/project-templates/launch/instantiate?workspace=local", instantiateRequestJSON(historical, "webold"), authHeader(fixture.token))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("historical web instantiate status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestProjectTemplateRequestBodyLimitIsNineMiB(t *testing.T) {
 	fixture := newHTTPProjectTemplateFixture(t)
 	body := `{"key":"launch","name":"` + strings.Repeat("x", (9<<20)+1) + `"}`

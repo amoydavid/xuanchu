@@ -209,6 +209,11 @@ type projectTemplateInstantiateResponse struct {
 	Counts  app.ComponentCounts `json:"counts"`
 }
 
+type projectTemplateInstantiateRequest struct {
+	app.InstantiateInput
+	CurrentOnly bool `json:"current_only,omitempty"`
+}
+
 func (s *Server) handleProjectTemplateTaskCandidates(w http.ResponseWriter, r *http.Request) {
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, ok := s.projectTemplateScopedService(w, r, auth.ScopeProjectRead, app.PermissionProjectRead, "")
@@ -543,7 +548,7 @@ func (s *Server) handleProjectTemplateInstantiatePreview(w http.ResponseWriter, 
 }
 
 func (s *Server) handleProjectTemplateInstantiate(w http.ResponseWriter, r *http.Request) {
-	var req app.InstantiateInput
+	var req projectTemplateInstantiateRequest
 	if !decodeProjectTemplateJSON(w, r, &req) {
 		return
 	}
@@ -551,7 +556,7 @@ func (s *Server) handleProjectTemplateInstantiate(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	preview, err := scoped.PreviewProjectTemplateInstantiation(chi.URLParam(r, "templateRef"), req)
+	preview, err := scoped.PreviewProjectTemplateInstantiation(chi.URLParam(r, "templateRef"), req.InstantiateInput)
 	if err != nil {
 		writeProjectTemplateAppError(w, err)
 		return
@@ -559,7 +564,12 @@ func (s *Server) handleProjectTemplateInstantiate(w http.ResponseWriter, r *http
 	if !s.requireInstantiateCapabilities(w, r, preview.Counts) {
 		return
 	}
-	view, err := scoped.InstantiateProjectTemplate(chi.URLParam(r, "templateRef"), req)
+	var view app.InstantiateResult
+	if req.CurrentOnly {
+		view, err = scoped.InstantiateCurrentProjectTemplate(chi.URLParam(r, "templateRef"), req.InstantiateInput)
+	} else {
+		view, err = scoped.InstantiateProjectTemplate(chi.URLParam(r, "templateRef"), req.InstantiateInput)
+	}
 	if err != nil {
 		writeProjectTemplateAppError(w, err)
 		return

@@ -294,6 +294,19 @@ func TestProjectCommandRegistered(t *testing.T) {
 	}
 }
 
+func TestExecuteKeepsHelpOnNestedProjectTemplateCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+
+	if err := Execute(cmd, opts, []string{"project", "template", "--help"}); err != nil {
+		t.Fatalf("Execute(project template --help) error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "instantiate") || !strings.Contains(stdout.String(), "list") {
+		t.Fatalf("nested help output = %q", stdout.String())
+	}
+}
+
 func TestExecuteRejectsUnknownRCKey(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}

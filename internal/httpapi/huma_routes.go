@@ -696,8 +696,10 @@ func projectTemplateRequestOpenAPISchema(route humaRoute) *huma.Schema {
 		}, Required: []string{"key", "name", "capture"}}
 	case route.Path == "/api/v1/project-templates/{templateRef}" && route.Method == http.MethodPatch:
 		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{"name": stringField(), "description": stringField()}}
-	case strings.HasSuffix(route.Path, "/instantiate-preview"), strings.HasSuffix(route.Path, "/instantiate"):
-		return projectTemplateInstantiateRequestOpenAPISchema()
+	case strings.HasSuffix(route.Path, "/instantiate-preview"):
+		return projectTemplateInstantiateRequestOpenAPISchema(false)
+	case strings.HasSuffix(route.Path, "/instantiate"):
+		return projectTemplateInstantiateRequestOpenAPISchema(true)
 	case strings.Contains(route.Path, "capture-preview"):
 		return projectTemplateCaptureRequestOpenAPISchema(false)
 	case strings.HasSuffix(route.Path, "/snapshots"):
@@ -740,8 +742,8 @@ func projectTemplateCaptureRequestOpenAPISchema(requireHash bool) *huma.Schema {
 	return schema
 }
 
-func projectTemplateInstantiateRequestOpenAPISchema() *huma.Schema {
-	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+func projectTemplateInstantiateRequestOpenAPISchema(allowCurrentOnly bool) *huma.Schema {
+	properties := map[string]*huma.Schema{
 		"snapshot_id":            {Type: "string", Format: "uuid"},
 		"expected_snapshot_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
 		"project_slug":           {Type: "string"},
@@ -750,7 +752,11 @@ func projectTemplateInstantiateRequestOpenAPISchema() *huma.Schema {
 		"start_date":             {Type: "string", Format: "date"},
 		"secret_inputs":          {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
 		"assignee_replacements":  {Type: "object", AdditionalProperties: &huma.Schema{Type: "string", Nullable: true}},
-	}, Required: []string{"expected_snapshot_hash", "project_slug", "project_name", "start_date"}}
+	}
+	if allowCurrentOnly {
+		properties["current_only"] = &huma.Schema{Type: "boolean", Description: "要求 snapshot_id 仍为模板当前版本；仅供收窄的 Remote/CLI 客户端使用。"}
+	}
+	return &huma.Schema{Type: "object", Properties: properties, Required: []string{"expected_snapshot_hash", "project_slug", "project_name", "start_date"}}
 }
 
 func projectTemplateSuccessOpenAPISchema(route humaRoute) *huma.Schema {

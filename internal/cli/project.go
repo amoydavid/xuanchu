@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -31,7 +35,227 @@ func newProjectCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectAnnotationsCommand(opts))
 	cmd.AddCommand(newProjectDenotateCommand(opts))
 	cmd.AddCommand(newProjectTimelineCommand(opts))
+	cmd.AddCommand(newProjectTemplateCommand(opts))
 	return cmd
+}
+
+const projectTemplateCLIInputLimitBytes = 1 << 20
+
+type projectTemplateInstantiateFileInput struct {
+	Description          *string            `json:"description,omitempty"`
+	SecretInputs         map[string]string  `json:"secret_inputs,omitempty"`
+	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty"`
+}
+
+func newProjectTemplateCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "template", Short: "使用项目模板", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
+	}
+	cmd.AddCommand(newProjectTemplateListCommand(opts))
+	cmd.AddCommand(newProjectTemplateInstantiateCommand(opts))
+	return cmd
+}
+
+func newProjectTemplateListCommand(opts Options) *cobra.Command {
+	var q string
+	var limit, offset int
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "列出可实例化的项目模板",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 || limit > 100 {
+				return fmt.Errorf("--limit must be from 1 to 100")
+			}
+			if offset < 0 {
+				return fmt.Errorf("--offset must not be negative")
+			}
+			currentOpts := optionsFromCmd(cmd, opts)
+			var page app.ProjectTemplatePage
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				page, err = client.ListProjectTemplatesForInstantiation(cmd.Context(), currentOpts.Workspace, q, limit, offset)
+				if err != nil {
+					return err
+				}
+			} else {
+				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				page, err = svc.ListProjectTemplatesForInstantiation(app.TemplateInstantiationListInput{Q: q, Limit: limit, Offset: offset})
+				if err != nil {
+					return err
+				}
+			}
+			return renderProjectTemplatePage(cmd.OutOrStdout(), currentOpts.JSON, page)
+		},
+	}
+	cmd.Flags().StringVar(&q, "q", "", "按 key、名称或说明搜索")
+	cmd.Flags().IntVar(&limit, "limit", 50, "返回数量（1-100）")
+	cmd.Flags().IntVar(&offset, "offset", 0, "分页偏移")
+	return cmd
+}
+
+func newProjectTemplateInstantiateCommand(opts Options) *cobra.Command {
+	var snapshotID, snapshotHash, startDate, inputSource string
+	cmd := &cobra.Command{
+		Use:   "instantiate <template-ref> <new-project-slug> name:<name>",
+		Short: "从模板当前版本创建项目",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			values, err := parseKeyValueArgs(args[2:], map[string]bool{"name": true})
+			if err != nil {
+				return err
+			}
+			projectName := strings.TrimSpace(values["name"])
+			if projectName == "" {
+				return fmt.Errorf("name:<name> is required")
+			}
+			if strings.TrimSpace(snapshotID) == "" {
+				return fmt.Errorf("--snapshot is required")
+			}
+			if strings.TrimSpace(snapshotHash) == "" {
+				return fmt.Errorf("--snapshot-hash is required")
+			}
+			if strings.TrimSpace(startDate) == "" {
+				return fmt.Errorf("--start-date is required")
+			}
+			fileInput, err := readProjectTemplateInstantiateInput(cmd, inputSource)
+			if err != nil {
+				return err
+			}
+			input := app.CurrentSnapshotInstantiateInput{
+				SnapshotID: strings.TrimSpace(snapshotID), ExpectedHash: strings.TrimSpace(snapshotHash),
+				ProjectSlug: args[1], ProjectName: projectName, Description: fileInput.Description, StartDate: strings.TrimSpace(startDate),
+				SecretInputs: fileInput.SecretInputs, AssigneeReplacements: fileInput.AssigneeReplacements,
+			}
+			currentOpts := optionsFromCmd(cmd, opts)
+			var result app.InstantiateResult
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				result, err = client.InstantiateCurrentProjectTemplate(cmd.Context(), currentOpts.Workspace, args[0], input)
+				if err != nil {
+					return err
+				}
+			} else {
+				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				result, err = svc.InstantiateCurrentProjectTemplate(args[0], input)
+				if err != nil {
+					return err
+				}
+			}
+			return renderProjectTemplateInstantiateResult(cmd.OutOrStdout(), currentOpts.JSON, result)
+		},
+	}
+	cmd.Flags().StringVar(&snapshotID, "snapshot", "", "current Snapshot UUID（必填）")
+	cmd.Flags().StringVar(&snapshotHash, "snapshot-hash", "", "current Snapshot hash（必填）")
+	cmd.Flags().StringVar(&startDate, "start-date", "", "项目开始日期 YYYY-MM-DD（必填）")
+	cmd.Flags().StringVar(&inputSource, "input", "", "补充 JSON 文件路径，或 - 从标准输入读取（最大 1 MiB）")
+	return cmd
+}
+
+func readProjectTemplateInstantiateInput(cmd *cobra.Command, source string) (projectTemplateInstantiateFileInput, error) {
+	if strings.TrimSpace(source) == "" {
+		return projectTemplateInstantiateFileInput{}, nil
+	}
+	var reader io.Reader
+	var closeFn func() error
+	if source == "-" {
+		reader = cmd.InOrStdin()
+	} else {
+		file, err := os.Open(source)
+		if err != nil {
+			return projectTemplateInstantiateFileInput{}, fmt.Errorf("read project template input: %w", err)
+		}
+		reader, closeFn = file, file.Close
+	}
+	if closeFn != nil {
+		defer closeFn()
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, projectTemplateCLIInputLimitBytes+1))
+	if err != nil {
+		return projectTemplateInstantiateFileInput{}, fmt.Errorf("read project template input: %w", err)
+	}
+	if len(raw) > projectTemplateCLIInputLimitBytes {
+		return projectTemplateInstantiateFileInput{}, fmt.Errorf("project template input exceeds 1 MiB")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var input projectTemplateInstantiateFileInput
+	if err := decoder.Decode(&input); err != nil {
+		return projectTemplateInstantiateFileInput{}, fmt.Errorf("invalid project template input JSON")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return projectTemplateInstantiateFileInput{}, fmt.Errorf("invalid project template input JSON")
+	}
+	return input, nil
+}
+
+func renderProjectTemplatePage(w io.Writer, asJSON bool, page app.ProjectTemplatePage) error {
+	if asJSON {
+		items := make([]map[string]any, 0, len(page.Items))
+		for _, item := range page.Items {
+			row := map[string]any{
+				"id": item.ID, "key": item.Key, "name": item.Name, "description": item.Description, "status": item.Status,
+				"created_by": task.ActorInfoToJSON(item.CreatedBy), "created_at": item.CreatedAt, "modified_at": item.ModifiedAt,
+			}
+			if item.ArchivedAt != nil {
+				row["archived_at"] = item.ArchivedAt
+			}
+			if item.CurrentSnapshot != nil {
+				row["current_snapshot"] = map[string]any{
+					"id": item.CurrentSnapshot.ID, "version": item.CurrentSnapshot.Version, "hash": item.CurrentSnapshot.Hash,
+					"source_project_id": item.CurrentSnapshot.SourceProjectID, "counts": item.CurrentSnapshot.Counts,
+					"required_secret_keys": append([]string{}, item.CurrentSnapshot.RequiredSecretKeys...),
+					"created_by":           task.ActorInfoToJSON(item.CurrentSnapshot.CreatedBy), "created_at": item.CurrentSnapshot.CreatedAt,
+				}
+			}
+			items = append(items, row)
+		}
+		return render.JSON(w, map[string]any{"items": items, "total": page.Total, "limit": page.Limit, "offset": page.Offset})
+	}
+	for _, item := range page.Items {
+		if item.CurrentSnapshot == nil {
+			fmt.Fprintf(w, "%s\t%s\tno-current-snapshot\n", item.Key, item.Name)
+			continue
+		}
+		current := item.CurrentSnapshot
+		secrets := "-"
+		if len(current.RequiredSecretKeys) > 0 {
+			secrets = strings.Join(current.RequiredSecretKeys, ",")
+		}
+		fmt.Fprintf(w, "%s\t%s\tv%d\t%s\t%s\tconfigs=%d tasks=%d series=%d automations=%d\tsecrets=%s\n",
+			item.Key, item.Name, current.Version, current.ID, current.Hash,
+			current.Counts.Configs, current.Counts.Tasks, current.Counts.Series, current.Counts.Automations, secrets)
+	}
+	return nil
+}
+
+func renderProjectTemplateInstantiateResult(w io.Writer, asJSON bool, result app.InstantiateResult) error {
+	if asJSON {
+		return render.JSON(w, map[string]any{"project": projectViewForJSON(result.Project), "counts": result.Counts})
+	}
+	fmt.Fprintf(w, "Created project %s\nURL: %s\nConfigs: %d Tasks: %d Series: %d Automations: %d\n",
+		result.Project.Slug, result.Project.URL, result.Counts.Configs, result.Counts.Tasks, result.Counts.Series, result.Counts.Automations)
+	return nil
 }
 
 func newProjectListCommand(opts Options) *cobra.Command {

@@ -1,12 +1,126 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
+	bin := buildXuanchu(t)
+	dir := t.TempDir()
+	serverDB := filepath.Join(dir, "server.db")
+	sourceSecret := "sk-source-must-not-leak"
+	stdinSecret := "sk-stdin-must-not-leak"
+
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "add", "tplsource", "name:模板来源")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "config", "schema", "set", "template.api_key", "type:string", "scopes:project", "secret:true")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tplsource", "template.api_key", sourceSecret)
+	token := parseRawToken(t, createTokenJSON(t, bin, "--db", serverDB, "template-remote-e2e", "*"))
+	server, baseURL := startXuanchuServer(t, bin, "--db", serverDB)
+	defer stopXuanchuServer(t, server)
+	headers := authHeaders(token)
+
+	capture := map[string]any{
+		"source_project": "tplsource", "anchor_date": "2026-07-20",
+		"selection": map[string]any{
+			"config_keys": []string{"template.api_key"}, "task_refs": []string{},
+			"series_refs": []string{}, "automation_rule_ids": []string{},
+		},
+	}
+	preview := httpJSON(t, http.MethodPost, baseURL+"/api/v1/project-templates/capture-preview?workspace=local", capture, headers)
+	capture["expected_source_hash"] = preview["data"].(map[string]any)["source_hash"].(string)
+	created := httpJSON(t, http.MethodPost, baseURL+"/api/v1/project-templates?workspace=local", map[string]any{
+		"key": "launch", "name": "启动模板", "description": "远程 CLI 模板", "capture": capture,
+	}, headers)
+	historicalID, historicalHash := projectTemplateE2ECurrent(t, created)
+
+	remoteList := run(t, bin, "--server", baseURL, "--token", token, "--workspace", "local", "--json", "project", "template", "list", "--q", "launch", "--limit", "10", "--offset", "0")
+	localList := run(t, bin, "--db", serverDB, "--workspace", "local", "--json", "project", "template", "list", "--q", "launch", "--limit", "10", "--offset", "0")
+	if remoteList != localList {
+		t.Fatalf("local/remote template list mismatch\nlocal=%s\nremote=%s", localList, remoteList)
+	}
+	for _, forbidden := range []string{"snapshot_json", sourceSecret} {
+		if strings.Contains(remoteList, forbidden) {
+			t.Fatalf("template list exposed %q: %s", forbidden, remoteList)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	instantiate := exec.Command(bin,
+		"--server", baseURL, "--token", token, "--workspace", "local",
+		"project", "template", "instantiate", "launch", "remoteproj", "name:远程创建",
+		"--snapshot", historicalID, "--snapshot-hash", historicalHash, "--start-date", "2026-08-01", "--input", "-",
+	)
+	instantiate.Stdin = strings.NewReader(`{"description":"覆盖说明","secret_inputs":{"template.api_key":"` + stdinSecret + `"}}`)
+	instantiate.Stdout, instantiate.Stderr = &stdout, &stderr
+	if err := instantiate.Run(); err != nil {
+		t.Fatalf("remote instantiate error=%v stdout=%s stderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "remoteproj") || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	for _, secret := range []string{sourceSecret, stdinSecret} {
+		if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
+			t.Fatalf("secret %q leaked: stdout=%q stderr=%q", secret, stdout.String(), stderr.String())
+		}
+	}
+
+	// 推进 current Snapshot 后，Remote 的单次 current_only 请求必须原子拒绝旧 ID/hash。
+	httpJSON(t, http.MethodPatch, baseURL+"/api/v1/projects/tplsource?workspace=local", map[string]any{"description": "第二版来源"}, headers)
+	preview = httpJSON(t, http.MethodPost, baseURL+"/api/v1/project-templates/launch/snapshots/capture-preview?workspace=local", capture, headers)
+	capture["expected_source_hash"] = preview["data"].(map[string]any)["source_hash"].(string)
+	appended := httpJSON(t, http.MethodPost, baseURL+"/api/v1/project-templates/launch/snapshots?workspace=local", capture, headers)
+	currentID, _ := projectTemplateE2ECurrent(t, appended)
+	if currentID == historicalID {
+		t.Fatal("current snapshot did not advance")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	stale := exec.Command(bin,
+		"--server", baseURL, "--token", token, "--workspace", "local",
+		"project", "template", "instantiate", "launch", "stalecreate", "name:过期创建",
+		"--snapshot", historicalID, "--snapshot-hash", historicalHash, "--start-date", "2026-08-01", "--input", "-",
+	)
+	stale.Stdin = strings.NewReader(`{"secret_inputs":{"template.api_key":"` + stdinSecret + `"}}`)
+	stale.Stdout, stale.Stderr = &stdout, &stderr
+	if err := stale.Run(); err == nil {
+		t.Fatalf("stale remote instantiate succeeded: stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "project_template_snapshot_hash_mismatch") {
+		t.Fatalf("stale stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), stdinSecret) {
+		t.Fatalf("stale error leaked stdin secret: %s", stderr.String())
+	}
+}
+
+func projectTemplateE2ECurrent(t *testing.T, envelope map[string]any) (string, string) {
+	t.Helper()
+	data, ok := envelope["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing data: %#v", envelope)
+	}
+	template, ok := data["template"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing template: %#v", data)
+	}
+	current, ok := template["current_snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing current_snapshot: %#v", template)
+	}
+	id, _ := current["id"].(string)
+	hash, _ := current["hash"].(string)
+	if id == "" || hash == "" {
+		t.Fatalf("invalid current_snapshot: %#v", current)
+	}
+	return id, hash
+}
 
 func TestE2ERemoteCLIAndHTTPAPIGoldenPath(t *testing.T) {
 	bin := buildXuanchu(t)

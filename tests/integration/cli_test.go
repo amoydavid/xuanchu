@@ -32,6 +32,21 @@ var (
 
 const integrationResourceBaseURL = "https://console.example.test"
 
+func TestCLIProjectTemplateCommandTreeIsNarrow(t *testing.T) {
+	bin := buildXuanchu(t)
+	help := run(t, bin, "project", "template", "--help")
+	for _, want := range []string{"instantiate", "list"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("project template help missing %q: %s", want, help)
+		}
+	}
+	for _, forbidden := range []string{"save", "info", "preview", "archive", "snapshot", "candidate", "capture", "modify"} {
+		if output, err := runErr(t, bin, "project", "template", forbidden); err == nil {
+			t.Fatalf("forbidden project template command %q succeeded: %s", forbidden, output)
+		}
+	}
+}
+
 func TestCLIAddListInfo(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")

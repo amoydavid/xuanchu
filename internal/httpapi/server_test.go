@@ -205,6 +205,12 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	if strings.Contains(rr.Body.String(), "snapshot_json") {
 		t.Fatal("OpenAPI exposed raw snapshot_json")
 	}
+	instantiate := openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}/instantiate", "post")
+	instantiateRequest := openAPIRequestSchema(t, instantiate)
+	currentOnly, ok := instantiateRequest["properties"].(map[string]any)["current_only"].(map[string]any)
+	if !ok || currentOnly["type"] != "boolean" {
+		t.Fatalf("instantiate current_only schema = %#v", currentOnly)
+	}
 	assertCandidateFields := func(path string, fields ...string) {
 		t.Helper()
 		op := openAPIOperation(t, paths, path, "get")
