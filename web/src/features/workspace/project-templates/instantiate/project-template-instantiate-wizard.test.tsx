@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -567,7 +567,7 @@ describe("ProjectTemplateInstantiateWizard", () => {
     expect(homeApi.getHome).toHaveBeenCalledTimes(1)
   })
 
-  it("does not accept a late preview after the form revision changed", async () => {
+  it("freezes form input while preview is in flight", async () => {
     let resolvePreview!: (value: api.InstantiatePreview) => void
     vi.mocked(api.previewProjectTemplateInstantiation).mockImplementationOnce(
       () =>
@@ -583,7 +583,8 @@ describe("ProjectTemplateInstantiateWizard", () => {
 
     const slug = screen.getByLabelText("项目 Slug") as HTMLInputElement
     expect(slug.disabled).toBe(true)
-    fireEvent.change(slug, { target: { value: "changed" } })
+    await userEvent.type(slug, "changed")
+    expect(slug.value).toBe("newproj")
     resolvePreview(
       preview({
         snapshot_id: "snap-3",
@@ -594,10 +595,7 @@ describe("ProjectTemplateInstantiateWizard", () => {
       })
     )
 
-    await waitFor(() =>
-      expect(screen.queryByText("补齐创建条件")).toBeNull()
-    )
-    expect(screen.getByRole("button", { name: "生成预览" })).toBeTruthy()
+    expect(await screen.findByText("补齐创建条件")).toBeTruthy()
   })
 
   it("searches and pages active templates from the project entry", async () => {
@@ -628,7 +626,17 @@ describe("ProjectTemplateInstantiateWizard", () => {
     expect(await screen.findByText("下一页模板")).toBeTruthy()
   })
 
-  it("runs the current step with Cmd/Ctrl+Enter", async () => {
+  it("uses Cmd/Ctrl+Enter to advance after selecting a template", async () => {
+    renderWizard(null)
+    await userEvent.click(
+      await screen.findByRole("button", { name: /标准上线流程/ })
+    )
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+
+    expect(await screen.findByLabelText("项目 Slug")).toBeTruthy()
+  })
+
+  it("uses Cmd/Ctrl+Enter to generate a preview from project information", async () => {
     renderWizard()
     await screen.findByRole("dialog", { name: "从模板创建项目" })
     await userEvent.type(screen.getByLabelText("项目 Slug"), "newproj")
@@ -637,6 +645,45 @@ describe("ProjectTemplateInstantiateWizard", () => {
 
     await waitFor(() =>
       expect(api.previewProjectTemplateInstantiation).toHaveBeenCalledTimes(1)
+    )
+  })
+
+  it("uses Cmd/Ctrl+Enter to re-preview dirty resolutions", async () => {
+    renderWizard()
+    await fillProject()
+    await userEvent.type(
+      screen.getByLabelText("agent.provider.api_key"),
+      "sk-input"
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText("处理已离开成员"),
+      "__remove__"
+    )
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+
+    await waitFor(() =>
+      expect(api.previewProjectTemplateInstantiation).toHaveBeenCalledTimes(2)
+    )
+  })
+
+  it("uses Cmd/Ctrl+Enter to confirm and create a project", async () => {
+    renderWizard()
+    await fillProject()
+    await userEvent.type(
+      screen.getByLabelText("agent.provider.api_key"),
+      "sk-input"
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText("处理已离开成员"),
+      "__remove__"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "重新预览" }))
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+    expect(await screen.findByRole("button", { name: "创建项目" })).toBeTruthy()
+
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+    await waitFor(() =>
+      expect(api.instantiateProjectTemplate).toHaveBeenCalledTimes(1)
     )
   })
 })

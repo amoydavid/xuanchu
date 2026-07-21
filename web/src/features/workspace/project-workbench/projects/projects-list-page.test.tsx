@@ -319,16 +319,18 @@ describe("ProjectWorkbench ProjectsListPage", () => {
     ).toBeTruthy()
   })
 
-  it("hides create-from-template when every active snapshot needs a missing write scope", async () => {
+  it("keeps create-from-template reachable when the first active snapshot needs a missing write scope", async () => {
     projectsListFetchMockWithoutTemplateScopes()
     renderPage()
 
     await screen.findByText("暂无项目")
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "从模板创建" })
-      ).toBeNull()
+    await userEvent.click(
+      await screen.findByRole("button", { name: "从模板创建" })
     )
+    expect(
+      (await screen.findByRole("button", { name: /上线流程/ }))
+        .disabled
+    ).toBe(true)
   })
 
   it("keeps dialog input and shows an error after create failure", async () => {

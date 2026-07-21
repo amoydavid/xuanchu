@@ -53,6 +53,7 @@ import {
   type ProjectTemplateIssue,
 } from "../api/project-template-api"
 import { canInstantiateProjectTemplate } from "../project-template-instantiation-permissions"
+import { isCurrentPreviewRevision } from "./project-template-instantiate-revision"
 
 export type ProjectTemplateInstantiateSelection = {
   templateRef: string
@@ -279,7 +280,7 @@ function ProjectTemplateInstantiateWizardSession({
         selection.templateRef,
         input
       )
-      if (revision !== formRevision.current) return false
+      if (!isCurrentPreviewRevision(revision, formRevision.current)) return false
       if (
         next.snapshot.id !== selection.snapshotID ||
         next.snapshot.hash !== selection.snapshotHash
@@ -299,6 +300,9 @@ function ProjectTemplateInstantiateWizardSession({
       setStep(2)
       return true
     } catch (caught) {
+      if (!isCurrentPreviewRevision(revision, formRevision.current)) {
+        return false
+      }
       if (
         caught instanceof ApiError &&
         caught.code === "project_template_snapshot_hash_mismatch"
@@ -699,15 +703,6 @@ function TemplateStep({
       </Alert>
     )
   }
-  const eligible = items.filter(
-    (item) =>
-      item.current_snapshot &&
-      canInstantiateProjectTemplate(
-        canManage,
-        writeScopes,
-        item.current_snapshot.counts
-      )
-  )
   return (
     <section
       aria-labelledby="instantiate-template-heading"
@@ -733,9 +728,14 @@ function TemplateStep({
         </Button>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {eligible.map((item) => {
+        {items.map((item) => {
           const snapshot = item.current_snapshot
           if (!snapshot) return null
+          const canInstantiate = canInstantiateProjectTemplate(
+            canManage,
+            writeScopes,
+            snapshot.counts
+          )
           const active =
             selection?.templateRef === item.key &&
             selection.snapshotID === snapshot.id
@@ -744,8 +744,10 @@ function TemplateStep({
               aria-pressed={active}
               className={cn(
                 "border p-4 text-left transition-colors hover:bg-muted/50",
-                active && "border-foreground bg-muted/40"
+                active && "border-foreground bg-muted/40",
+                !canInstantiate && "cursor-not-allowed opacity-60"
               )}
+              disabled={!canInstantiate}
               key={item.id}
               onClick={() => onSelect(item.key, snapshot.id, snapshot.hash)}
               type="button"
@@ -762,6 +764,11 @@ function TemplateStep({
                 {snapshot.counts.configs} 配置 · {snapshot.counts.automations}{" "}
                 自动化
               </span>
+              {!canInstantiate ? (
+                <span className="mt-2 block text-xs text-muted-foreground">
+                  当前令牌缺少创建此模板所需的写权限。
+                </span>
+              ) : null}
             </button>
           )
         })}
@@ -770,11 +777,6 @@ function TemplateStep({
         <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
           当前没有可用于创建项目的 active 模板。
         </div>
-      ) : null}
-      {items.length > 0 && eligible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          当前页没有可用权限的模板。
-        </p>
       ) : null}
       <div className="flex justify-between border-t pt-3">
         <Button
