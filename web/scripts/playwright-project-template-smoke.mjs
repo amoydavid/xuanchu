@@ -202,13 +202,20 @@ async function runDesktopSmoke(browser, fixture) {
     await dialog.getByRole("textbox", { name: "搜索任务" }).fill("依赖阻断任务")
     await dialog.getByRole("checkbox", { name: "依赖阻断任务" }).waitFor()
 
-    await activateWithKeyboard(dialog.getByRole("tab", { name: /循环任务/ }))
+    const selectedDrawer = dialog.locator('aside[aria-label="已选内容"]')
+    await selectedDrawer.getByRole("textbox", { name: "搜索已选内容" }).fill(
+      fixture.firstPageTaskTitle
+    )
+    await expectVisibleText(selectedDrawer, fixture.firstPageTaskTitle)
+    await selectedDrawer.getByRole("textbox", { name: "搜索已选内容" }).fill("")
+
+    await activateWithPointer(dialog.getByRole("tab", { name: /循环任务/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "每日模板巡检" }))
-    await activateWithKeyboard(dialog.getByRole("tab", { name: /配置/ }))
+    await activateWithPointer(dialog.getByRole("tab", { name: /配置/ }))
     const configPageCheckbox = dialog.getByRole("checkbox", { name: /选择本页 4 项/ })
     await configPageCheckbox.waitFor()
     await ensureChecked(configPageCheckbox)
-    await activateWithKeyboard(dialog.getByRole("tab", { name: /自动化/ }))
+    await activateWithPointer(dialog.getByRole("tab", { name: /自动化/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "模板自动化" }))
     await dialog.getByRole("button", { name: /^已选 / }).click()
     const selectedSheet = page.getByRole("dialog", { name: "已选内容" })
@@ -450,9 +457,8 @@ async function ensureChecked(locator) {
   }
 }
 
-async function activateWithKeyboard(locator) {
-  await locator.focus()
-  await locator.press("Enter")
+async function activateWithPointer(locator) {
+  await locator.click()
   if ((await locator.getAttribute("data-state")) !== "active") {
     throw new Error(`tab did not become active: ${await locator.textContent()}`)
   }

@@ -223,7 +223,9 @@ function ProjectTemplateCaptureWizardSession({
     }
     return () => {
       cancelled = true
+      defaultLoadedRef.current = false
       defaultsPendingRef.current = false
+      setDefaultsPending(false)
     }
   }, [mode, open, sourceProject.slug, workspaceSlug])
 
@@ -431,7 +433,7 @@ function ProjectTemplateCaptureWizardSession({
       open={open}
     >
       <DialogContent
-        className="flex max-h-[calc(100svh-2rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-none p-0"
+        className="flex max-h-[calc(100svh-2rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:max-w-none"
         onEscapeKeyDown={(event) => {
           if (pendingRef.current || pending) event.preventDefault()
         }}

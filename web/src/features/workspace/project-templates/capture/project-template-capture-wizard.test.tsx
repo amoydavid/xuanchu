@@ -90,7 +90,8 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 function renderCaptureWizard(
-  props: Partial<React.ComponentProps<typeof ProjectTemplateCaptureWizard>> = {}
+  props: Partial<React.ComponentProps<typeof ProjectTemplateCaptureWizard>> = {},
+  options: { strictMode?: boolean } = {}
 ) {
   return render(
     <ProjectTemplateCaptureWizard
@@ -102,7 +103,7 @@ function renderCaptureWizard(
       workspaceSlug="acme"
       {...props}
     />,
-    { wrapper }
+    { reactStrictMode: options.strictMode, wrapper }
   )
 }
 
@@ -573,6 +574,38 @@ describe("ProjectTemplateCaptureWizard", () => {
     expect(filters).toContain('"status":"waiting"')
     expect(filters).toContain('"status":"active"')
     expect(filters).not.toMatch(/completed|ended|stopped/)
+  })
+
+  it("resolves defaults and keeps preview reachable under StrictMode", async () => {
+    vi.mocked(api.resolveProjectTemplateCandidateSelection).mockImplementation(
+      async (_workspace, _project, input) => {
+        if (input.kind === "task" && input.task?.status === "pending") {
+          return { refs: ["pending-task"], total: 1, source_hash: "pending" }
+        }
+        if (input.kind === "task" && input.task?.status === "waiting") {
+          return { refs: ["waiting-task"], total: 1, source_hash: "waiting" }
+        }
+        return { refs: ["active-series"], total: 1, source_hash: "active" }
+      }
+    )
+    vi.mocked(api.previewProjectTemplateCapture).mockResolvedValue(preview)
+
+    renderCaptureWizard(
+      { mode: "create", templateRef: undefined },
+      { strictMode: true }
+    )
+    await enterSelectionStep()
+    expect(
+      await screen.findByRole("button", { name: "已选 3 项" })
+    ).toBeTruthy()
+    expect(api.resolveProjectTemplateCandidateSelection).toHaveBeenCalledTimes(6)
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    const previewButton = screen.getByRole("button", { name: "生成预览" })
+    expect((previewButton as HTMLButtonElement).disabled).toBe(false)
+    await userEvent.click(previewButton)
+    await waitFor(() =>
+      expect(api.previewProjectTemplateCapture).toHaveBeenCalledTimes(1)
+    )
   })
 
   it("leaves an over-limit default kind unselected instead of truncating it", async () => {
