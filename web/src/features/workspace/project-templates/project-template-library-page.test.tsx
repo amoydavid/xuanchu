@@ -287,6 +287,7 @@ describe("ProjectTemplateLibraryPage", () => {
     expect(screen.queryByRole("button", { name: "保存新模板" })).toBeNull()
     expect(screen.queryByRole("button", { name: "归档" })).toBeNull()
     expect(screen.queryByRole("button", { name: "编辑模板信息" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "从模板创建" })).toBeNull()
     expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
   })
 
@@ -409,8 +410,77 @@ describe("ProjectTemplateLibraryPage", () => {
     ).toBeTruthy()
     expect(screen.queryByRole("button", { name: "从模板创建" })).toBeNull()
     expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "编辑模板信息" })).toBeNull()
+    expect(screen.getByRole("button", { name: "编辑模板信息" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "重新激活" })).toBeTruthy()
+  })
+
+  it("allows managers to modify archived template metadata and refetches", async () => {
+    let modified = false
+    const archivedTemplate = {
+      ...template,
+      status: "archived" as const,
+      archived_at: 1_721_548_800,
+    }
+    const updatedTemplate = {
+      ...archivedTemplate,
+      name: "已归档新版上线流程",
+      description: "已归档后的模板说明",
+      modified_at: template.modified_at + 1,
+    }
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input)
+        if (
+          url === "/api/v1/project-templates/launch?workspace=acme" &&
+          init?.method === "PATCH"
+        ) {
+          modified = true
+          return response(detailData(updatedTemplate))
+        }
+        if (url.includes("/launch?")) {
+          return response(detailData(modified ? updatedTemplate : archivedTemplate))
+        }
+        return response(listData([modified ? updatedTemplate : archivedTemplate]))
+      })
+    renderLibrary()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "编辑模板信息" })
+    )
+    const dialog = screen.getByRole("dialog", { name: "编辑模板信息" })
+    await userEvent.clear(within(dialog).getByLabelText("模板名称"))
+    await userEvent.type(
+      within(dialog).getByLabelText("模板名称"),
+      "已归档新版上线流程"
+    )
+    await userEvent.clear(within(dialog).getByLabelText("模板说明"))
+    await userEvent.type(
+      within(dialog).getByLabelText("模板说明"),
+      "已归档后的模板说明"
+    )
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "保存修改" })
+    )
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/project-templates/launch?workspace=acme",
+        expect.objectContaining({
+          body: JSON.stringify({
+            name: "已归档新版上线流程",
+            description: "已归档后的模板说明",
+          }),
+          method: "PATCH",
+        })
+      )
+    )
+    expect(await screen.findAllByText("已归档新版上线流程")).not.toHaveLength(0)
+    expect(await screen.findByText("已归档后的模板说明")).toBeTruthy()
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/launch?"))
+        .length
+    ).toBeGreaterThan(1)
   })
 
   it("modifies reachable template metadata and refetches list and detail", async () => {

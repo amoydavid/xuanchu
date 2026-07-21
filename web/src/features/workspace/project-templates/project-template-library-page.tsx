@@ -671,6 +671,10 @@ function TemplateDetail({
           </div>
           {canManage ? (
             <div className="flex flex-wrap gap-2">
+              <Button onClick={() => onModify(template)} variant="outline">
+                <Pencil />
+                {t("projectTemplates.editMetadata")}
+              </Button>
               {archived ? (
                 <Button
                   disabled={isLifecyclePending}
@@ -682,10 +686,6 @@ function TemplateDetail({
                 </Button>
               ) : (
                 <>
-                  <Button onClick={() => onModify(template)} variant="outline">
-                    <Pencil />
-                    {t("projectTemplates.editMetadata")}
-                  </Button>
                   {selected && canInstantiate ? (
                     <Button
                       onClick={() =>
