@@ -56,8 +56,9 @@ Agent 流程固定为 list → 收集输入 → instantiate：
 
 ```
 1. project_template_list({"workspace":"dajee","q":"发布"})
-2. 从返回项读取 template key、current_snapshot.id/hash、required_secret_keys；向用户收集新项目 slug/name/start_date、所需 secret 和 assignee replacement
-3. project_template_instantiate({
+2. member_list({"workspace":"dajee"})   // 收集可用成员的 User ID
+3. 从返回项读取 template key、current_snapshot.id/hash、required_secret_keys；向用户收集新项目 slug/name/start_date、所需 secret 和 assignee replacement
+4. project_template_instantiate({
      "workspace":"dajee",
      "template":"release",
      "snapshot_id":"current-snapshot-uuid",
@@ -66,11 +67,11 @@ Agent 流程固定为 list → 收集输入 → instantiate：
      "project_name":"2026 发布项目",
      "start_date":"2026-08-01",
      "secret_inputs":{"agent.api_key":"用户安全提供的值"},
-     "assignee_replacements":{"source-user-uuid":"alice"}
+     "assignee_replacements":{"source-user-id":"target-user-id"}
    })
 ```
 
-每次调用都显式传 `workspace`。`snapshot_id` 和 `expected_snapshot_hash` 必须来自同一次、最新的 `project_template_list`；如果返回 `project_template_snapshot_hash_mismatch`，重新 list 并再次确认输入，不要用旧版本重试。模板内容变更、Capture、Preview、归档和 Snapshot 版本管理交给 Web Console。
+每次调用都显式传 `workspace`。`snapshot_id` 和 `expected_snapshot_hash` 必须来自同一次、最新的 `project_template_list`；如果返回 `project_template_snapshot_hash_mismatch`，重新 list 并再次确认输入，不要用旧版本重试。`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**，非空 value 是 active workspace member 的 **target user ID**，两端都不能填 name、slug 或其它 ref；source ID 从 validation issue 的 `source_ref` 取得，target ID 先用 `member_list` 查询。模板内容变更、Capture、Preview、归档和 Snapshot 版本管理交给 Web Console。
 
 ## 易错点
 

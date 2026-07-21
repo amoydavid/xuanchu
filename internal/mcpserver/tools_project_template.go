@@ -13,7 +13,7 @@ import (
 
 type ProjectTemplateListInput struct {
 	Workspace string `json:"workspace" jsonschema:"workspace slug or UUID; required for every template call"`
-	Q         string `json:"q,omitempty" jsonschema:"optional template key, name, or description search text"`
+	Q         string `json:"q,omitempty" jsonschema:"optional template key or name search text"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"max active templates to return"`
 	Offset    int    `json:"offset,omitempty" jsonschema:"number of active templates to skip"`
 }
@@ -28,7 +28,7 @@ type ProjectTemplateInstantiateInput struct {
 	StartDate            string             `json:"start_date" jsonschema:"project start date in YYYY-MM-DD format"`
 	Description          *string            `json:"description,omitempty" jsonschema:"optional description override for the new project"`
 	SecretInputs         map[string]string  `json:"secret_inputs,omitempty" jsonschema:"secret values required by the current snapshot; values are never returned"`
-	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty" jsonschema:"source user ID to replacement user ref; null removes the assignee"`
+	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty" jsonschema:"source user ID to target user ID; null removes the assignee"`
 }
 
 type ProjectTemplateToolError struct {

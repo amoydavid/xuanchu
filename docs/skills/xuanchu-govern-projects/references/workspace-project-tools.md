@@ -238,7 +238,7 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
 
 ### project_template_instantiate — 从 current Snapshot 创建项目
 
-先调用 `project_template_list`，再原样提交该次返回的 `current_snapshot.id` 和 `current_snapshot.hash`。新项目字段、required secret 和 assignee replacement 收集齐后一次提交；secret 值不会出现在响应或错误中。
+先调用 `project_template_list`，再原样提交该次返回的 `current_snapshot.id` 和 `current_snapshot.hash`。新项目字段、required secret 和 assignee replacement 收集齐后一次提交；secret 值不会出现在响应或错误中。先用 `member_list` 查询 active workspace member 的 User ID：`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**（由 validation issue 的 `source_ref` 给出），非空 value 是 replacement 的 **target user ID**；两端都不能填 name、slug 或其它 ref。
 
 ```json
 // 输入
@@ -252,7 +252,7 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
   "start_date": "2026-08-01",
   "description": "可选的新项目说明",
   "secret_inputs": {"agent.api_key":"安全提供的值"},
-  "assignee_replacements": {"source-user-uuid":"alice","removed-user-uuid":null}
+  "assignee_replacements": {"source-user-id":"target-user-id","removed-user-id":null}
 }
 
 // 返回

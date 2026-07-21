@@ -10,7 +10,7 @@
             "string"
           ]
         },
-        "description": "source user ID to replacement user ref; null removes the assignee",
+        "description": "source user ID to target user ID; null removes the assignee",
         "type": "object"
       },
       "description": {

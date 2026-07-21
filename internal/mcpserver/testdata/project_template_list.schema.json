@@ -12,7 +12,7 @@
         "type": "integer"
       },
       "q": {
-        "description": "optional template key, name, or description search text",
+        "description": "optional template key or name search text",
         "type": "string"
       },
       "workspace": {

@@ -3,6 +3,8 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -28,6 +30,9 @@ func TestMCPProjectTemplateSchemasRequireExplicitWorkspaceAndCurrentSnapshot(t *
 	if got := listSchema.Properties["workspace"].Description; !strings.Contains(got, "required for every template call") {
 		t.Fatalf("list workspace description = %q", got)
 	}
+	if got := listSchema.Properties["q"].Description; got != "optional template key or name search text" {
+		t.Fatalf("list q description = %q", got)
+	}
 
 	instantiateSchema := mustSchema[ProjectTemplateInstantiateInput](t)
 	assertRequired(t, instantiateSchema.Required,
@@ -36,6 +41,31 @@ func TestMCPProjectTemplateSchemasRequireExplicitWorkspaceAndCurrentSnapshot(t *
 	)
 	if got := instantiateSchema.Properties["workspace"].Description; !strings.Contains(got, "required for every template call") {
 		t.Fatalf("instantiate workspace description = %q", got)
+	}
+	if got := instantiateSchema.Properties["assignee_replacements"].Description; got != "source user ID to target user ID; null removes the assignee" {
+		t.Fatalf("assignee_replacements description = %q", got)
+	}
+}
+
+func TestMCPProjectTemplateSkillDocsRequireUserIDsForAssigneeReplacement(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "..", "docs", "skills", "xuanchu-govern-projects", "SKILL.md"),
+		filepath.Join("..", "..", "docs", "skills", "xuanchu-govern-projects", "references", "workspace-project-tools.md"),
+	}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(raw)
+		for _, want := range []string{"member_list", "source user ID", "target user ID"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s does not document %q", path, want)
+			}
+		}
+		if strings.Contains(text, `"source-user-uuid":"alice"`) {
+			t.Fatalf("%s still uses a name as an assignee replacement target", path)
+		}
 	}
 }
 
