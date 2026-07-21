@@ -197,6 +197,76 @@ project_get_current({"workspace": "dajee"})
 {"workspace": "dajee", "project": "apiplat"}
 ```
 
+## 从项目模板创建项目
+
+MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/Instantiate Preview、模板详情、修改、归档、追加 Snapshot 和版本治理均由 Web Console 完成，不存在对应的 MCP tool。
+
+### project_template_list — 列出可实例化模板（只读）
+
+`workspace` 每次必填。只返回 active Template 和各自的 current Snapshot 摘要；不会返回 Snapshot JSON、历史版本、候选项或治理链接。
+
+```json
+// 输入
+{"workspace":"dajee","q":"发布","limit":20,"offset":0}
+
+// 返回
+{
+  "data": {
+    "items": [
+      {
+        "id": "template-uuid",
+        "key": "release",
+        "name": "发布模板",
+        "description": "标准发布流程",
+        "status": "active",
+        "current_snapshot": {
+          "id": "snapshot-uuid",
+          "version": 3,
+          "hash": "64-char-lowercase-sha256",
+          "counts": {"configs":2,"tasks":8,"series":1,"automations":1},
+          "required_secret_keys": ["agent.api_key"]
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 20,
+    "offset": 0
+  },
+  "rendered": "1 active project template(s)"
+}
+```
+
+### project_template_instantiate — 从 current Snapshot 创建项目
+
+先调用 `project_template_list`，再原样提交该次返回的 `current_snapshot.id` 和 `current_snapshot.hash`。新项目字段、required secret 和 assignee replacement 收集齐后一次提交；secret 值不会出现在响应或错误中。
+
+```json
+// 输入
+{
+  "workspace": "dajee",
+  "template": "release",
+  "snapshot_id": "snapshot-uuid",
+  "expected_snapshot_hash": "64-char-lowercase-sha256",
+  "project_slug": "release26",
+  "project_name": "2026 发布项目",
+  "start_date": "2026-08-01",
+  "description": "可选的新项目说明",
+  "secret_inputs": {"agent.api_key":"安全提供的值"},
+  "assignee_replacements": {"source-user-uuid":"alice","removed-user-uuid":null}
+}
+
+// 返回
+{
+  "data": {
+    "project": {"id":"project-uuid","slug":"release26","name":"2026 发布项目","status":"planning"},
+    "counts": {"configs":2,"tasks":8,"series":1,"automations":1}
+  },
+  "rendered": "created project release26 from current project template snapshot"
+}
+```
+
+如果 current Snapshot 已变化，工具返回 `project_template_snapshot_hash_mismatch`；重新调用 `project_template_list` 并重新确认输入。业务校验失败时，`structuredContent` 的错误包含稳定的 `code`、主 `message` 和完整 `issues`，按 issues 收集缺失输入后重试，不要把 secret 写进日志或普通消息。
+
 ## 项目注释
 
 ### project_annotate — 添加注释

@@ -1,0 +1,43 @@
+{
+  "description": "List active project templates and their current snapshot summaries; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "description": "max active templates to return",
+        "type": "integer"
+      },
+      "offset": {
+        "description": "number of active templates to skip",
+        "type": "integer"
+      },
+      "q": {
+        "description": "optional template key, name, or description search text",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; required for every template call",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace"
+    ],
+    "type": "object"
+  },
+  "name": "project_template_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -116,6 +116,8 @@ func TestMCPScopeFieldsDocumented(t *testing.T) {
 		func(t *testing.T) *jsonschema.Schema { return mustSchema[TaskQueryInput](t) },
 		func(t *testing.T) *jsonschema.Schema { return mustSchema[ConfigGetInput](t) },
 		func(t *testing.T) *jsonschema.Schema { return mustSchema[TokenListInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectTemplateListInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectTemplateInstantiateInput](t) },
 	}
 	for _, fn := range checks {
 		schema := fn(t)
