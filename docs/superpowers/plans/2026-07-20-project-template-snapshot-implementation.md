@@ -268,7 +268,7 @@ func (s *Service) InstantiateCurrentProjectTemplate(templateRef string, input Cu
 - Consumes: spec §9、§11、§12；现有 Goldmark 依赖；不依赖 App、Storage、HTTP、Cobra 或 GORM。
 - Produces: “跨任务固定接口”中的 `projecttemplate` 类型和函数，供 Capture、Instantiate 和 Storage decoding 使用。
 
-- [ ] **Step 1: 写 V1 round-trip、严格拒绝和 canonical hash 失败测试**
+- [x] **Step 1: 写 V1 round-trip、严格拒绝和 canonical hash 失败测试**
 
 ```go
 func TestCodecV1StrictAndStable(t *testing.T) {
@@ -297,13 +297,13 @@ func TestDecodeRejectsUnknownSchemaFieldAndTrailingJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/projecttemplate -run 'Codec|Decode' -count=1`
 
 Expected: FAIL，package 或 `EncodeV1` / `Decode` 尚不存在。
 
-- [ ] **Step 3: 实现完整 V1 struct、normalize、strict schema dispatch 与 SHA-256**
+- [x] **Step 3: 实现完整 V1 struct、normalize、strict schema dispatch 与 SHA-256**
 
 `model.go` 必须逐字段定义 spec §9 的 Project/Config/Task/Series/Automation blueprint；Automation 的 trigger/condition/action/context 使用 snapshot-specific struct，不允许 `json.RawMessage` 或 `map[string]any`。`EncodeV1` 先复制并 normalize：trim 标量；tags、assignee IDs、depends refs、config keys 稳定排序去重；tasks/series/automation 保持 Capture 分配后的规范顺序；空集合编码为 `[]` 而不是 `null`；再 `json.Marshal` 并校验 8 MiB。`Decode` 先读取仅含 `schema` 的 header，再以 `json.Decoder.DisallowUnknownFields()` 解码，第二次 `Decode` 必须得到 `io.EOF`；缺失或显式 `null` 的顶层四类数组返回 `project_template_snapshot_invalid`。unknown schema 返回 `project_template_snapshot_schema_unsupported`，其它 pure package error 通过 `projecttemplate.Error` 保留 spec 稳定 code，App 再映射为 `RuntimeError`。
 
@@ -320,7 +320,7 @@ func EncodeV1(in SnapshotV1, limits Limits) ([]byte, string, error) {
 }
 ```
 
-- [ ] **Step 4: 写并实现日期、local ref、dependency cycle、secret invariant 与 Markdown 改写测试**
+- [x] **Step 4: 写并实现日期、local ref、dependency cycle、secret invariant 与 Markdown 改写测试**
 
 ```go
 func TestRelativeTimeKeepsWallClockAcrossDST(t *testing.T) {
@@ -341,7 +341,7 @@ func TestValidateSnapshotRejectsMissingCycleSecretAndAttachment(t *testing.T) {
 
 `reference.go` 必须用 Goldmark Link/Image AST 识别 Markdown destination；Capture 将已选 UUID 改写为 `ref://task/task-N`，未选择 target 返回 issue，attachment 返回 blocking issue；Instantiate 只把合法 `task-N` 改回预分配 UUID。普通 HTTP 链接和 code block 原样保留。
 
-- [ ] **Step 5: 运行纯函数测试并提交**
+- [x] **Step 5: 运行纯函数测试并提交**
 
 Run: `go test ./internal/projecttemplate -count=1`
 
@@ -367,7 +367,7 @@ git commit -m "feat: 定义项目模板快照契约"
 - Consumes: Task 1 只用于 repository 测试生成合法 JSON；Storage 生产代码不解释 Snapshot 内容。
 - Produces: 固定 repository 接口、两张表和 dialect-neutral version allocation，供 App transaction 使用。
 
-- [ ] **Step 1: 写 SQLite migration、workspace 隔离、不可变追加和唯一约束失败测试**
+- [x] **Step 1: 写 SQLite migration、workspace 隔离、不可变追加和唯一约束失败测试**
 
 ```go
 func TestProjectTemplateRepositoryAppendIsImmutableAndScoped(t *testing.T) {
@@ -396,13 +396,13 @@ func TestProjectTemplateRepositoryAppendIsImmutableAndScoped(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/storage -run 'ProjectTemplate|Migration.*Template' -count=1`
 
 Expected: FAIL，model/repository/table 尚不存在。
 
-- [ ] **Step 3: 增加两张 model、AutoMigrate 和 repository**
+- [x] **Step 3: 增加两张 model、AutoMigrate 和 repository**
 
 ```go
 type ProjectTemplate struct {
@@ -425,7 +425,7 @@ type ProjectTemplateSnapshot struct {
 
 GORM tags 必须建立 `(workspace_id,key)`、`(template_id,version)`、`(template_id,snapshot_hash)` 唯一索引；migration 显式创建 Template→current Snapshot 与 Snapshot→Template 的 `ON DELETE RESTRICT` 外键并在 SQLite/PostgreSQL 测试中检查。`AppendSnapshotLocked` 只允许在 `Store.Transaction` 内调用：PostgreSQL 对 Template row 使用 `clause.Locking{Strength:"UPDATE"}`，SQLite 依赖外层写事务；读取当前最大 version 后插入并更新 `current_snapshot_id/modified_at`。唯一冲突映射为 package-level `ErrProjectTemplateKeyConflict`、`ErrProjectTemplateVersionConflict`、`ErrProjectTemplateHashConflict`，不得向 App 泄漏方言错误文本。Repository 不提供 Snapshot update/delete。
 
-- [ ] **Step 4: 写并运行双数据库并发验证**
+- [x] **Step 4: 写并运行双数据库并发验证**
 
 SQLite 使用两个 goroutine/独立连接并发追加，断言最终 version 为 1、2 且 current 指向 v2；PostgreSQL E2E 在临时数据库中追加两个 Snapshot，断言 `snapshot_json` 列为 text、版本唯一、workspace 隔离。PostgreSQL 环境变量未设置时沿用现有 skip 规则。
 
@@ -433,7 +433,7 @@ Run: `go test ./internal/storage -run ProjectTemplate -count=1`
 
 Expected: PASS；SQLite 并发测试没有 duplicate version 或 database-specific error 泄漏。
 
-- [ ] **Step 5: 运行 Storage 回归并提交**
+- [x] **Step 5: 运行 Storage 回归并提交**
 
 Run: `go test ./internal/storage -count=1`
 
@@ -456,7 +456,7 @@ git commit -m "feat: 持久化项目模板与快照"
 - Consumes: Task 1 decode/hash、Task 2 repository、现有 `Require`、`resolveUserInfos`、actor columns 和 audit transaction。
 - Produces: metadata list/info/modify/archive/reactivate、受限 instantiation list；Task 5 为 create/append 填充 Snapshot，Task 6/7 复用 template resolution。
 
-- [ ] **Step 1: 写权限、project scope、metadata redaction 和生命周期失败测试**
+- [x] **Step 1: 写权限、project scope、metadata redaction 和生命周期失败测试**
 
 ```go
 func TestProjectTemplateMetadataLifecycleAndScope(t *testing.T) {
@@ -473,17 +473,17 @@ func TestProjectTemplateMetadataLifecycleAndScope(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/app -run ProjectTemplateMetadata -count=1`
 
 Expected: FAIL，Service 尚未装配 repository 和用例。
 
-- [ ] **Step 3: 装配 repository、解析 ref、权限矩阵和 typed/redacted view**
+- [x] **Step 3: 装配 repository、解析 ref、权限矩阵和 typed/redacted view**
 
 在 `Service` 加 `projectTemplateRepo *storage.ProjectTemplateRepository`，同时修改 `NewService` 和 `withStore`。`resolveProjectTemplate(ref)` 只按当前 workspace 的 UUID/key 查找。所有 Template 用例先拒绝 `hasProjectScope()`；metadata list/info 基础要求 `PermissionProjectRead`，modify/archive/reactivate 要 `PermissionProjectManage`；detail 根据解码后的 component counts 再要求 `PermissionTaskRead`、`PermissionProjectConfigRead`、`PermissionHookRead`。actor view 必须通过现有批量 user resolution 构造 `task.ActorInfo`。
 
-- [ ] **Step 4: 实现 metadata 修改、archive/reactivate 和受限 list**
+- [x] **Step 4: 实现 metadata 修改、archive/reactivate 和受限 list**
 
 `ModifyProjectTemplate` 只接受 `Name *string`、`Description *string`，拒绝 key。普通 list 以 `modified_at DESC,id ASC` 稳定分页；`ListProjectTemplatesForInstantiation` 固定 active，只返回 current ID/version/hash、counts、required secret keys，不返回旧 versions 或 Snapshot detail。归档写 `project_template.archive` audit；重新激活复用 `project_template.modify` 并在 payload 写 `status_before/status_after`；名称/说明修改写 `project_template.modify`。
 
@@ -496,7 +496,7 @@ func (s *Service) rejectProjectTemplateProjectScope() error {
 }
 ```
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `go test ./internal/app -run 'ProjectTemplateMetadata|ProjectTemplatePermission|ProjectTemplateAudit' -count=1`
 
@@ -525,7 +525,7 @@ git commit -m "feat: 管理项目模板生命周期"
 - Consumes: 现有 task query AST/compiler、TaskSeries filters、ConfigDefinition、automation rule view 和 Task 3 permission helpers。
 - Produces: 四个 candidate page 方法和 `ResolveProjectTemplateCandidateSelection`，供 HTTP 和 Capture wizard 使用。
 
-- [ ] **Step 1: 写大数据集、强制 scope、稳定分页和 count 失败测试**
+- [x] **Step 1: 写大数据集、强制 scope、稳定分页和 count 失败测试**
 
 ```go
 func TestTaskTemplateCandidatesForceNormalProjectScopeAndDatabasePage(t *testing.T) {
@@ -542,17 +542,17 @@ func TestTaskTemplateCandidatesForceNormalProjectScopeAndDatabasePage(t *testing
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/storage ./internal/app -run 'TemplateCandidate|CandidateSelection' -count=1`
 
 Expected: FAIL，分页 repository API 和 App candidate 用例不存在。
 
-- [ ] **Step 3: 在 Storage 增加四类 bounded query**
+- [x] **Step 3: 在 Storage 增加四类 bounded query**
 
 Task repository 的 base query 必须先固定 `workspace_id=? AND project_id=? AND series_id IS NULL AND status<>deleted`，再应用现有 AST 和 q/status/priority/assignee/tags/date filters；同一个 query clone 做 `Count` 和 `Limit/Offset`，排序最后总是加 `uuid ASC` tie-break。Series 将现有 `ListCandidates` 改为共享 query builder，并新增 `ListCandidatePage(opts, limit, offset)`，不得 App 内存切页。Config 只查 `scope=project AND scope_id=source project` 并 join/批量加载 definition；Automation 按 workspace/project/name/description/enabled/trigger type 筛选并以 `created_at,id` 稳定排序。
 
-- [ ] **Step 4: 实现 App candidate page 与“全部匹配”展开**
+- [x] **Step 4: 实现 App candidate page 与“全部匹配”展开**
 
 ```go
 type CandidateSelectionQuery struct {
@@ -568,7 +568,7 @@ type ResolvedCandidateSelection struct { Refs []string; Total int; SourceHash st
 
 四类 list 默认 50、最大 100；批量解析 assignee/user，候选只返回摘要、warning count 和 stable source ref。Resolve 复用同一 query builder，将 limit 设为对应 Snapshot 上限 + 1；超过上限返回 `project_template_candidate_limit_exceeded`，否则返回按规范顺序的显式 UUID/ID/key 与 SHA-256 selection source hash。Task `Query` 通过 `query.ParseQuery` 和现有 project predicate resolution，调用方表达式不能覆盖强制 scope。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `go test ./internal/storage ./internal/app -run 'TemplateCandidate|CandidateSelection' -count=1`
 
@@ -594,7 +594,7 @@ git commit -m "feat: 查询项目模板候选内容"
 - Consumes: Tasks 1–4；Storage 批量读取显式 refs；现有 UDA/config/automation validation；workspace clock/location。
 - Produces: Capture preview/create/append，用于 HTTP/Web；写出的 canonical JSON 供 Instantiate 使用。
 
-- [ ] **Step 1: 写精确选择、缺失依赖、attachment、secret 和 source drift 失败测试**
+- [x] **Step 1: 写精确选择、缺失依赖、attachment、secret 和 source drift 失败测试**
 
 ```go
 func TestCapturePreviewAndCreateUseOnlyExplicitSelection(t *testing.T) {
@@ -616,17 +616,17 @@ func TestCaptureRejectsChangedSourceAndNeverPersistsSecret(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/app -run 'ProjectTemplateCapture|CapturePreview' -count=1`
 
 Expected: FAIL，Capture 用例尚不存在。
 
-- [ ] **Step 3: 批量读取源、验证 presence/权限并计算 source hash**
+- [x] **Step 3: 批量读取源、验证 presence/权限并计算 source hash**
 
 四个 `SelectionPresence` 必须全为 true；每个数组按集合处理并按 source project_seq/ID、key、created_at/ID 规范排序。批量加载后逐项验证属于 source Project、task 非 deleted/occurrence、Series 合法、config 是 project 显式 row、automation 属于 source。source fingerprint 必须覆盖 source Project description、选中完整资源、相关 Config/UDA definitions 和 assignee membership 状态；只序列化服务端读取的 normalized source state，不含 UI filter 或 resolution。Preview 和 Capture 都重算，hash 不同返回 `project_template_source_changed`。
 
-- [ ] **Step 4: 映射 blueprint、local refs、日期和结构化 resolution**
+- [x] **Step 4: 映射 blueprint、local refs、日期和结构化 resolution**
 
 ```go
 type TaskRelationResolution struct { SourceTaskRef, Relation, TargetTaskRef string }
@@ -649,7 +649,7 @@ type CaptureResolution struct {
 
 服务端只能接受与当前 Preview blocking issue 精确匹配的 drop/override；未提示的关系不能删除。`ContentRefResolution.SourceKind` 只允许 `task|series`，因此 Task 和 Series description 的 task ref 都能被精确处理。普通 task 全部变成开放 blueprint，不保存 status/start/annotation/occurrence/attachment。active Series 用现有 recurrence engine 取 anchor date 当天或之后的第一个合法槽位；源 until 早于新 first_due 时清空并 warning。ended/stopped 无未来槽位时以 anchor date D+0 为 first_due、清空 until，并要求提交一个与默认值相同或经用户修改的 `SeriesScheduleOverride` 才解除 blocking confirmation。secret config 只写 `{mode:"secret_input",value:nil}`；automation 显式映射 typed struct且忽略 enabled/delivery。正文 task ref 改 local ref，user ref 保留同 workspace user ID，attachment 阻断。
 
-- [ ] **Step 5: 同事务创建首个 Snapshot/追加版本、审计并提交**
+- [x] **Step 5: 同事务创建首个 Snapshot/追加版本、审计并提交**
 
 创建前按 `^[a-z][a-z0-9-]{2,31}$` 校验 key，trim name/description 并检查 workspace key conflict。Template create + v1 Snapshot + current pointer + `project_template.create`/`project_template.snapshot.create` audit 必须同一 `withAuditEntries` transaction；append 时 archived 拒绝。若 hash 等于 current Snapshot，按幂等重试返回 current view且不新增 version/audit；若与历史非 current Snapshot 重复，返回 `project_template_snapshot_invalid` 且不切换 current。成功追加后 current 原子切换。audit 只含 template/snapshot/source IDs、version/hash/counts。
 
@@ -675,7 +675,7 @@ git commit -m "feat: 保存项目模板快照"
 - Consumes: Task 1 Decode/date/reference、Task 3 template resolution、Task 5 Snapshot；现有 project/config/UDA/automation validators。
 - Produces: deterministic `InstantiatePreview` 和 transaction-ready `instantiatePlan`，Task 7 只能执行这个 plan。
 
-- [ ] **Step 1: 写 hash、archived、slug、member、secret、schema 和日期失败测试**
+- [x] **Step 1: 写 hash、archived、slug、member、secret、schema 和日期失败测试**
 
 ```go
 func TestInstantiatePreviewReturnsIssuesWithoutSecrets(t *testing.T) {
@@ -692,17 +692,17 @@ func TestInstantiatePreviewReturnsIssuesWithoutSecrets(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/app -run ProjectTemplateInstantiatePreview -count=1`
 
 Expected: FAIL，preview/plan builder 尚不存在。
 
-- [ ] **Step 3: 实现确定 Snapshot 解析、current 限制和完整权限矩阵**
+- [x] **Step 3: 实现确定 Snapshot 解析、current 限制和完整权限矩阵**
 
 `PreviewProjectTemplateInstantiation` 允许 HTTP/Web 指定属于 Template 的历史 Snapshot；空 ID 解析 current 并在响应固定 ID/hash。`InstantiateCurrentProjectTemplate` 额外要求输入 ID 等于 current ID。两者都验证 64 位小写 hex expected hash 并 constant-time compare。基础权限 `PermissionProjectManage`；按内容增加 `PermissionTaskWrite`、`PermissionProjectConfigWrite`、`PermissionHookWrite`；project-scoped token 统一拒绝。
 
-- [ ] **Step 4: 构造 transaction-ready plan 并执行所有兼容性检查**
+- [x] **Step 4: 构造 transaction-ready plan 并执行所有兼容性检查**
 
 ```go
 type instantiatePlan struct {
@@ -720,7 +720,7 @@ type instantiatePlan struct {
 
 先校验 Template active、Snapshot workspace/template、slug/name、slug 未占用；再验证 active membership 和只允许 issue 对应的 assignee replacement（null=移除）；UDA definition/value；project config scope/type/secret 解析来源；automation provider/config keys/allowed hosts；所有恢复日期；local ref 图。secret resolution 只返回 `input|workspace|default|missing`。历史 literal key 现已变 secret 时丢弃 Snapshot literal，强制按 secret 解析。由 input 解析的 secret 会写入新项目显式 config；由 workspace/default 解析的 secret 只保留继承，不复制成 project row。`Counts.Configs` 表示成功应用的 blueprint 数，不等同于实际新增 config row 数。任何 blocking issue 存在时 Preview 可返回 200 typed issues；最终 Instantiate 返回 `ProjectTemplateValidationError`，保留全部 typed issues，HTTP/MCP 用 `PrimaryCode()` 映射稳定主错误码而不丢失结构化问题清单。
 
-- [ ] **Step 5: 运行 Preview 测试并提交**
+- [x] **Step 5: 运行 Preview 测试并提交**
 
 Run: `go test ./internal/app -run 'ProjectTemplateInstantiatePreview|ProjectTemplatePermission' -count=1`
 
@@ -747,7 +747,7 @@ git commit -m "feat: 预检项目模板实例化"
 - Consumes: Task 6 `instantiatePlan`；现有 `addProjectLocked`、task config validators、audit/event pipeline。
 - Produces: `InstantiateProjectTemplate`/`InstantiateCurrentProjectTemplate` 的原子实现和来源 metadata。
 
-- [ ] **Step 1: 写成功身份映射、Series 无 occurrence、disabled automation 和回滚失败测试**
+- [x] **Step 1: 写成功身份映射、Series 无 occurrence、disabled automation 和回滚失败测试**
 
 ```go
 func TestInstantiateCreatesFreshGraphWithoutHistory(t *testing.T) {
@@ -770,19 +770,19 @@ func TestInstantiateRollbackLeavesNothing(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/app -run 'ProjectTemplateInstantiateCreates|ProjectTemplateInstantiateRollback' -count=1`
 
 Expected: FAIL，transaction executor 尚未实现。
 
-- [ ] **Step 3: 提取可复用的 transaction 内创建 helper**
+- [x] **Step 3: 提取可复用的 transaction 内创建 helper**
 
 `addLockedWithUUID(input AddInput, presetUUID string)` 复用普通 task validation/seq 分配但允许 Template 预分配 UUID；普通 `addLocked` 传空字符串保持现有行为。Task 模板第一阶段以 nil description/parent/depends 创建，全部 Task 存在后第二阶段写最终 description、parent、depends 和 links，解决前向 `ref://task`。Task created event 在第二阶段完成后从最终 row 构造。
 
 把 Series 创建核心提取为 `addTaskSeriesLocked(input AddTaskSeriesInput, materializeFirst bool)`；公开 Add 传 true，Template 传 false，确保 start date 已到也不在初始化事务物化 occurrence。把 Automation 核心提取为 `addProjectAutomationRuleLocked(project storage.Project, input ProjectAutomationRuleAddInput)`；Template 强制覆盖 `Enabled=false`。
 
-- [ ] **Step 4: 在一个 audit/events transaction 中按固定顺序执行 plan**
+- [x] **Step 4: 在一个 audit/events transaction 中按固定顺序执行 plan**
 
 ```go
 err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
@@ -798,7 +798,7 @@ err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent,
 
 最终执行前在同一 transaction 再跑完整 plan builder，防止 Preview 后成员/config/current hash 漂移。config 使用当前 validator 并写 project scope；Task/Series seq 按 Snapshot 顺序；所有 links 生成新 ID、created_by=Instantiate actor；aggregate audit `project_template.instantiate` 带 template/snapshot/hash/counts，子资源继续写现有 audit。实际 Project/Task/Series 创建事件 payload 增加 `source_template_id/source_template_snapshot_id/source_template_snapshot_hash`，不新增 hook event type。
 
-- [ ] **Step 5: 运行原子性与现有创建路径回归并提交**
+- [x] **Step 5: 运行原子性与现有创建路径回归并提交**
 
 Run: `go test ./internal/app -run 'ProjectTemplateInstantiate|TaskSeriesAdd|ProjectAutomationRule' -count=1`
 
@@ -823,7 +823,7 @@ git commit -m "feat: 原子实例化项目模板"
 - Consumes: Tasks 3–7 全部 App 用例。
 - Produces: spec §18.1 的 16 个 HTTP operations，供 Web 使用；Remote 只调用其中 list/current instantiate 子集。
 
-- [ ] **Step 1: 写 route completeness、required selection arrays、typed issue 和 raw JSON/secret redaction 失败测试**
+- [x] **Step 1: 写 route completeness、required selection arrays、typed issue 和 raw JSON/secret redaction 失败测试**
 
 ```go
 func TestProjectTemplateCaptureRequiresAllSelectionArrays(t *testing.T) {
@@ -837,21 +837,21 @@ func TestProjectTemplateResponsesNeverExposeRawSnapshotOrSecrets(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/httpapi -run ProjectTemplate -count=1`
 
 Expected: FAIL，routes 尚未注册。
 
-- [ ] **Step 3: 实现 handlers、DTO、presence conversion 和 body limit**
+- [x] **Step 3: 实现 handlers、DTO、presence conversion 和 body limit**
 
 精确注册 spec §18.1 路径。四个 selection 数组的 HTTP DTO 使用 `*[]string`，nil 表示字段缺失并转成 `CaptureSelectionPresence=false`，空 slice 表示明确不选。candidate query 参数与 Task/Series/Config/Automation App 输入一一映射；重复 `ref` 是最多 100 个 stable ref 的精确筛选，并在 Huma/OpenAPI 以 form/explode array 声明；`resolve-selection` body 使用 `kind` 和对应 filter object。所有 template POST/PATCH body 用 `http.MaxBytesReader(..., 9<<20)`；secret input 只传 App，不进入 request/error logging。
 
-- [ ] **Step 4: 完成 Huma request/success schema 和错误码 status mapping**
+- [x] **Step 4: 完成 Huma request/success schema 和错误码 status mapping**
 
 Huma 明确 required selection arrays、date format、UUID/hash pattern、typed preview issues、page metadata 和 `task.JSONUserInfo`/`task.JSONActorInfo`。错误状态：not found=404；key/hash/version/source/archived/concurrency conflict=409；request body/Snapshot JSON 超限=413；candidate selection 上限、invalid schema/ref/config/UDA/date/selection=422；permission/project scope=403。OpenAPI 测试断言 16 个 operations 和 required fields，raw `snapshot_json` 不在 schema。
 
-- [ ] **Step 5: 运行 HTTP/OpenAPI 测试并提交**
+- [x] **Step 5: 运行 HTTP/OpenAPI 测试并提交**
 
 Run: `go test ./internal/httpapi -run 'ProjectTemplate|OpenAPI|Route' -count=1`
 
@@ -882,7 +882,7 @@ git commit -m "feat: 暴露项目模板治理接口"
 - Consumes: Task 8 HTTP typed contract。
 - Produces: `/settings/project-templates` Template Library、query keys 和 mutations；Tasks 10/11 复用 API 与 selected snapshot state。
 
-- [ ] **Step 1: 写 API URL/body、route/nav active、loading/error/empty/archive 失败测试**
+- [x] **Step 1: 写 API URL/body、route/nav active、loading/error/empty/archive 失败测试**
 
 ```ts
 it("keeps template API scoped to workspace and never requests raw JSON", async () => {
@@ -900,21 +900,21 @@ it("distinguishes API error from an empty template library", async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pnpm --dir web test -- project-template-api project-template-library AppShell`
 
 Expected: FAIL，API/page/route 尚不存在。
 
-- [ ] **Step 3: 实现 typed API 和 query/mutation cache policy**
+- [x] **Step 3: 实现 typed API 和 query/mutation cache policy**
 
 定义 candidate page、capture/instantiate input/preview、Template summary/detail/version、issue、secret resolution、UserInfo/ActorInfo TS 类型；所有 mutation 使用 `workspaceApiPost/Patch`。query key 固定 `['project-templates', workspaceSlug, status, q, limit, offset]` 和 `['project-template', workspaceSlug, ref, snapshotID]`；create/append/modify/archive/reactivate/instantiate 成功后精确 invalidate templates/projects。
 
-- [ ] **Step 4: 实现 Template Library 与导航**
+- [x] **Step 4: 实现 Template Library 与导航**
 
 route path 固定 `/settings/project-templates`；`WorkspaceSettingsNav` 在现有 `/settings` ConfigDefinition 页面和 Template Library 顶部提供“配置定义/项目模板”两个入口，AppShell 的 Settings active 判定覆盖子路径。Library 左侧稳定分页/搜索，右侧 current 摘要、来源、版本列表和动作；旧 Snapshot 只读但可启动历史版本 Instantiate wizard；archived 显示 Banner 和“重新激活”，隐藏 Capture/Instantiate。四种状态必须独立：loading skeleton、error retry、empty CTA、no-search-result。
 
-- [ ] **Step 5: 运行 Web 测试并提交**
+- [x] **Step 5: 运行 Web 测试并提交**
 
 Run: `pnpm --dir web test -- project-template-api project-template-library AppShell`
 
@@ -940,7 +940,7 @@ git commit -m "feat: 增加项目模板库"
 - Consumes: Task 9 API；candidate refs 是 task UUID/series ID/config key/automation ID。
 - Produces: 新 Template 与追加 Snapshot 的同一四步 wizard。
 
-- [ ] **Step 1: 写筛选不丢 selection、当前页全选、全部匹配、抽屉移除和 Preview issue 失败测试**
+- [x] **Step 1: 写筛选不丢 selection、当前页全选、全部匹配、抽屉移除和 Preview issue 失败测试**
 
 ```ts
 it("keeps explicit selections while filters and pages change", async () => {
@@ -959,21 +959,21 @@ it("sends only explicit arrays and preview source hash", async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pnpm --dir web test -- project-template-capture-wizard project-header-editor`
 
 Expected: FAIL，wizard/components 尚不存在。
 
-- [ ] **Step 3: 实现单一 wizard state 和四类 candidate picker**
+- [x] **Step 3: 实现单一 wizard state 和四类 candidate picker**
 
 state 固定为 `Record<'task'|'series'|'config'|'automation', Map<string,CandidateSummary>>`，不放进分页 query cache。新建 Template 首次加载时分别 resolve pending、waiting Task 和 active Series，合并成默认显式选择；若默认匹配超过对应 Snapshot 上限，则该类保持未选择并显示“请先筛选再选择”的限制提示，不截断。completed Task、ended/stopped Series 默认不选。每类 filter/page 独立；header checkbox 文案“选择本页 N 项”，只操作当前响应；“选择全部 N 条匹配结果”调用 resolve endpoint 后合并显式 refs，超限保留现有选择并展示服务端错误。切换 tab/filter/page 不清选择。
 
-- [ ] **Step 4: 实现 selected Sheet、Preview resolution 和 source drift 恢复**
+- [x] **Step 4: 实现 selected Sheet、Preview resolution 和 source drift 恢复**
 
 桌面右侧 sticky drawer、窄屏/移动端全屏 Sheet 共用同一 selected store；支持搜索、逐项移除、“清除当前筛选结果的选择”和“清除全部已选”。Preview blocking issue 未清零时禁用保存；补选、drop relation/content ref、date/series override 都写结构化 resolution。`project_template_source_changed` 返回选择步骤、清理过期 resolution、保留显式 refs，并以重复 `ref` 精确重取所有已选摘要后要求重新 Preview。
 
-- [ ] **Step 5: 接入口、运行测试并提交**
+- [x] **Step 5: 接入口、运行测试并提交**
 
 Project Header 更多菜单对具备管理权限者显示“另存为模板”；Template Library “从项目更新快照”先选 source Project 后打开同一 wizard。pending 时禁用关闭/返回/重复提交，非 pending 支持 Esc，Cmd/Ctrl+Enter 只在当前步骤可提交时生效。
 
@@ -999,7 +999,7 @@ git commit -m "feat: 增加项目模板保存向导"
 - Consumes: Task 9 typed API；Template Library 可传历史 Snapshot，Projects 页面使用 active current Snapshot list。
 - Produces: 四步 Instantiate UX 和创建后 project navigation。
 
-- [ ] **Step 1: 写模板选择、preview hash、secret 不回显、member replacement 和 double submit 失败测试**
+- [x] **Step 1: 写模板选择、preview hash、secret 不回显、member replacement 和 double submit 失败测试**
 
 ```ts
 it("pins preview snapshot and never renders secret values", async () => {
@@ -1014,21 +1014,21 @@ it("pins preview snapshot and never renders secret values", async () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pnpm --dir web test -- project-template-instantiate-wizard projects-list-page`
 
 Expected: FAIL，wizard 和“从模板创建”入口不存在。
 
-- [ ] **Step 3: 实现模板/项目输入和 Preview 状态机**
+- [x] **Step 3: 实现模板/项目输入和 Preview 状态机**
 
 Projects 页将“从模板创建”与“新建项目”并列；选择 active Template current Snapshot。Template Library 可固定任一 version。start date 默认 workspace 本地当天；description 预填 Snapshot 默认并允许覆盖。每次改 slug/name/start date/secret/replacement 后标记 preview stale，最终提交前自动重跑 preview 或要求用户再次确认，不能静默换 current Snapshot。
 
-- [ ] **Step 4: 实现 secret resolution、member replacement、disabled automation 提示和提交保护**
+- [x] **Step 4: 实现 secret resolution、member replacement、disabled automation 提示和提交保护**
 
 secret 输入使用 password control，不写 local/session storage、query cache、Toast 或 error message；只显示 resolved source。不可用 assignee 只允许 Preview issue 指定的 replacement/null removal。确认页明确“自动化创建后保持停用”“不会复制附件”。提交 pending 时 modal 不可关闭、按钮 disabled；hash mismatch 返回选择模板步骤并刷新 list，不自动使用新 version。
 
-- [ ] **Step 5: 成功跳转、运行测试并提交**
+- [x] **Step 5: 成功跳转、运行测试并提交**
 
 成功后清除 wizard secret state，invalidate projects/templates，Toast 显示准确 counts，跳转 `/workspaces/$workspaceSlug/projects/$projectSlug` Overview。
 
@@ -1055,7 +1055,7 @@ git commit -m "feat: 从模板创建项目"
 - Consumes: Task 8 list/current instantiate HTTP endpoint、Tasks 3/7 App narrowed use cases。
 - Produces: 两个 Remote typed 方法和两个 CLI command；不产生治理方法/命令。
 
-- [ ] **Step 1: 写 command tree/Remote surface、JSON/human 输出和 hash drift 失败测试**
+- [x] **Step 1: 写 command tree/Remote surface、JSON/human 输出和 hash drift 失败测试**
 
 ```go
 func TestProjectTemplateCommandTreeIsNarrow(t *testing.T) {
@@ -1070,13 +1070,13 @@ func TestProjectTemplateCommandTreeIsNarrow(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/remote ./internal/cli ./tests/integration -run 'ProjectTemplate|TemplateCommand' -count=1`
 
 Expected: FAIL，methods/commands 尚不存在。
 
-- [ ] **Step 3: 实现 Remote 的两个 typed 方法**
+- [x] **Step 3: 实现 Remote 的两个 typed 方法**
 
 ```go
 func (c *Client) ListProjectTemplatesForInstantiation(ctx context.Context, workspace, q string, limit, offset int) (app.ProjectTemplatePage, error)
@@ -1085,11 +1085,11 @@ func (c *Client) InstantiateCurrentProjectTemplate(ctx context.Context, workspac
 
 Remote 只能调用 active list 和 current-only instantiate endpoint；不得新增 candidate/detail/preview/capture/modify/archive/version 方法。DTO 与 local App JSON 字段一致。
 
-- [ ] **Step 4: 实现 CLI 命令和安全 input JSON**
+- [x] **Step 4: 实现 CLI 命令和安全 input JSON**
 
 `list` 支持 `--q/--limit/--offset`；human 每行输出 key/name/current version/ID/hash/counts/required secret keys，JSON 输出稳定 page。`instantiate <template-ref> <new-project-slug> name:<name>` 必填 `--snapshot`、`--snapshot-hash`、`--start-date`；`--input <path|->` JSON 只允许 description、secret_inputs、assignee_replacements，`-` 读 `cmd.InOrStdin()`，文件/STDIN body 最大 1 MiB。secret 不允许 flag 形式，避免 shell history。local/remote 共用同一 parse 和 render。
 
-- [ ] **Step 5: 运行集成测试并提交**
+- [x] **Step 5: 运行集成测试并提交**
 
 Run: `go test ./internal/remote ./internal/cli ./tests/integration -run 'ProjectTemplate|TemplateCommand' -count=1`
 
@@ -1118,7 +1118,7 @@ git commit -m "feat: 增加模板列表与实例化命令"
 - Consumes: Tasks 3/7 narrowed App use cases和现有 `ToolEnvelope`。
 - Produces: `project_template_list`、`project_template_instantiate`；不得注册任何治理同义 tool。
 
-- [ ] **Step 1: 写 schema、list-tools denylist、workspace required 和 envelope 等价失败测试**
+- [x] **Step 1: 写 schema、list-tools denylist、workspace required 和 envelope 等价失败测试**
 
 ```go
 func TestMCPProjectTemplateToolsAreExactlyNarrowSurface(t *testing.T) {
@@ -1132,13 +1132,13 @@ func TestMCPProjectTemplateToolsAreExactlyNarrowSurface(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/mcpserver ./tests/integration -run 'MCPProjectTemplate|ProjectTemplateMCP' -count=1`
 
 Expected: FAIL，tools/schema/golden 尚不存在。
 
-- [ ] **Step 3: 实现两个输入 schema 与 handlers**
+- [x] **Step 3: 实现两个输入 schema 与 handlers**
 
 ```go
 type ProjectTemplateListInput struct {
@@ -1168,13 +1168,13 @@ type ProjectTemplateToolError struct {
 
 workspace 在 JSON schema required；list 固定 active/current；instantiate 必须带 current Snapshot ID/hash。handler 通过 `serviceForTool` 使用 workspace scope，不传 project scope；success 使用 `successWithEnvelope`。Instantiate 捕获 `ProjectTemplateValidationError` 并返回 `ProjectTemplateToolError`，使 `structuredContent` 保留全部 issues，text 只写主 code/message 且不含 secret。用户/actor JSON 使用统一 converter。
 
-- [ ] **Step 4: 更新 schema golden、list-tools snapshot 和 Agent Skill**
+- [x] **Step 4: 更新 schema golden、list-tools snapshot 和 Agent Skill**
 
 Run: `go test ./internal/mcpserver -run 'Schema|ListTools|MCPProjectTemplate' -update -count=1`
 
 Expected: PASS 并只生成两个 schema golden；人工检查 `list-tools-default.json` 没有治理 tool。Skill 文档明确 Agent 流程只能 list → 收集项目字段/secret/replacement → instantiate；版本变化必须重新 list，Web Console 才能 Capture/preview/archive/version governance。
 
-- [ ] **Step 5: 运行 MCP E2E 并提交**
+- [x] **Step 5: 运行 MCP E2E 并提交**
 
 Run: `go test ./internal/mcpserver ./tests/integration -run 'MCPProjectTemplate|ProjectTemplateMCP|ListTools' -count=1`
 
@@ -1200,7 +1200,7 @@ git commit -m "feat: 暴露项目模板 MCP 工具"
 - Consumes: Tasks 1–13 完整实现。
 - Produces: 可重复的 browser smoke、PostgreSQL workflow 和 v0.6.0 用户/开发文档闭环。
 
-- [ ] **Step 1: 写 Playwright desktop/mobile smoke**
+- [x] **Step 1: 写 Playwright desktop/mobile smoke**
 
 脚本启动真实 server + Web，创建 source Project 和超过一页的 task/series/config/automation fixture；桌面路径验证“另存为模板”→筛选→跨页选择→Preview resolution→保存→Template Library version；再“从模板创建”填写 secret/member replacement，断言新项目 counts、task relation、Series 无 occurrence、automation disabled。移动 viewport 验证全屏 Sheet、已选清单和返回聚焦。脚本 finally 必须终止子进程并检查端口释放。
 
@@ -1210,15 +1210,17 @@ git commit -m "feat: 暴露项目模板 MCP 工具"
 "smoke:project-template": "node scripts/playwright-project-template-smoke.mjs"
 ```
 
-- [ ] **Step 2: 扩充 PostgreSQL E2E 的真实 HTTP/MCP current workflow**
+- [x] **Step 2: 扩充 PostgreSQL E2E 的真实 HTTP/MCP current workflow**
 
 同一临时 PostgreSQL DB 通过 HTTP Capture 一个含 task/Series/config/automation 的 Template；MCP list 读取 current ID/hash并 instantiate；数据库断言 `snapshot_json` 是 text、旧 snapshot 未变化、new automation disabled、无 copied occurrence/delivery。再次 append version 后用旧 hash 调 MCP，必须得到 `project_template_snapshot_hash_mismatch`。
 
-- [ ] **Step 3: 同步 README、ROADMAP、spec/plan 状态**
+2026-07-21 本地执行时 `XUANCHU_E2E_POSTGRES_ADMIN_URL` 未设置；测试已编译并按约定明确 SKIP，未把该次执行记录为 PostgreSQL 现场通过。
+
+- [x] **Step 3: 同步 README、ROADMAP、spec/plan 状态**
 
 README 写 Web 治理入口、CLI 两个命令完整示例、stdin input JSON、安全提示和 MCP 两 tool；明确 CLI/MCP 不提供 Capture/preview/version governance。ROADMAP 将 v0.6.0 从“设计阶段”改为完成并列出 Snapshot JSON、筛选/跨页选择、原子 instantiate、Web/CLI/MCP 边界。spec 状态改“已实现”，plan 勾选实际完成项；未执行项不能预先勾选。
 
-- [ ] **Step 4: 运行后端、零 CGO、静态检查和 Web 全套验证**
+- [x] **Step 4: 运行后端、零 CGO、静态检查和 Web 全套验证**
 
 Run:
 
@@ -1239,7 +1241,9 @@ pnpm --dir web run smoke:editing
 
 Expected: 全部 exit 0；smoke 结束后无残留 server/Vite 进程和监听端口。若配置了 `XUANCHU_E2E_POSTGRES_ADMIN_URL`，再运行 `go test ./tests/integration -run PostgresE2E -count=1` 并要求 PASS；未配置时明确记录 SKIP，不能声称 PostgreSQL 已现场通过。
 
-- [ ] **Step 5: 检查范围与提交**
+2026-07-21 实际执行上述全部命令均 exit 0；Web 单测为 139 files / 817 tests，三条 smoke 均通过且 Task 14 worktree 无残留进程。PostgreSQL opt-in 命令 exit 0，但因环境变量未设置而明确 SKIP。
+
+- [x] **Step 5: 检查范围与提交**
 
 Run: `git status --short && git diff --stat && git diff --check`
 

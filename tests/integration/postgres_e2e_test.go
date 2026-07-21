@@ -451,6 +451,7 @@ func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {
 	if !ok || occurrences["total"] != float64(1) || len(completed) != 1 {
 		t.Fatalf("PostgreSQL task_series_list_occurrences data = %#v", occurrences)
 	}
+	runPostgresE2EProjectTemplateCurrentWorkflow(t, bin, dbURL, baseURL, token, session, project, task, env, seriesID)
 	stoppedSeries := callMCPToolData(t, session, "task_series_stop", map[string]any{"id": seriesID})
 	if stoppedSeries["status"] != "stopped" {
 		t.Fatalf("PostgreSQL task_series_stop data = %#v", stoppedSeries)
@@ -464,4 +465,191 @@ func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {
 		"operation=mcp_tool_call",
 		"tool=task_add",
 	)
+}
+
+func runPostgresE2EProjectTemplateCurrentWorkflow(
+	t *testing.T,
+	bin string,
+	dbURL string,
+	baseURL string,
+	token string,
+	session *mcp.ClientSession,
+	projectResponse map[string]any,
+	httpTaskResponse map[string]any,
+	mcpTaskEnvelope map[string]any,
+	seriesID string,
+) {
+	t.Helper()
+	for key, value := range map[string]string{
+		"agent.provider.base_url":      "https://agent.example.com",
+		"agent.provider.api_key":       "postgres-source-secret-must-not-leak",
+		"agent.provider.model":         "postgres-smoke-model",
+		"agent.provider.allowed_hosts": `["agent.example.com"]`,
+	} {
+		run(t, bin, "--db-url", dbURL, "--workspace", "local", "project", "config", "set", "pge2e", key, value)
+	}
+
+	automation := nestedMap(t, httpJSON(t, http.MethodPost,
+		baseURL+"/api/v1/projects/pge2e/automations?workspace=local",
+		map[string]any{
+			"name":         "PostgreSQL template automation",
+			"enabled":      true,
+			"trigger_type": "schedule",
+			"trigger_config": map[string]any{
+				"schedule_type": "daily_at", "schedule_value": "09:30", "timezone": "Asia/Shanghai",
+			},
+			"action": map[string]any{
+				"protocol": "chat_completions", "base_url_config_key": "agent.provider.base_url",
+				"api_key_config_key": "agent.provider.api_key", "model_config_key": "agent.provider.model",
+				"temperature": 0.2,
+			},
+			"context":              map[string]any{"include": []string{"project", "project_config"}},
+			"instruction_template": "verify PostgreSQL template instantiation",
+		}, authHeaders(token)), "data")
+	automationID, _ := automation["id"].(string)
+	if automationID == "" {
+		t.Fatalf("PostgreSQL automation create response = %#v", automation)
+	}
+
+	httpTask := nestedMap(t, httpTaskResponse, "data")
+	mcpTask := nestedMap(t, nestedMap(t, mcpTaskEnvelope, "data"), "task")
+	httpTaskID, _ := httpTask["uuid"].(string)
+	mcpTaskID, _ := mcpTask["uuid"].(string)
+	if httpTaskID == "" || mcpTaskID == "" {
+		t.Fatalf("PostgreSQL template task refs missing: http=%#v mcp=%#v", httpTask, mcpTask)
+	}
+
+	selection := map[string]any{
+		"config_keys": []string{
+			"agent.provider.base_url", "agent.provider.api_key",
+			"agent.provider.model", "agent.provider.allowed_hosts",
+		},
+		"task_refs":           []string{httpTaskID, mcpTaskID},
+		"series_refs":         []string{seriesID},
+		"automation_rule_ids": []string{automationID},
+	}
+	capture := map[string]any{
+		"source_project": "pge2e", "anchor_date": "2026-07-21", "selection": selection,
+	}
+	preview := nestedMap(t, httpJSON(t, http.MethodPost,
+		baseURL+"/api/v1/project-templates/capture-preview?workspace=local",
+		capture, authHeaders(token)), "data")
+	capture["expected_source_hash"] = preview["source_hash"]
+	created := httpJSON(t, http.MethodPost,
+		baseURL+"/api/v1/project-templates?workspace=local",
+		map[string]any{
+			"key": "postgres-workflow", "name": "PostgreSQL current workflow", "capture": capture,
+		}, authHeaders(token))
+	oldSnapshotID, oldSnapshotHash := projectTemplateE2ECurrent(t, created)
+
+	listed := callMCPProjectTemplateE2E(t, session, "project_template_list", map[string]any{
+		"workspace": "local", "q": "postgres-workflow", "limit": 20, "offset": 0,
+	})
+	listedData := assertMCPProjectTemplateE2EEnvelopeEquivalent(t, listed)["data"].(map[string]any)
+	listedItems, _ := listedData["items"].([]any)
+	if len(listedItems) != 1 {
+		t.Fatalf("PostgreSQL project_template_list items = %#v", listedData["items"])
+	}
+	listedCurrent := listedItems[0].(map[string]any)["current_snapshot"].(map[string]any)
+	if listedCurrent["id"] != oldSnapshotID || listedCurrent["hash"] != oldSnapshotHash {
+		t.Fatalf("PostgreSQL current snapshot = %#v, want id=%s hash=%s", listedCurrent, oldSnapshotID, oldSnapshotHash)
+	}
+
+	instantiated := callMCPProjectTemplateE2E(t, session, "project_template_instantiate", map[string]any{
+		"workspace": "local", "template": "postgres-workflow",
+		"snapshot_id": oldSnapshotID, "expected_snapshot_hash": oldSnapshotHash,
+		"project_slug": "pgtpl", "project_name": "PostgreSQL template project",
+		"start_date":    "2026-08-01",
+		"secret_inputs": map[string]any{"agent.provider.api_key": "postgres-new-project-secret"},
+	})
+	instantiatedData := assertMCPProjectTemplateE2EEnvelopeEquivalent(t, instantiated)["data"].(map[string]any)
+	instantiatedProject := instantiatedData["project"].(map[string]any)
+	instantiatedProjectID, _ := instantiatedProject["id"].(string)
+	counts := instantiatedData["counts"].(map[string]any)
+	if instantiatedProject["slug"] != "pgtpl" || instantiatedProjectID == "" ||
+		counts["tasks"] != float64(2) || counts["series"] != float64(1) ||
+		counts["configs"] != float64(4) || counts["automations"] != float64(1) {
+		t.Fatalf("PostgreSQL project_template_instantiate data = %#v", instantiatedData)
+	}
+
+	store, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var oldSnapshot storage.ProjectTemplateSnapshot
+	if err := store.DB().Where("id = ?", oldSnapshotID).First(&oldSnapshot).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldSnapshotJSON := oldSnapshot.SnapshotJSON
+	if strings.Contains(oldSnapshotJSON, "postgres-source-secret-must-not-leak") {
+		t.Fatal("PostgreSQL snapshot_json leaked the source secret")
+	}
+	if got := psqlScalar(t, dbURL, `SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'project_template_snapshots' AND column_name = 'snapshot_json'`); got != "text" {
+		t.Fatalf("PostgreSQL workflow snapshot_json data type = %q, want text", got)
+	}
+	var automationRows []storage.ProjectAutomationRule
+	if err := store.DB().Where("project_id = ?", instantiatedProjectID).Find(&automationRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(automationRows) != 1 || automationRows[0].Enabled == nil || *automationRows[0].Enabled {
+		t.Fatalf("PostgreSQL instantiated automations = %#v, want one disabled rule", automationRows)
+	}
+	var copiedOccurrences int64
+	if err := store.DB().Model(&storage.Task{}).
+		Where("project_id = ? AND series_id IS NOT NULL", instantiatedProjectID).
+		Count(&copiedOccurrences).Error; err != nil {
+		t.Fatal(err)
+	}
+	if copiedOccurrences != 0 {
+		t.Fatalf("PostgreSQL copied occurrence count = %d, want 0", copiedOccurrences)
+	}
+	var copiedDeliveries int64
+	if err := store.DB().Model(&storage.ProjectAutomationDelivery{}).
+		Where("project_id = ?", instantiatedProjectID).
+		Count(&copiedDeliveries).Error; err != nil {
+		t.Fatal(err)
+	}
+	if copiedDeliveries != 0 {
+		t.Fatalf("PostgreSQL copied automation delivery count = %d, want 0", copiedDeliveries)
+	}
+
+	newTask := nestedMap(t, httpJSON(t, http.MethodPost, baseURL+"/api/v1/tasks", map[string]any{
+		"title": "postgres appended snapshot task", "project": "pge2e",
+	}, authHeaders(token)), "data")
+	newTaskID, _ := newTask["uuid"].(string)
+	selection["task_refs"] = []string{httpTaskID, mcpTaskID, newTaskID}
+	delete(capture, "expected_source_hash")
+	appendPreview := nestedMap(t, httpJSON(t, http.MethodPost,
+		baseURL+"/api/v1/project-templates/postgres-workflow/snapshots/capture-preview?workspace=local",
+		capture, authHeaders(token)), "data")
+	capture["expected_source_hash"] = appendPreview["source_hash"]
+	appended := httpJSON(t, http.MethodPost,
+		baseURL+"/api/v1/project-templates/postgres-workflow/snapshots?workspace=local",
+		capture, authHeaders(token))
+	newSnapshotID, newSnapshotHash := projectTemplateE2ECurrent(t, appended)
+	if newSnapshotID == oldSnapshotID || newSnapshotHash == oldSnapshotHash {
+		t.Fatalf("PostgreSQL append did not advance current snapshot: old=%s/%s new=%s/%s", oldSnapshotID, oldSnapshotHash, newSnapshotID, newSnapshotHash)
+	}
+	var retained storage.ProjectTemplateSnapshot
+	if err := store.DB().Where("id = ?", oldSnapshotID).First(&retained).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retained.SnapshotJSON != oldSnapshotJSON || retained.SnapshotHash != oldSnapshotHash || retained.Version != 1 {
+		t.Fatalf("PostgreSQL old snapshot mutated after append: %#v", retained)
+	}
+
+	stale := callMCPProjectTemplateE2E(t, session, "project_template_instantiate", map[string]any{
+		"workspace": "local", "template": "postgres-workflow",
+		"snapshot_id": oldSnapshotID, "expected_snapshot_hash": oldSnapshotHash,
+		"project_slug": "pgstale", "project_name": "PostgreSQL stale project",
+		"start_date":    "2026-08-01",
+		"secret_inputs": map[string]any{"agent.provider.api_key": "postgres-stale-secret"},
+	})
+	if !stale.IsError || !strings.Contains(toJSONString(t, stale.StructuredContent), "project_template_snapshot_hash_mismatch") {
+		t.Fatalf("PostgreSQL stale current instantiate = %#v, want project_template_snapshot_hash_mismatch", stale.StructuredContent)
+	}
+	if got := nestedMap(t, projectResponse, "data")["slug"]; got != "pge2e" {
+		t.Fatalf("PostgreSQL source project changed unexpectedly: %#v", projectResponse)
+	}
 }
