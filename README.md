@@ -139,6 +139,41 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目概览页，再通过 Tabs 切到「任务」子页面，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，完整查看 Markdown description，并在弹窗中编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。任务子页面的“导入任务”支持下载完整字段 XLSX 模板、上传填写后的 XLSX 或标准 JSON，也可以在弹窗内查看带 `description` 注释的完整 JSON Schema；模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；description 默认按 Markdown 编写，技术上仍作为字符串保存；`blocked_by` 支持引用导入文件内的临时 `id` 或已有任务 UUID；预检发现缺失普通指派人时可直接创建用户并加入当前 workspace，导入文件中的 `display_name` 会作为用户展示姓名保留；上传解析后会分页预览归一化后的导入成果。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口与项目更新写入入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。项目记录（project annotation）已从设置页迁到活动子页面，旧 `/projects/<slug>/settings/notes` 入口兼容重定向到活动页。
 
+### 项目模板
+
+项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project 显式配置和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」负责填写新项目字段、secret 和失效成员替换，并在一个事务中创建 planning Project。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
+
+CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 Capture、Preview、详情、归档或版本治理。先用 list 取得 current Snapshot ID/hash：
+
+```bash
+./xuanchu --workspace local --json \
+  project template list --q launch --limit 20 --offset 0
+```
+
+实例化必须显式固定 list 返回的 current Snapshot。含 secret 的补充输入建议从 stdin 传入，避免进入 shell history；`assignee_replacements` 的值为替代用户引用，`null` 表示移除原指派：
+
+```bash
+./xuanchu --workspace local --json \
+  project template instantiate launch-template launch26 name:"2026 发布项目" \
+  --snapshot 2f05fdf7-6b21-4bd8-b93a-6d1884d44701 \
+  --snapshot-hash 7f4ce4f0b5f5f95bb9f3e03cb30e65c1a6f9139bdd22cc6fa4d6fe15b847271a \
+  --start-date 2026-08-01 \
+  --input - <<'JSON'
+{
+  "description": "从发布流程模板创建",
+  "secret_inputs": {
+    "agent.provider.api_key": "replace-with-real-secret"
+  },
+  "assignee_replacements": {
+    "unavailable-user-id": "alice",
+    "remove-this-user-id": null
+  }
+}
+JSON
+```
+
+`--input` 也接受最大 1 MiB 的 JSON 文件。Snapshot 只保存 secret key 占位，不保存 secret 值；响应、审计、日志和错误也不得回显输入值。若 current Snapshot 已变化，实例化返回 `project_template_snapshot_hash_mismatch`，必须重新 list 并由调用方确认新 ID/hash，不能自动切换版本。远程 CLI 使用同一组命令和字段，只需增加 `--server`、`--token` 与显式 `--workspace`。
+
 普通 Console 的 `/members` 页面是 workspace 成员管理入口。owner/admin 可以搜索和筛选成员、添加已有用户或创建最小用户后加入 workspace、编辑成员 `display_name`、调整角色、移出成员；所有弹窗和危险确认都走 shadcn 组件。`/members/:userRef` 承载次级成员详情：身份快照、当前 membership、外部身份摘要、关联 token 跳转和最近成员审计。admin 只能管理非 owner 成员；owner 可以授予/降级 owner 或移出 owner，但服务端会保护最后一个 owner。member/viewer 只能查看成员名册和详情。`users.name` 仍是稳定引用名，`display_name` 只用于展示姓名；成员页修改展示姓名不会改变稳定名。浏览器 OIDC session 允许普通 `/api/v1/*` 的成员管理与 token 管理（创建/修改/吊销 PAT/Agent/tenant token）写入，但仍必须经过 CSRF、membership role 和 scope 检查，且不会因此获得 `impersonate`；token 管理动作最终仍受 app 层 `tokenManageAllowed(role)` 约束，仅 owner/admin 可执行。
 
 
@@ -1063,6 +1098,8 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `project_list` | 列出当前 workspace 项目 |
 | `project_get` | 读取单个项目 |
 | `project_get_current` | 当前 project scope |
+| `project_template_list` | 列出 workspace 内 active 模板及 current Snapshot ID/hash、组件数量和必填 secret key |
+| `project_template_instantiate` | 固定 current Snapshot ID/hash 并原子创建新项目 |
 | `context_set` | 设置 active context |
 | `context_get` | 显示 active context |
 | `config_get` | 读取配置 |
@@ -1072,6 +1109,8 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `notification_delivery_replay` | 重放失败通知投递 |
 
 每个 tool 成功返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。MCP `structuredContent` 保存同一信封；`content[0].text` 也输出完整 JSON 字符串，方便只读取文本内容的 Agent 继续解析 `data`。
+
+项目模板 MCP 与 CLI 保持同一收窄边界：只注册 `project_template_list` 和 `project_template_instantiate`，每次都必须显式传 `workspace`，且只能实例化 list 返回的 current Snapshot。MCP 不提供 candidate、Capture、Preview、详情、修改、归档、Snapshot 追加或历史版本实例化；这些治理动作只在 Web Console 的 HTTP API 中开放。Agent 收到 hash mismatch 后应重新 list，并让调用方确认版本变化后再重试。
 
 ### MCP resources
 

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { PlusIcon } from "lucide-react"
+import { BoxesIcon, PlusIcon } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { useMe } from "@/features/workspace/session/useMe"
+import { ProjectTemplateInstantiateWizard } from "@/features/workspace/project-templates/instantiate/project-template-instantiate-wizard"
+import { canProjectManage } from "@/features/workspace/project-workbench/permissions/permissions"
 
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { useProjectsQuery } from "../hooks/use-project-data"
@@ -23,14 +25,17 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const me = useMe()
-  const role = me.data?.effective_role ?? ""
-  const canManage = role === "owner" || role === "admin"
+  const writeScopes = me.data?.token?.scopes
+  const canManage = canProjectManage({
+    role: me.data?.effective_role,
+    scopes: writeScopes,
+  })
   const [createOpen, setCreateOpen] = useState(false)
+  const [instantiateOpen, setInstantiateOpen] = useState(false)
   const { data: projects = [], isPending, isError } = useProjectsQuery(
     workspaceSlug,
     "all"
   )
-
   function openProject(projectSlug: string) {
     void navigate({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug",
@@ -117,10 +122,18 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
             {t("projectWorkbench.projects.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <PlusIcon data-icon="inline-start" />
-          {t("projectWorkbench.projects.create.button")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canManage ? (
+            <Button onClick={() => setInstantiateOpen(true)} variant="outline">
+              <BoxesIcon data-icon="inline-start" />
+              从模板创建
+            </Button>
+          ) : null}
+          <Button onClick={() => setCreateOpen(true)}>
+            <PlusIcon data-icon="inline-start" />
+            {t("projectWorkbench.projects.create.button")}
+          </Button>
+        </div>
       </div>
 
       <DataTable
@@ -138,6 +151,14 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
           setCreateOpen(false)
           openProject(project.slug)
         }}
+      />
+      <ProjectTemplateInstantiateWizard
+        canInstantiate={canManage}
+        canManage={canManage}
+        onOpenChange={setInstantiateOpen}
+        open={instantiateOpen}
+        writeScopes={writeScopes}
+        workspaceSlug={workspaceSlug}
       />
     </div>
   )

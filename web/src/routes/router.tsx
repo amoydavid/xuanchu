@@ -114,6 +114,11 @@ const SettingsRoute = lazy(() =>
     default: module.SettingsRoute,
   }))
 )
+const ProjectTemplatesRoute = lazy(() =>
+  import("@/routes/workspace/ProjectTemplatesRoute").then((module) => ({
+    default: module.ProjectTemplatesRoute,
+  }))
+)
 const AdminLoginRoute = lazy(() =>
   import("@/routes/admin/AdminLoginRoute").then((module) => ({
     default: module.AdminLoginRoute,
@@ -445,6 +450,12 @@ const settingsRoute = createRoute({
   component: lazyRoute(SettingsRoute),
 })
 
+const projectTemplatesRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/settings/project-templates",
+  component: lazyRoute(ProjectTemplatesRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -468,6 +479,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("integrations", "/integrations"),
     createResourceRoute("audit", "/audit"),
     settingsRoute,
+    projectTemplatesRoute,
     projectWorkbenchRoute,
     projectTasksRoute,
     projectSeriesRoute.addChildren([

@@ -2839,6 +2839,134 @@
       }
     },
     {
+      "description": "Instantiate a project from an active template's current snapshot; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee_replacements": {
+            "additionalProperties": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "description": "source user ID to target user ID; null removes the assignee",
+            "type": "object"
+          },
+          "description": {
+            "description": "optional description override for the new project",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expected_snapshot_hash": {
+            "description": "current snapshot hash returned by project_template_list",
+            "type": "string"
+          },
+          "project_name": {
+            "description": "human-readable name for the new project",
+            "type": "string"
+          },
+          "project_slug": {
+            "description": "unique slug for the new project",
+            "type": "string"
+          },
+          "secret_inputs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "secret values required by the current snapshot; values are never returned",
+            "type": "object"
+          },
+          "snapshot_id": {
+            "description": "current snapshot UUID returned by project_template_list",
+            "type": "string"
+          },
+          "start_date": {
+            "description": "project start date in YYYY-MM-DD format",
+            "type": "string"
+          },
+          "template": {
+            "description": "template stable key or UUID",
+            "type": "string"
+          },
+          "workspace": {
+            "description": "workspace slug or UUID; required for every template call",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "template",
+          "snapshot_id",
+          "expected_snapshot_hash",
+          "project_slug",
+          "project_name",
+          "start_date"
+        ],
+        "type": "object"
+      },
+      "name": "project_template_instantiate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List active project templates and their current snapshot summaries; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "max active templates to return",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "number of active templates to skip",
+            "type": "integer"
+          },
+          "q": {
+            "description": "optional template key or name search text",
+            "type": "string"
+          },
+          "workspace": {
+            "description": "workspace slug or UUID; required for every template call",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "name": "project_template_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Transition a project to planning/active/archived/cancelled; any direction allowed; records an annotation and writes audit.",
       "inputSchema": {
         "additionalProperties": false,

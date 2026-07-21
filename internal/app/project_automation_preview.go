@@ -159,29 +159,59 @@ func (s *Service) renderProjectAutomationRequest(project ProjectView, ruleID str
 
 // resolveProjectAutomationProviderConfig 解析 provider config 并校验 allowed_hosts。
 func (s *Service) resolveProjectAutomationProviderConfig(projectID string, action ProjectAutomationActionConfig) (baseURL string, apiKey string, model string, err error) {
-	baseURL, err = s.projectAutomationEffectiveConfigValue(projectID, action.BaseURLConfigKey)
-	if err != nil || strings.TrimSpace(baseURL) == "" {
-		return "", "", "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.base_url"}
+	return validateProjectAutomationProviderConfig(action, func(key string) (string, bool, error) {
+		value, err := s.projectAutomationEffectiveConfigValue(projectID, key)
+		return value, strings.TrimSpace(value) != "", err
+	})
+}
+
+// automationConfigResolver 让已保存项目和“尚未落库的新项目”复用同一套
+// provider/config/allowed_hosts 校验，不需要为了预检伪造 project row。
+type automationConfigResolver func(key string) (value string, ok bool, err error)
+
+func validateProjectAutomationProviderConfig(action ProjectAutomationActionConfig, resolve automationConfigResolver) (baseURL string, apiKey string, model string, err error) {
+	required := func(key, label string) (string, error) {
+		value, ok, resolveErr := resolve(strings.TrimSpace(key))
+		// 延续既有对外语义：provider 必填值的 definition/读取失败与空值
+		// 都统一映射为 missing，不向调用方泄漏底层 config 细节。
+		if resolveErr != nil || !ok || strings.TrimSpace(value) == "" {
+			return "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing " + label}
+		}
+		return strings.TrimSpace(value), nil
 	}
-	apiKey, err = s.projectAutomationEffectiveConfigValue(projectID, action.APIKeyConfigKey)
-	if err != nil || strings.TrimSpace(apiKey) == "" {
-		return "", "", "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.api_key"}
+	baseURL, err = required(action.BaseURLConfigKey, "agent.provider.base_url")
+	if err != nil {
+		return "", "", "", err
+	}
+	apiKey, err = required(action.APIKeyConfigKey, "agent.provider.api_key")
+	if err != nil {
+		return "", "", "", err
 	}
 	model = strings.TrimSpace(action.ModelOverride)
 	if model == "" {
-		model, err = s.projectAutomationEffectiveConfigValue(projectID, action.ModelConfigKey)
-		if err != nil || strings.TrimSpace(model) == "" {
-			return "", "", "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.model"}
+		model, err = required(action.ModelConfigKey, "agent.provider.model")
+		if err != nil {
+			return "", "", "", err
 		}
 	}
-	allowedHosts, err := s.projectAutomationAllowedHosts(projectID, action.AllowedHostsConfigKey)
+	allowedKey := strings.TrimSpace(action.AllowedHostsConfigKey)
+	if allowedKey == "" {
+		allowedKey = "agent.provider.allowed_hosts"
+	}
+	allowedRaw, ok, err := resolve(allowedKey)
 	if err != nil {
 		return "", "", "", err
+	}
+	var allowedHosts []string
+	if ok && strings.TrimSpace(allowedRaw) != "" && strings.TrimSpace(allowedRaw) != "[]" {
+		if err := json.Unmarshal([]byte(allowedRaw), &allowedHosts); err != nil || allowedHosts == nil {
+			return "", "", "", RuntimeError{Code: "automation_provider_allowed_hosts_invalid", Message: "agent.provider.allowed_hosts must be a JSON string array"}
+		}
 	}
 	if err := validateResolvedNotificationURL(strings.TrimRight(baseURL, "/")+"/v1/chat/completions", allowedHosts); err != nil {
 		return "", "", "", err
 	}
-	return strings.TrimSpace(baseURL), strings.TrimSpace(apiKey), strings.TrimSpace(model), nil
+	return baseURL, apiKey, model, nil
 }
 
 func truncatePreview(value string, limit int) string {
@@ -210,27 +240,6 @@ func (s *Service) projectAutomationEffectiveConfigValue(projectID string, key st
 		return *def.DefaultValue, nil
 	}
 	return "", nil
-}
-
-// projectAutomationAllowedHosts 读取 allowed_hosts 配置。
-// 未配置或为空数组时返回 nil（跳过 host 校验，allowed_hosts 是可选项）。
-// 配置了但格式非法时仍报错，避免静默放行。
-func (s *Service) projectAutomationAllowedHosts(projectID string, key string) ([]string, error) {
-	if strings.TrimSpace(key) == "" {
-		key = "agent.provider.allowed_hosts"
-	}
-	raw, err := s.projectAutomationEffectiveConfigValue(projectID, key)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "[]" {
-		return nil, nil
-	}
-	var hosts []string
-	if err := json.Unmarshal([]byte(raw), &hosts); err != nil {
-		return nil, RuntimeError{Code: "automation_provider_allowed_hosts_invalid", Message: "agent.provider.allowed_hosts must be a JSON string array"}
-	}
-	return hosts, nil
 }
 
 // buildAutomationTemplateVars 构建模板变量 map，键为变量名（不含 {{}}），值为渲染后的字符串。
@@ -438,10 +447,10 @@ func (s *Service) listProjectAutomationTasks(projectID string, condition Project
 		limit = 50
 	}
 	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
-		Query:    expr,
-		NowUnix:  s.clock.Unix(),
-		Limit:    limit,
-		Dialect:  s.store.Dialect(),
+		Query:   expr,
+		NowUnix: s.clock.Unix(),
+		Limit:   limit,
+		Dialect: s.store.Dialect(),
 	})
 	if err != nil {
 		return nil, mapProjectQueryCompileError(err)

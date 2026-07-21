@@ -43,20 +43,101 @@ function ok(data: unknown) {
   return Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }))
 }
 
+const fullWriteScopes = [
+  "project:write",
+  "task:write",
+  "config:write",
+  "hook:write",
+]
+
+function activeTemplatePage() {
+  return {
+    items: [
+      {
+        id: "template-1",
+        key: "launch",
+        name: "上线流程",
+        description: "",
+        status: "active",
+        current_snapshot: {
+          id: "snap-1",
+          version: 1,
+          hash: "hash-1",
+          source_project_id: "project-1",
+          counts: { tasks: 1, series: 0, configs: 0, automations: 0 },
+          required_secret_keys: [],
+          created_by: { type: "user", user: { id: "u1", name: "alice" } },
+          created_at: 1,
+        },
+        created_by: { type: "user", user: { id: "u1", name: "alice" } },
+        created_at: 1,
+        modified_at: 1,
+      },
+    ],
+    total: 1,
+    limit: 20,
+    offset: 0,
+  }
+}
+
+function workspaceCredentials(scopes = fullWriteScopes) {
+  return {
+    actor_type: "user",
+    actor: { id: "u1", name: "alice" },
+    token: { type: "pat", scopes },
+    effective_workspace: { slug: "acme" },
+    effective_role: "owner",
+  }
+}
+
+function projectPageResponse(url: string, rows: unknown, scopes = fullWriteScopes) {
+  if (url.includes("/credentials/current")) return ok(workspaceCredentials(scopes))
+  if (url.startsWith("/api/v1/project-templates")) return ok(activeTemplatePage())
+  return ok(rows)
+}
+
 // projectsListFetchMock 同时返回 credentials/current 和 projects 列表。
 function projectsListFetchMock(rows: unknown) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url = typeof input === "string" ? input : (input as Request).url
-    if (url.includes("/credentials/current")) {
+    return projectPageResponse(url, rows)
+  })
+}
+
+function projectsListFetchMockWithoutTemplateScopes() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    const url = typeof input === "string" ? input : (input as Request).url
+    if (url.includes("/credentials/current")) return ok(workspaceCredentials(["project:write"]))
+    if (url.startsWith("/api/v1/project-templates")) {
       return ok({
-        actor_type: "user",
-        actor: { id: "u1", name: "alice" },
-        token: { type: "pat", scopes: [] },
-        effective_workspace: { slug: "acme" },
-        effective_role: "owner",
+        items: [
+          {
+            id: "template-1",
+            key: "launch",
+            name: "上线流程",
+            description: "",
+            status: "active",
+            current_snapshot: {
+              id: "snap-1",
+              version: 1,
+              hash: "hash-1",
+              source_project_id: "project-1",
+              counts: { tasks: 1, series: 0, configs: 0, automations: 0 },
+              required_secret_keys: [],
+              created_by: { type: "user", user: { id: "u1", name: "alice" } },
+              created_at: 1,
+            },
+            created_by: { type: "user", user: { id: "u1", name: "alice" } },
+            created_at: 1,
+            modified_at: 1,
+          },
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
       })
     }
-    return ok(rows)
+    return ok([])
   })
 }
 
@@ -166,7 +247,7 @@ describe("ProjectWorkbench ProjectsListPage", () => {
   it("opens create dialog, validates fields, posts the project, and navigates to the new project", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockImplementation((_input, init) => {
+      .mockImplementation((input, init) => {
         if (init?.method === "POST") {
           return ok({
             id: "p3",
@@ -181,7 +262,8 @@ describe("ProjectWorkbench ProjectsListPage", () => {
             modified_at: 1,
           })
         }
-        return ok([])
+        const url = typeof input === "string" ? input : (input as Request).url
+        return projectPageResponse(url, [])
       })
 
     renderPage()
@@ -221,12 +303,43 @@ describe("ProjectWorkbench ProjectsListPage", () => {
     })
   })
 
+  it("places create-from-template beside new project", async () => {
+    projectsListFetchMock([])
+    renderPage()
+
+    const templateButton = await screen.findByRole("button", {
+      name: "从模板创建",
+    })
+    const createButton = screen.getByRole("button", { name: "新建项目" })
+    expect(templateButton.parentElement).toBe(createButton.parentElement)
+
+    await userEvent.click(templateButton)
+    expect(
+      await screen.findByRole("dialog", { name: "从模板创建项目" })
+    ).toBeTruthy()
+  })
+
+  it("keeps create-from-template reachable when the first active snapshot needs a missing write scope", async () => {
+    projectsListFetchMockWithoutTemplateScopes()
+    renderPage()
+
+    await screen.findByText("暂无项目")
+    await userEvent.click(
+      await screen.findByRole("button", { name: "从模板创建" })
+    )
+    expect(
+      (await screen.findByRole("button", { name: /上线流程/ }))
+        .disabled
+    ).toBe(true)
+  })
+
   it("keeps dialog input and shows an error after create failure", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       if (init?.method === "POST") {
         return fail()
       }
-      return ok([])
+      const url = typeof input === "string" ? input : (input as Request).url
+      return projectPageResponse(url, [])
     })
 
     renderPage()

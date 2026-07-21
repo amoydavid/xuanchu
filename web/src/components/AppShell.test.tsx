@@ -100,6 +100,23 @@ describe("AppShell", () => {
     expect(myTasks.className).toContain("border-l-foreground")
   })
 
+  it("keeps 设置 active for the project template child route", () => {
+    currentPath = "/settings/project-templates"
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(screen.getByRole("link", { name: "设置" }).className).toContain(
+      "border-l-foreground"
+    )
+  })
+
   it("provides logout action in sidebar identity block", async () => {
     render(
       <ThemeProvider>

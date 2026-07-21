@@ -61,6 +61,54 @@ func TestTaskRepositoryCreateAndList(t *testing.T) {
 	}
 }
 
+func TestTaskTemplateCandidatePageForcesNormalProjectScopeAndStablePagination(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectID, otherProjectID := "project-source", "project-other"
+	for _, project := range []Project{
+		{ID: projectID, WorkspaceID: ws.ID, Slug: "source", Name: "Source", Status: "active", CreatedAt: 1, ModifiedAt: 1},
+		{ID: otherProjectID, WorkspaceID: ws.ID, Slug: "other", Name: "Other", Status: "active", CreatedAt: 1, ModifiedAt: 1},
+	} {
+		if err := store.DB().Create(&project).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := make([]Task, 0, 123)
+	for i := 0; i < 120; i++ {
+		seq := int64(i + 1)
+		pid := projectID
+		rows = append(rows, Task{UUID: fmt.Sprintf("task-%03d", i), WorkspaceID: ws.ID, Title: "上线准备", Status: domain.StatusPending, Entry: 100, Modified: 100, ProjectID: &pid, ProjectSeq: &seq})
+	}
+	seriesID, recurrenceAt, rule := "series-1", int64(100), "daily"
+	pid := projectID
+	rows = append(rows,
+		Task{UUID: "occurrence", WorkspaceID: ws.ID, Title: "上线准备", Status: domain.StatusPending, Entry: 100, Modified: 100, ProjectID: &pid, SeriesID: &seriesID, RecurrenceAt: &recurrenceAt, RecurrenceRuleSnapshot: &rule},
+		Task{UUID: "deleted", WorkspaceID: ws.ID, Title: "上线准备", Status: domain.StatusDeleted, Entry: 100, Modified: 100, ProjectID: &pid},
+	)
+	otherPID := otherProjectID
+	rows = append(rows, Task{UUID: "other-project", WorkspaceID: ws.ID, Title: "上线准备", Status: domain.StatusPending, Entry: 100, Modified: 100, ProjectID: &otherPID})
+	if err := store.DB().Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := repo.ListCandidatePage(TaskCandidateListOptions{
+		WorkspaceID: ws.ID, ProjectID: projectID, Q: "上线", Status: "all", Sort: "entry",
+	}, 50, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 120 || len(page.Items) != 50 || page.Limit != 50 || page.Offset != 50 {
+		t.Fatalf("page = %#v", page)
+	}
+	if page.Items[0].UUID != "task-050" || page.Items[49].UUID != "task-099" {
+		t.Fatalf("stable page refs = %q...%q", page.Items[0].UUID, page.Items[49].UUID)
+	}
+	for _, item := range page.Items {
+		if item.ProjectID == nil || *item.ProjectID != projectID || item.SeriesID != nil || item.Status == domain.StatusDeleted {
+			t.Fatalf("candidate scope leaked: %#v", item)
+		}
+	}
+}
+
 func TestTaskRepositoryRoundTripsTitleAndOptionalDescription(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 	detail := "详细描述"

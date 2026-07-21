@@ -31,13 +31,21 @@ func statusForAppErrorCode(code string) int {
 	case authz.CodeWorkspaceRequired:
 		return http.StatusBadRequest
 	// 资源不存在
-	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "tenant_token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found", "admin_acting_not_found", "task_series_not_found", "task_series_occurrence_not_found", "task_occurrence_not_found":
+	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "tenant_token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found", "admin_acting_not_found", "task_series_not_found", "task_series_occurrence_not_found", "task_occurrence_not_found", "project_template_not_found", "project_template_snapshot_not_found":
 		return http.StatusNotFound
 	case "workspace_archived":
 		return http.StatusBadRequest
 	// 冲突
 	case "admin_workspace_exists":
 		return http.StatusConflict
+	// 项目模板稳定 key、Snapshot/current 版本和并发漂移冲突。
+	case "project_template_key_invalid", "project_template_key_conflict", "project_template_snapshot_hash_mismatch", "project_template_snapshot_version_conflict", "project_template_source_changed", "project_template_archived", "project_template_concurrency_conflict", "project_template_status_unchanged":
+		return http.StatusConflict
+	case "project_template_snapshot_too_large":
+		return http.StatusRequestEntityTooLarge
+	// 项目模板请求语义可解析，但候选、Snapshot schema/ref 或实例化输入不可执行。
+	case "project_template_candidate_limit_exceeded", "project_template_candidate_invalid", "project_template_snapshot_schema_unsupported", "project_template_snapshot_invalid", "project_template_dependency_missing", "project_template_attachment_unsupported", "project_template_member_unavailable", "project_template_config_invalid", "project_template_secret_required", "project_template_uda_invalid", "project_template_automation_invalid", "project_template_date_out_of_range", "project_template_ref_cycle", "project_template_selection_invalid", "project_template_series_schedule_confirmation_required", "project_template_invalid_name", "project_template_no_changes", "project_template_invalid_status_filter":
+		return http.StatusUnprocessableEntity
 	// 循环系列冲突/状态错误（spec §21）
 	case "task_series_inactive", "task_recurrence_backlog":
 		return http.StatusConflict

@@ -31,6 +31,20 @@ type HookEvent struct {
 	Data             map[string]any
 }
 
+// addProjectTemplateSourceMetadata 为既有资源创建事件补充模板来源；不新增
+// event type，也不携带 Snapshot JSON 或 secret input。
+func addProjectTemplateSourceMetadata(event *HookEvent, templateID, snapshotID, snapshotHash string) {
+	if event == nil {
+		return
+	}
+	if event.Data == nil {
+		event.Data = map[string]any{}
+	}
+	event.Data["source_template_id"] = templateID
+	event.Data["source_template_snapshot_id"] = snapshotID
+	event.Data["source_template_snapshot_hash"] = snapshotHash
+}
+
 // buildTaskHookEvent 构建任务相关的 hook 事件。
 func buildTaskHookEvent(eventType string, tsk task.Task, runtime RuntimeContext, now int64) HookEvent {
 	var projectSlug *string

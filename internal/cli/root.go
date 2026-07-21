@@ -179,8 +179,21 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 		positional = protectDashTagArgs(positional)
 	}
 
-	// Normal Cobra routing: set flags and let subcommand matching work.
-	cmd.SetArgs(append(flags, positional...))
+	// 普通 Cobra 路由可以把全局 flag 前移，但 --help 必须留在已解析的嵌套命令后。
+	// 否则 Cobra 会在根命令停止遍历，把 `project template --help` 的 template
+	// 当成根命令参数。target-action 路由已在上方返回，不受这里影响。
+	eagerFlags := make([]string, 0, len(flags))
+	deferredHelp := make([]string, 0, 1)
+	for _, flag := range flags {
+		if flag == "--help" || strings.HasPrefix(flag, "--help=") {
+			deferredHelp = append(deferredHelp, flag)
+			continue
+		}
+		eagerFlags = append(eagerFlags, flag)
+	}
+	finalArgs := append(eagerFlags, positional...)
+	finalArgs = append(finalArgs, deferredHelp...)
+	cmd.SetArgs(finalArgs)
 	return cmd.Execute()
 }
 

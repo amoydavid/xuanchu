@@ -58,7 +58,7 @@
 | v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
 | v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
 | v0.5.11 | 已完成 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
-| v0.6.0 | 设计中 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
+| v0.6.0 | 已完成 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -666,6 +666,28 @@ docs/superpowers/plans/2026-07-17-web-console-task-detail-default-density-implem
 ```text
 docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
 docs/superpowers/plans/2026-07-17-web-console-user-home-implementation.md
+```
+
+## v0.6.0：项目模板与版本化快照
+
+**状态：已完成。**
+
+在同一 workspace 内把项目中显式选择的普通任务、循环任务、project config 和项目自动化保存为不可变 Snapshot，并从确定版本原子创建全新项目。
+
+核心能力：
+
+- Template 保存稳定 key、生命周期和 current Snapshot；版本内容全部写入带 schema 的 `snapshot_json TEXT`，由 Go strict codec、canonical JSON 和 SHA-256 hash 约束，SQLite/PostgreSQL 不依赖方言 JSON 类型。
+- Web Console 提供完整治理：四类候选由服务端筛选/count/分页，支持当前页全选、全部匹配展开、跨页已选清单、Capture Preview、冲突 resolution、版本查看/追加和 archive/reactivate。
+- Instantiate 再次校验 current hash、成员、Config/UDA、secret、Automation 和日期，在单事务中创建 planning Project、新 Task/Series/RuleVersion、显式 config 和 disabled automation；关系/ref 重映射，occurrence/history/delivery 不复制。
+- secret 只在 Snapshot 中保留 `secret_input` 占位，值不进入 Snapshot、audit、日志、错误或 preview response；不可用成员必须显式替换或移除。
+- HTTP/Web 承担 candidate、Capture、Preview 和版本治理；CLI、Remote、MCP 只提供 active template list 与 current Snapshot instantiate。MCP 精确注册 `project_template_list`、`project_template_instantiate` 两个 tool。
+- 发布验证新增真实生产 Web 的 desktop/mobile Playwright smoke，以及由 `XUANCHU_E2E_POSTGRES_ADMIN_URL` opt-in 的 PostgreSQL HTTP Capture + MCP current workflow。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-20-project-template-snapshot-design.md
+docs/superpowers/plans/2026-07-20-project-template-snapshot-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

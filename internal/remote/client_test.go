@@ -2,10 +2,13 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
 func TestRemoteClientSetsAsHeader(t *testing.T) {
@@ -88,5 +91,21 @@ func TestRemoteClientAcceptsPATAndAgentTokens(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("NewClient(%s) error = %v", token, err)
 		}
+	}
+}
+
+func TestAPIErrorNormalizesToRuntimeAndPermissionErrorsWithoutLosingStatus(t *testing.T) {
+	err := APIError{Status: http.StatusForbidden, Code: "permission_denied", Message: "permission denied"}
+	var apiErr APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden || apiErr.Code != "permission_denied" || apiErr.Message != "permission denied" {
+		t.Fatalf("APIError status/code/message changed: %#v", apiErr)
+	}
+	var runtimeErr app.RuntimeError
+	if !errors.As(err, &runtimeErr) || runtimeErr.Code != "permission_denied" || runtimeErr.Message != "permission denied" {
+		t.Fatalf("RuntimeError = %#v", runtimeErr)
+	}
+	var permissionErr app.PermissionError
+	if !errors.As(err, &permissionErr) || permissionErr.Code != "permission_denied" || permissionErr.Message != "permission denied" {
+		t.Fatalf("PermissionError = %#v", permissionErr)
 	}
 }

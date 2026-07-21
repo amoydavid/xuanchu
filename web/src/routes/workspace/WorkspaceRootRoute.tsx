@@ -18,6 +18,7 @@ import { useMe } from "@/features/workspace/session/useMe"
 import { LoginPage } from "@/pages/LoginPage"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import { ApiError } from "@/lib/api"
+import { EditFeedbackProvider } from "@/features/workspace/project-workbench/shared/edit-feedback"
 
 export function WorkspaceRootRoute() {
   // signedIn 涵盖两种登录态：
@@ -70,7 +71,8 @@ export function WorkspaceRootRoute() {
   }
 
   return (
-    <AppShell
+    <EditFeedbackProvider>
+      <AppShell
       onLogout={async () => {
         // 登出分三种模式，先记录再清理：
         // - acting mode：退出只清 acting session（admin token 留给超管控制面）。
@@ -105,9 +107,10 @@ export function WorkspaceRootRoute() {
         setSignedIn(false)
       }}
       onRefresh={() => void queryClient.invalidateQueries()}
-    >
-      <Outlet />
-    </AppShell>
+      >
+        <Outlet />
+      </AppShell>
+    </EditFeedbackProvider>
   )
 }
 

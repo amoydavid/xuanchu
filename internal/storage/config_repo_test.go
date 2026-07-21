@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -68,6 +69,40 @@ func TestConfigRepositoryScopesAndListOrder(t *testing.T) {
 	}
 	if _, ok, err := repo.Get(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeProject, ScopeID: projectID, Key: "alpha"}); err != nil || ok {
 		t.Fatalf("Get(after unset) = (_, %v, %v), want missing nil error", ok, err)
+	}
+}
+
+func TestConfigTemplateCandidatePageScopesJoinsDefinitionAndFiltersMode(t *testing.T) {
+	store := openIdentityTestStore(t)
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewConfigRepository(store.DB())
+	defs := NewConfigDefinitionRepository(store.DB())
+	for i := 0; i < 105; i++ {
+		key := fmt.Sprintf("deploy.key.%03d", i)
+		if err := defs.Set(ConfigDefinition{WorkspaceID: ws.ID, Key: key, ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "发布配置", Secret: i%2 == 0, CreatedAt: 1, ModifiedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeProject, ScopeID: "source", Key: key}, "value"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeProject, ScopeID: "other", Key: "deploy.key.000"}, "other"); err != nil {
+		t.Fatal(err)
+	}
+	page, err := repo.ListCandidatePage(ConfigCandidateListOptions{WorkspaceID: ws.ID, ProjectID: "source", Q: "发布", Mode: "secret"}, 25, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 53 || len(page.Items) != 25 || page.Items[0].Config.Key != "deploy.key.020" {
+		t.Fatalf("page = %#v", page)
+	}
+	for _, item := range page.Items {
+		if item.Config.ScopeID != "source" || !item.Definition.Secret {
+			t.Fatalf("config scope/mode leaked: %#v", item)
+		}
 	}
 }
 

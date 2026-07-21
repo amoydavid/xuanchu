@@ -3,7 +3,7 @@
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
 **日期：** 2026-07-20
-**状态：** 已批准，待实施
+**状态：** 已实现（2026-07-21）
 **目标版本：** v0.6.0
 **背景需求：** workspace 内的真实项目可以选择部分 config、普通 task、task series 和 project automation，另存为可复用模板；用户随后从模板快速创建一个全新项目。
 
@@ -1283,7 +1283,7 @@ pnpm --dir web lint
 pnpm --dir web build
 ```
 
-新增 project-template Playwright smoke；如果实现改动任务创建/编辑共享组件，同时运行 `pnpm --dir web run smoke:editing`。
+新增 `pnpm --dir web run smoke:project-template`，使用生产 Web 构建和真实 `xuanchu server` 覆盖 desktop/mobile Capture、跨页选择、冲突处理、secret/member resolution 与原子 Instantiate；同时继续运行 `smoke:task-series` 和 `smoke:editing`。PostgreSQL workflow 通过 `XUANCHU_E2E_POSTGRES_ADMIN_URL` opt-in；未设置时必须明确记录 SKIP，不能声称 PostgreSQL 现场通过。
 
 ## 25. 验收标准
 
@@ -1334,4 +1334,4 @@ implementation plan 应按以下顺序拆分，但本文不代替计划：
 - `docs/skills`：仅记录 `project_template_list` / `project_template_instantiate` 及 Agent 使用边界。
 - 对应 implementation plan 的完成状态。
 
-在用户审阅并确认本规格前，不进入 implementation plan 或代码实现。
+本规格已经用户批准并按对应 implementation plan 实现；后续边界变化仍须先更新规格，再进入实现。

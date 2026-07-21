@@ -239,6 +239,322 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 	}
 }
 
+func TestMigrationCreatesProjectTemplateTablesAndRestrictForeignKeys(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	for _, table := range []string{"project_templates", "project_template_snapshots"} {
+		if !store.DB().Migrator().HasTable(table) {
+			t.Fatalf("%s table missing after migration", table)
+		}
+	}
+	for index, columns := range map[string][]string{
+		"idx_project_templates_ws_key":                          {"workspace_id", "key"},
+		"idx_project_templates_id_workspace":                    {"id", "workspace_id"},
+		"idx_project_template_snapshots_id_template_workspace":  {"id", "template_id", "workspace_id"},
+		"idx_project_template_snapshots_template_version":       {"template_id", "version"},
+		"idx_project_template_snapshots_template_snapshot_hash": {"template_id", "snapshot_hash"},
+	} {
+		if !store.DB().Migrator().HasIndex("project_templates", index) && !store.DB().Migrator().HasIndex("project_template_snapshots", index) {
+			t.Fatalf("%s missing after migration", index)
+		}
+		assertIndexColumns(t, store, index, columns)
+	}
+	assertProjectTemplateForeignKey(t, store, "project_templates", []string{"current_snapshot_id", "id", "workspace_id"}, "project_template_snapshots", []string{"id", "template_id", "workspace_id"}, "RESTRICT")
+	assertProjectTemplateForeignKey(t, store, "project_template_snapshots", []string{"template_id", "workspace_id"}, "project_templates", []string{"id", "workspace_id"}, "RESTRICT")
+	assertProjectTemplateForeignKey(t, store, "project_template_snapshots", []string{"source_project_id", "workspace_id"}, "projects", []string{"id", "workspace_id"}, "RESTRICT")
+
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewProjectTemplateRepository(store.DB())
+	tpl := templateRow("template-fk", ws.ID, "fk-check")
+	if err := repo.Create(tpl); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Create(&Project{ID: "project-source", WorkspaceID: ws.ID, Slug: "source", Name: "模板来源", Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1, CreatedAt: 100, ModifiedAt: 100}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Transaction(func(tx *Store) error {
+		_, appendErr := NewProjectTemplateRepository(tx.DB()).AppendSnapshotLocked(ws.ID, tpl.ID, snapshotRow("snapshot-fk", "hash-fk"))
+		return appendErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Where("id = ?", "snapshot-fk").Delete(&ProjectTemplateSnapshot{}).Error; err == nil {
+		t.Fatal("delete current snapshot succeeded, want RESTRICT failure")
+	}
+	if err := store.DB().Where("id = ?", tpl.ID).Delete(&ProjectTemplate{}).Error; err == nil {
+		t.Fatal("delete template with snapshot succeeded, want RESTRICT failure")
+	}
+}
+
+func TestProjectTemplateSchemaRejectsSnapshotWithOtherTemplateWorkspace(t *testing.T) {
+	store, templates, _, other, localProject, otherProject := newProjectTemplateRelationFixture(t)
+	_ = otherProject
+	if err := store.DB().Create(&ProjectTemplateSnapshot{
+		ID: "snapshot-other-workspace", WorkspaceID: other.ID, TemplateID: templates.local.ID, Version: 1,
+		SourceProjectID: localProject.ID, SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "other-workspace", CreatedByActorType: "user", CreatedAt: 100,
+	}).Error; err == nil {
+		t.Fatal("snapshot with a template from another workspace succeeded, want foreign key failure")
+	}
+}
+
+func TestProjectTemplateSchemaRejectsSnapshotWithOtherSourceProjectWorkspace(t *testing.T) {
+	store, templates, local, _, _, otherProject := newProjectTemplateRelationFixture(t)
+	if err := store.DB().Create(&ProjectTemplateSnapshot{
+		ID: "snapshot-other-source", WorkspaceID: local.ID, TemplateID: templates.local.ID, Version: 1,
+		SourceProjectID: otherProject.ID, SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "other-source", CreatedByActorType: "user", CreatedAt: 100,
+	}).Error; err == nil {
+		t.Fatal("snapshot with a source project from another workspace succeeded, want foreign key failure")
+	}
+}
+
+func TestProjectTemplateSchemaRejectsCurrentPointerForOtherTemplate(t *testing.T) {
+	store, templates, _, _, localProject, otherProject := newProjectTemplateRelationFixture(t)
+	sameWorkspaceTemplate := templateRow("template-same-workspace", templates.local.WorkspaceID, "same-workspace")
+	if err := NewProjectTemplateRepository(store.DB()).Create(sameWorkspaceTemplate); err != nil {
+		t.Fatal(err)
+	}
+	for _, snapshot := range []ProjectTemplateSnapshot{
+		{ID: "snapshot-local", WorkspaceID: templates.local.WorkspaceID, TemplateID: templates.local.ID, Version: 1, SourceProjectID: localProject.ID, SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "local", CreatedByActorType: "user", CreatedAt: 100},
+		{ID: "snapshot-same-workspace", WorkspaceID: sameWorkspaceTemplate.WorkspaceID, TemplateID: sameWorkspaceTemplate.ID, Version: 1, SourceProjectID: localProject.ID, SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "same-workspace", CreatedByActorType: "user", CreatedAt: 100},
+		{ID: "snapshot-other", WorkspaceID: templates.other.WorkspaceID, TemplateID: templates.other.ID, Version: 1, SourceProjectID: otherProject.ID, SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "other", CreatedByActorType: "user", CreatedAt: 100},
+	} {
+		if err := store.DB().Create(&snapshot).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.DB().Model(&ProjectTemplate{}).Where("id = ?", templates.local.ID).Update("current_snapshot_id", "snapshot-same-workspace").Error; err == nil {
+		t.Fatal("current snapshot pointer to another template in the same workspace succeeded, want foreign key failure")
+	}
+	if err := store.DB().Model(&ProjectTemplate{}).Where("id = ?", templates.local.ID).Update("current_snapshot_id", "snapshot-other").Error; err == nil {
+		t.Fatal("current snapshot pointer to another workspace succeeded, want foreign key failure")
+	}
+}
+
+func TestOpenRebuildsLegacyProjectTemplateSchemaWithWorkspaceForeignKeys(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Create(&Project{ID: "legacy-source", WorkspaceID: ws.ID, Slug: "legacy-source", Name: "旧模板来源", Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1, CreatedAt: 100, ModifiedAt: 100}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	legacyDB, err := gorm.Open(sqlite.Open(sqliteDSN(dbPath)), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := legacyDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := sqlDB.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON") }()
+	if _, err := conn.ExecContext(context.Background(), "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+	for _, statement := range []string{
+		"DROP TABLE project_template_snapshots",
+		"DROP TABLE project_templates",
+		`CREATE TABLE project_templates (
+id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL,
+description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, current_snapshot_id TEXT,
+created_by_actor_type TEXT NOT NULL DEFAULT 'user', created_by_user_id TEXT, created_by_token_id TEXT,
+created_by_token_name TEXT, created_by_token_prefix TEXT, created_at INTEGER NOT NULL,
+modified_at INTEGER NOT NULL, archived_at INTEGER,
+FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT
+)`,
+		`CREATE TABLE project_template_snapshots (
+id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, template_id TEXT NOT NULL, version INTEGER NOT NULL,
+source_project_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, snapshot_hash TEXT NOT NULL,
+created_by_actor_type TEXT NOT NULL DEFAULT 'user', created_by_user_id TEXT, created_by_token_id TEXT,
+created_by_token_name TEXT, created_by_token_prefix TEXT, created_at INTEGER NOT NULL,
+FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+)`,
+		"CREATE UNIQUE INDEX idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE UNIQUE INDEX idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
+		"CREATE UNIQUE INDEX idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
+		"CREATE INDEX idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
+		`INSERT INTO project_templates (id, workspace_id, key, name, description, status, current_snapshot_id, created_by_actor_type, created_at, modified_at)
+VALUES ('legacy-template', ?, 'legacy', '旧模板', '', 'active', 'legacy-snapshot', 'user', 100, 100)`,
+		`INSERT INTO project_template_snapshots (id, workspace_id, template_id, version, source_project_id, snapshot_json, snapshot_hash, created_by_actor_type, created_at)
+VALUES ('legacy-snapshot', ?, 'legacy-template', 1, 'legacy-source', '{"schema":"fixture/v1"}', 'legacy-hash', 'user', 100)`,
+		"DELETE FROM meta WHERE key = 'migration.project_templates.workspace_fk.applied'",
+	} {
+		var execErr error
+		if strings.Contains(statement, "VALUES ('legacy-template'") || strings.Contains(statement, "VALUES ('legacy-snapshot'") {
+			_, execErr = conn.ExecContext(context.Background(), statement, ws.ID)
+		} else {
+			_, execErr = conn.ExecContext(context.Background(), statement)
+		}
+		if execErr != nil {
+			t.Fatal(execErr)
+		}
+	}
+	if _, err := conn.ExecContext(context.Background(), "COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	committed = true
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrated.Close() })
+	for _, check := range []struct {
+		table   string
+		name    string
+		unique  bool
+		columns []string
+	}{
+		{"project_templates", "idx_project_templates_ws_key", true, []string{"workspace_id", "key"}},
+		{"project_templates", "idx_project_templates_id_workspace", true, []string{"id", "workspace_id"}},
+		{"project_templates", "idx_project_templates_ws_status", false, []string{"workspace_id", "status"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_id_template_workspace", true, []string{"id", "template_id", "workspace_id"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_template_version", true, []string{"template_id", "version"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_template_snapshot_hash", true, []string{"template_id", "snapshot_hash"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_ws_template", false, []string{"workspace_id", "template_id"}},
+	} {
+		assertSQLiteIndex(t, migrated, check.table, check.name, check.unique, check.columns)
+	}
+	assertProjectTemplateForeignKey(t, migrated, "project_templates", []string{"current_snapshot_id", "id", "workspace_id"}, "project_template_snapshots", []string{"id", "template_id", "workspace_id"}, "RESTRICT")
+	assertProjectTemplateForeignKey(t, migrated, "project_template_snapshots", []string{"template_id", "workspace_id"}, "project_templates", []string{"id", "workspace_id"}, "RESTRICT")
+	assertProjectTemplateForeignKey(t, migrated, "project_template_snapshots", []string{"source_project_id", "workspace_id"}, "projects", []string{"id", "workspace_id"}, "RESTRICT")
+	if _, err := NewProjectTemplateRepository(migrated.DB()).GetSnapshot(ws.ID, "legacy-template", "legacy-snapshot"); err != nil {
+		t.Fatalf("legacy snapshot was not retained: %v", err)
+	}
+	if err := migrated.DB().Create(&ProjectTemplate{ID: "duplicate-key", WorkspaceID: ws.ID, Key: "legacy", Name: "重复 key", Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 101, ModifiedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate template key succeeded after legacy rebuild")
+	}
+	if err := migrated.DB().Create(&ProjectTemplateSnapshot{ID: "duplicate-version", WorkspaceID: ws.ID, TemplateID: "legacy-template", Version: 1, SourceProjectID: "legacy-source", SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "other-hash", CreatedByActorType: "user", CreatedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate snapshot version succeeded after legacy rebuild")
+	}
+	if err := migrated.DB().Create(&ProjectTemplateSnapshot{ID: "duplicate-hash", WorkspaceID: ws.ID, TemplateID: "legacy-template", Version: 2, SourceProjectID: "legacy-source", SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "legacy-hash", CreatedByActorType: "user", CreatedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate snapshot hash succeeded after legacy rebuild")
+	}
+}
+
+type projectTemplateRelationFixture struct {
+	local ProjectTemplate
+	other ProjectTemplate
+}
+
+func newProjectTemplateRelationFixture(t *testing.T) (*Store, projectTemplateRelationFixture, Workspace, Workspace, Project, Project) {
+	t.Helper()
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	local, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := Workspace{ID: "workspace-other", Slug: "other", Name: "Other", Visibility: "private", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100}
+	if err := store.DB().Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	localProject := Project{ID: "project-local", WorkspaceID: local.ID, Slug: "source-local", Name: "本地来源", Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1, CreatedAt: 100, ModifiedAt: 100}
+	otherProject := Project{ID: "project-other", WorkspaceID: other.ID, Slug: "source-other", Name: "其他来源", Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1, CreatedAt: 100, ModifiedAt: 100}
+	if err := store.DB().Create(&localProject).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Create(&otherProject).Error; err != nil {
+		t.Fatal(err)
+	}
+	fixture := projectTemplateRelationFixture{
+		local: templateRow("template-local", local.ID, "local"),
+		other: templateRow("template-other", other.ID, "other"),
+	}
+	repo := NewProjectTemplateRepository(store.DB())
+	if err := repo.Create(fixture.local); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(fixture.other); err != nil {
+		t.Fatal(err)
+	}
+	return store, fixture, local, other, localProject, otherProject
+}
+
+func assertProjectTemplateForeignKey(t *testing.T, store *Store, table string, from []string, target string, targetColumns []string, onDeleteWant string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA foreign_key_list(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type foreignKeyColumn struct {
+		source string
+		target string
+	}
+	foreignKeys := map[int][]foreignKeyColumn{}
+	deleteActions := map[int]string{}
+	targetTables := map[int]string{}
+	for rows.Next() {
+		var id, seq int
+		var targetTable, source, targetColumn, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &seq, &targetTable, &source, &targetColumn, &onUpdate, &onDelete, &match); err != nil {
+			t.Fatal(err)
+		}
+		foreignKeys[id] = append(foreignKeys[id], foreignKeyColumn{source: source, target: targetColumn})
+		deleteActions[id] = onDelete
+		targetTables[id] = targetTable
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for id, columns := range foreignKeys {
+		if targetTables[id] != target || len(columns) != len(from) {
+			continue
+		}
+		matched := true
+		for i, column := range columns {
+			if column.source != from[i] || column.target != targetColumns[i] {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		if deleteActions[id] != onDeleteWant {
+			t.Fatalf("%s.%s ON DELETE = %q, want %q", table, strings.Join(from, ","), deleteActions[id], onDeleteWant)
+		}
+		return
+	}
+	t.Fatalf("%s.(%s) -> %s.(%s) foreign key missing", table, strings.Join(from, ","), target, strings.Join(targetColumns, ","))
+}
+
 func TestAttachmentTableMigrated(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
@@ -1401,6 +1717,40 @@ func assertIndexColumns(t *testing.T, store *Store, indexName string, want []str
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%s columns = %#v, want %#v", indexName, got, want)
 	}
+}
+
+func assertSQLiteIndex(t *testing.T, store *Store, table, indexName string, unique bool, columns []string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA index_list(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var seq int
+		var name string
+		var gotUnique int
+		var origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &gotUnique, &origin, &partial); err != nil {
+			t.Fatal(err)
+		}
+		if name == indexName {
+			found = true
+			if (gotUnique == 1) != unique {
+				t.Fatalf("%s unique = %v, want %v", indexName, gotUnique == 1, unique)
+			}
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("%s missing from PRAGMA index_list(%s)", indexName, table)
+	}
+	assertIndexColumns(t, store, indexName, columns)
 }
 
 func assertColumnNullable(t *testing.T, store *Store, table, column string, want bool) {

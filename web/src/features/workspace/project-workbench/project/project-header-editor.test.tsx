@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -9,9 +9,10 @@ import { modifyProject } from "../api/project-api"
 import { ProjectHeaderEditor } from "./project-header-editor"
 
 vi.mock("../api/project-api", async () => {
-  const actual = await vi.importActual<typeof import("../api/project-api")>(
-    "../api/project-api"
-  )
+  const actual =
+    await vi.importActual<typeof import("../api/project-api")>(
+      "../api/project-api"
+    )
   return {
     ...actual,
     modifyProject: vi.fn(),
@@ -115,6 +116,29 @@ describe("ProjectHeaderEditor", () => {
     expect(screen.queryByRole("button", { name: "项目名称" })).toBeNull()
     expect(screen.getByText("广告投放自动化")).toBeTruthy()
     expect(screen.getByText("每日巡检投放任务")).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "另存为模板" })).toBeNull()
+  })
+
+  it("opens the shared capture wizard from the managed project more menu", async () => {
+    render(
+      <ProjectHeaderEditor
+        canManage={true}
+        onCopyLink={() => undefined}
+        project={project()}
+        workspaceSlug="acme"
+        breadcrumbItems={[{ label: "acme" }, { label: "adsops" }]}
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "更多操作" }))
+    await userEvent.click(screen.getByRole("menuitem", { name: "另存为模板" }))
+
+    const dialog = screen.getByRole("dialog", { name: "保存项目模板" })
+    expect(dialog).toBeTruthy()
+    expect(
+      within(dialog).getAllByText("广告投放自动化").length
+    ).toBeGreaterThan(0)
   })
 
   it("uses localized labels for project header controls", async () => {
@@ -131,8 +155,12 @@ describe("ProjectHeaderEditor", () => {
     )
 
     expect(screen.getByRole("button", { name: "Project name" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Project description" })).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Project description" })
+    ).toBeTruthy()
     expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Project settings" })).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Project settings" })
+    ).toBeTruthy()
   })
 })

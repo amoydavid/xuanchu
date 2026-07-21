@@ -65,6 +65,9 @@ func (s *Server) registerHumaBridge(api huma.API, route humaRoute) {
 			"401":                        jsonResponse("Unauthorized."),
 			"403":                        jsonResponse("Forbidden."),
 			"404":                        jsonResponse("Not found."),
+			"409":                        jsonResponse("Conflict."),
+			"413":                        jsonResponse("Request payload too large."),
+			"422":                        jsonResponse("Unprocessable entity."),
 			"500":                        jsonResponse("Internal server error."),
 		},
 		Security: []map[string][]string{{"bearerAuth": []string{}}},
@@ -82,7 +85,7 @@ func (s *Server) registerHumaBridge(api huma.API, route humaRoute) {
 		}
 		op.RequestBody = &huma.RequestBody{
 			Description: "JSON request body.",
-			Required:    route.Method != http.MethodPost || !strings.HasSuffix(route.Path, "/enable") && !strings.HasSuffix(route.Path, "/disable") && !strings.HasSuffix(route.Path, "/done") && !strings.HasSuffix(route.Path, "/start") && !strings.HasSuffix(route.Path, "/stop") && !strings.HasSuffix(route.Path, "/archive") && !strings.HasSuffix(route.Path, "/use") && !strings.HasSuffix(route.Path, "/none") && !strings.HasSuffix(route.Path, "/replay"),
+			Required:    route.Method != http.MethodPost || !strings.HasSuffix(route.Path, "/enable") && !strings.HasSuffix(route.Path, "/disable") && !strings.HasSuffix(route.Path, "/done") && !strings.HasSuffix(route.Path, "/start") && !strings.HasSuffix(route.Path, "/stop") && !strings.HasSuffix(route.Path, "/archive") && !strings.HasSuffix(route.Path, "/reactivate") && !strings.HasSuffix(route.Path, "/use") && !strings.HasSuffix(route.Path, "/none") && !strings.HasSuffix(route.Path, "/replay"),
 			Content: map[string]*huma.MediaType{
 				"application/json": {Schema: requestSchema},
 			},
@@ -129,12 +132,32 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 	boolParam := func(name, description string) *huma.Param {
 		return &huma.Param{Name: name, In: "query", Description: description, Schema: &huma.Schema{Type: "boolean"}}
 	}
+	multiStringParam := func(name, description string) *huma.Param {
+		explode := true
+		return &huma.Param{Name: name, In: "query", Description: description, Style: "form", Explode: &explode, Schema: &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}}}
+	}
+	refParam := func() *huma.Param {
+		explode := true
+		maximum := 100
+		return &huma.Param{Name: "ref", In: "query", Description: "Stable candidate reference; may be repeated, at most 100 values.", Style: "form", Explode: &explode, Schema: &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}, MaxItems: &maximum}}
+	}
 	workspaceScope := func() []*huma.Param {
 		return []*huma.Param{
 			stringParam("workspace", "Workspace slug or UUID."),
 			stringParam("project", "Project slug in the effective workspace."),
 			stringParam("project_id", "Stable project UUID."),
 		}
+	}
+	templateWorkspace := func() *huma.Param {
+		return &huma.Param{Name: "workspace", In: "query", Required: true, Description: "Explicit workspace slug or UUID.", Schema: &huma.Schema{Type: "string"}}
+	}
+	templateLimit := func() *huma.Param {
+		minimum, maximum := float64(1), float64(100)
+		return &huma.Param{Name: "limit", In: "query", Description: "Bounded page size; defaults to 50.", Schema: &huma.Schema{Type: "integer", Format: "int32", Default: 50, Minimum: &minimum, Maximum: &maximum}}
+	}
+	templateOffset := func() *huma.Param {
+		minimum := float64(0)
+		return &huma.Param{Name: "offset", In: "query", Description: "Zero-based page offset.", Schema: &huma.Schema{Type: "integer", Format: "int32", Default: 0, Minimum: &minimum}}
 	}
 	taskViewParams := func(includeReport bool) []*huma.Param {
 		params := workspaceScope()
@@ -160,6 +183,55 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 	}
 
 	switch {
+	case strings.HasPrefix(route.Path, "/api/v1/projects/{projectRef}/template-candidates/"):
+		params := []*huma.Param{templateWorkspace()}
+		if route.Method == http.MethodPost {
+			return params
+		}
+		params = append(
+			params,
+			stringParam("q", "Case-insensitive candidate search."),
+			refParam(),
+		)
+		switch {
+		case strings.HasSuffix(route.Path, "/tasks"):
+			params = append(params,
+				enumParam("status", "Task lifecycle status.", "pending", "waiting", "completed", "all"),
+				enumParam("priority", "Task priority.", "H", "M", "L", "all"),
+				multiStringParam("assignee", "Workspace user reference; may be repeated."),
+				multiStringParam("tags", "Required tags; may be repeated."),
+				stringParam("due_after", "Inclusive local date in YYYY-MM-DD form."),
+				stringParam("due_before", "Inclusive local date in YYYY-MM-DD form."),
+				stringParam("query", "Task query expression."),
+				enumParam("sort", "Candidate ordering.", "urgency", "entry", "due", "wait", "completed"),
+			)
+		case strings.HasSuffix(route.Path, "/series"):
+			params = append(params,
+				enumParam("status", "Series lifecycle status.", "active", "ended", "stopped", "all"),
+				stringParam("assignee", "Workspace user reference."),
+				enumParam("sort", "Series ordering.", "next", "title", "modified"),
+			)
+		case strings.HasSuffix(route.Path, "/configs"):
+			params = append(params, enumParam("mode", "Config value mode.", "all", "literal", "secret"))
+		case strings.HasSuffix(route.Path, "/automations"):
+			params = append(params,
+				enumParam("status", "Automation enabled status.", "enabled", "disabled", "all"),
+				enumParam("trigger_type", "Automation trigger type.", "schedule", "event", "all"),
+			)
+		}
+		return append(params, templateLimit(), templateOffset())
+	case strings.HasPrefix(route.Path, "/api/v1/project-templates"):
+		params := []*huma.Param{templateWorkspace()}
+		if route.Method == http.MethodGet && route.Path == "/api/v1/project-templates" {
+			return append(params,
+				enumParam("status", "Template lifecycle status.", "active", "archived", "all"),
+				stringParam("q", "Case-insensitive template search."), templateLimit(), templateOffset(),
+			)
+		}
+		if route.Method == http.MethodGet && route.Path == "/api/v1/project-templates/{templateRef}" {
+			return append(params, &huma.Param{Name: "snapshot_id", In: "query", Description: "Historical snapshot UUID; defaults to current snapshot.", Schema: &huma.Schema{Type: "string", Format: "uuid"}})
+		}
+		return params
 	case route.Method == http.MethodGet && route.Path == "/api/v1/tasks":
 		return append(taskViewParams(true), boolParam("include_deleted", "Include deleted tasks when no explicit status predicate is supplied."))
 	case route.Method == http.MethodGet && route.Path == "/api/v1/reports/{name}":
@@ -205,6 +277,9 @@ func contractRequestSchema(route humaRoute) *huma.Schema {
 	boolField := func() *huma.Schema { return &huma.Schema{Type: "boolean"} }
 	udaField := func() *huma.Schema {
 		return &huma.Schema{Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}}
+	}
+	if schema := projectTemplateRequestOpenAPISchema(route); schema != nil {
+		return schema
 	}
 
 	if route.Path == "/api/v1/tasks" && route.Method == http.MethodPost {
@@ -305,6 +380,8 @@ func contractRequestSchema(route humaRoute) *huma.Schema {
 func contractSuccessResponse(route humaRoute) *huma.Response {
 	data := (*huma.Schema)(nil)
 	switch {
+	case projectTemplateRoute(route):
+		data = projectTemplateSuccessOpenAPISchema(route)
 	case route.Method == http.MethodGet && route.Path == "/api/v1/home":
 		data = homeOpenAPISchema()
 	case route.Method == http.MethodGet && route.Path == "/api/v1/projects":
@@ -584,6 +661,286 @@ func taskSeriesPageOpenAPISchema() *huma.Schema {
 	}, Required: []string{"items", "total", "limit", "offset"}}
 }
 
+func projectTemplateRoute(route humaRoute) bool {
+	return strings.HasPrefix(route.Path, "/api/v1/project-templates") || strings.HasPrefix(route.Path, "/api/v1/projects/{projectRef}/template-candidates/")
+}
+
+func projectTemplateRequestOpenAPISchema(route humaRoute) *huma.Schema {
+	if !projectTemplateRoute(route) {
+		return nil
+	}
+	stringField := func() *huma.Schema { return &huma.Schema{Type: "string"} }
+	stringArray := func() *huma.Schema { return &huma.Schema{Type: "array", Items: stringField()} }
+	taskFilter := map[string]*huma.Schema{
+		"q": stringField(), "status": stringField(), "priority": stringField(), "assignees": stringArray(), "tags": stringArray(),
+		"due_after": {Type: "string", Format: "date"}, "due_before": {Type: "string", Format: "date"},
+		"query": stringField(), "sort": stringField(),
+	}
+	if strings.HasSuffix(route.Path, "/template-candidates/resolve-selection") {
+		variant := func(kind string, filter map[string]*huma.Schema) *huma.Schema {
+			return &huma.Schema{Type: "object", AdditionalProperties: false, Properties: map[string]*huma.Schema{
+				"kind": {Type: "string", Enum: []any{kind}}, kind: {Type: "object", AdditionalProperties: false, Properties: filter},
+			}, Required: []string{"kind", kind}}
+		}
+		return &huma.Schema{OneOf: []*huma.Schema{
+			variant("task", taskFilter),
+			variant("series", map[string]*huma.Schema{"q": stringField(), "status": stringField(), "assignee": stringField(), "sort": stringField()}),
+			variant("config", map[string]*huma.Schema{"q": stringField(), "mode": stringField()}),
+			variant("automation", map[string]*huma.Schema{"q": stringField(), "status": stringField(), "trigger_type": stringField()}),
+		}}
+	}
+	switch {
+	case route.Path == "/api/v1/project-templates" && route.Method == http.MethodPost:
+		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"key": {Type: "string", Pattern: `^[a-z][a-z0-9-]{2,31}$`}, "name": stringField(), "description": stringField(), "capture": projectTemplateCaptureRequestOpenAPISchema(true),
+		}, Required: []string{"key", "name", "capture"}}
+	case route.Path == "/api/v1/project-templates/{templateRef}" && route.Method == http.MethodPatch:
+		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{"name": stringField(), "description": stringField()}}
+	case strings.HasSuffix(route.Path, "/instantiate-preview"):
+		return projectTemplateInstantiateRequestOpenAPISchema(false)
+	case strings.HasSuffix(route.Path, "/instantiate"):
+		return projectTemplateInstantiateRequestOpenAPISchema(true)
+	case strings.Contains(route.Path, "capture-preview"):
+		return projectTemplateCaptureRequestOpenAPISchema(false)
+	case strings.HasSuffix(route.Path, "/snapshots"):
+		return projectTemplateCaptureRequestOpenAPISchema(true)
+	default:
+		return nil
+	}
+}
+
+func projectTemplateCaptureRequestOpenAPISchema(requireHash bool) *huma.Schema {
+	stringArray := func() *huma.Schema { return &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}} }
+	selection := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"config_keys": stringArray(), "task_refs": stringArray(), "series_refs": stringArray(), "automation_rule_ids": stringArray(),
+	}, Required: []string{"config_keys", "task_refs", "series_refs", "automation_rule_ids"}}
+	relativeTime := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"day_offset": {Type: "integer", Format: "int32"}, "local_time": {Type: "string", Pattern: `^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`},
+	}, Required: []string{"day_offset", "local_time"}}
+	resolution := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"drop_parent_task_refs": stringArray(),
+		"drop_depends": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"source_task_ref": {Type: "string"}, "relation": {Type: "string"}, "target_task_ref": {Type: "string"},
+		}, Required: []string{"source_task_ref", "relation", "target_task_ref"}}},
+		"drop_content_task_refs": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"source_kind": {Type: "string"}, "source_ref": {Type: "string"}, "target_task_ref": {Type: "string"},
+		}, Required: []string{"source_kind", "source_ref", "target_task_ref"}}},
+		"task_date_overrides": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"source_task_ref": {Type: "string"}, "field": {Type: "string"}, "value": relativeTime,
+		}, Required: []string{"source_task_ref", "field"}}},
+		"series_schedule_overrides": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"source_series_ref": {Type: "string"}, "first_due": relativeTime, "until": relativeTime, "clear_until": {Type: "boolean"},
+		}, Required: []string{"source_series_ref", "first_due"}}},
+	}}
+	schema := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"source_project": {Type: "string"}, "anchor_date": {Type: "string", Format: "date"}, "selection": selection,
+		"resolution": resolution, "expected_source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
+	}, Required: []string{"source_project", "anchor_date", "selection"}}
+	if requireHash {
+		schema.Required = append(schema.Required, "expected_source_hash")
+	}
+	return schema
+}
+
+func projectTemplateInstantiateRequestOpenAPISchema(allowCurrentOnly bool) *huma.Schema {
+	properties := map[string]*huma.Schema{
+		"snapshot_id":            {Type: "string", Format: "uuid"},
+		"expected_snapshot_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
+		"project_slug":           {Type: "string"},
+		"project_name":           {Type: "string"},
+		"description":            {Type: "string", Nullable: true},
+		"start_date":             {Type: "string", Format: "date"},
+		"secret_inputs":          {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
+		"assignee_replacements":  {Type: "object", AdditionalProperties: &huma.Schema{Type: "string", Nullable: true}},
+	}
+	if allowCurrentOnly {
+		properties["current_only"] = &huma.Schema{Type: "boolean", Description: "要求 snapshot_id 仍为模板当前版本；仅供收窄的 Remote/CLI 客户端使用。"}
+	}
+	return &huma.Schema{Type: "object", Properties: properties, Required: []string{"expected_snapshot_hash", "project_slug", "project_name", "start_date"}}
+}
+
+func projectTemplateSuccessOpenAPISchema(route humaRoute) *huma.Schema {
+	page := func(item *huma.Schema) *huma.Schema {
+		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"items": {Type: "array", Items: item}, "total": {Type: "integer", Format: "int64"},
+			"limit": {Type: "integer", Format: "int32"}, "offset": {Type: "integer", Format: "int32"},
+		}, Required: []string{"items", "total", "limit", "offset"}}
+	}
+	if strings.Contains(route.Path, "/template-candidates/") {
+		if strings.HasSuffix(route.Path, "/resolve-selection") {
+			return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+				"refs": {Type: "array", Items: &huma.Schema{Type: "string"}}, "total": {Type: "integer", Format: "int32"},
+				"source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
+			}, Required: []string{"refs", "total", "source_hash"}}
+		}
+		var item *huma.Schema
+		switch {
+		case strings.HasSuffix(route.Path, "/tasks"):
+			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+				"ref": {Type: "string"}, "project_id": {Type: "string", Format: "uuid"}, "project_seq": {Type: "integer", Format: "int64", Nullable: true},
+				"series_id": {Type: "string", Format: "uuid", Nullable: true}, "title": {Type: "string"}, "status": {Type: "string"},
+				"priority": {Type: "string", Nullable: true}, "due": {Type: "integer", Format: "int64", Nullable: true},
+				"assignees": {Type: "array", Items: userInfoOpenAPISchema()}, "warning_count": {Type: "integer", Format: "int32"},
+			}, Required: []string{"ref", "project_id", "title", "status", "assignees", "warning_count"}}
+		case strings.HasSuffix(route.Path, "/series"):
+			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+				"ref": {Type: "string"}, "project_id": {Type: "string", Format: "uuid"}, "project_seq": {Type: "integer", Format: "int64", Nullable: true},
+				"title": {Type: "string"}, "status": {Type: "string"}, "recurrence_rule": {Type: "string"}, "first_due": {Type: "integer", Format: "int64"},
+				"assignees": {Type: "array", Items: userInfoOpenAPISchema()}, "created_by": userInfoOpenAPISchema(), "warning_count": {Type: "integer", Format: "int32"},
+			}, Required: []string{"ref", "project_id", "title", "status", "recurrence_rule", "first_due", "assignees", "created_by", "warning_count"}}
+		case strings.HasSuffix(route.Path, "/configs"):
+			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+				"ref": {Type: "string"}, "key": {Type: "string"}, "label": {Type: "string"}, "mode": {Type: "string", Enum: []any{"literal", "secret"}},
+				"value_type": {Type: "string"}, "warning_count": {Type: "integer", Format: "int32"},
+			}, Required: []string{"ref", "key", "label", "mode", "value_type", "warning_count"}}
+		default:
+			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+				"ref": {Type: "string"}, "id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string", Format: "uuid"},
+				"name": {Type: "string"}, "description": {Type: "string"}, "enabled": {Type: "boolean"}, "trigger_type": {Type: "string"},
+				"created_by": userInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"}, "warning_count": {Type: "integer", Format: "int32"},
+			}, Required: []string{"ref", "id", "project_id", "name", "description", "enabled", "trigger_type", "created_by", "created_at", "warning_count"}}
+		}
+		return page(item)
+	}
+	switch {
+	case route.Path == "/api/v1/project-templates" && route.Method == http.MethodGet:
+		return page(projectTemplateSummaryOpenAPISchema())
+	case strings.Contains(route.Path, "capture-preview"):
+		return projectTemplateCapturePreviewOpenAPISchema()
+	case strings.HasSuffix(route.Path, "/instantiate-preview"):
+		return projectTemplateInstantiatePreviewOpenAPISchema()
+	case strings.HasSuffix(route.Path, "/instantiate"):
+		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"project": projectOpenAPISchema(), "counts": projectTemplateCountsOpenAPISchema(),
+		}, Required: []string{"project", "counts"}}
+	default:
+		return projectTemplateDetailOpenAPISchema()
+	}
+}
+
+func projectTemplateCountsOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"configs": {Type: "integer", Format: "int32"}, "tasks": {Type: "integer", Format: "int32"},
+		"series": {Type: "integer", Format: "int32"}, "automations": {Type: "integer", Format: "int32"},
+	}, Required: []string{"configs", "tasks", "series", "automations"}}
+}
+
+func projectTemplateIssueOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"code": {Type: "string"}, "severity": {Type: "string", Enum: []any{"blocking", "warning"}},
+		"component": {Type: "string"}, "source_kind": {Type: "string"}, "source_ref": {Type: "string"},
+		"target_ref": {Type: "string"}, "relation": {Type: "string"}, "field": {Type: "string"},
+		"message": {Type: "string"}, "user": userInfoOpenAPISchema(),
+	}, Required: []string{"code", "message"}}
+}
+
+func projectTemplateSnapshotSummaryOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string", Format: "uuid"}, "version": {Type: "integer", Format: "int64"},
+		"hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`}, "source_project_id": {Type: "string", Format: "uuid"},
+		"counts": projectTemplateCountsOpenAPISchema(), "required_secret_keys": {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"created_by": actorInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"},
+	}, Required: []string{"id", "version", "hash", "source_project_id", "counts", "required_secret_keys", "created_by", "created_at"}}
+}
+
+func projectTemplateSummaryOpenAPISchema() *huma.Schema {
+	current := projectTemplateSnapshotSummaryOpenAPISchema()
+	current.Nullable = true
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string", Format: "uuid"}, "key": {Type: "string"}, "name": {Type: "string"},
+		"description": {Type: "string"}, "status": {Type: "string", Enum: []any{"active", "archived"}},
+		"current_snapshot": current, "created_by": actorInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"},
+		"modified_at": {Type: "integer", Format: "int64"}, "archived_at": {Type: "integer", Format: "int64", Nullable: true},
+	}, Required: []string{"id", "key", "name", "description", "status", "created_by", "created_at", "modified_at"}}
+}
+
+func projectTemplatePublicSnapshotOpenAPISchema() *huma.Schema {
+	userList := &huma.Schema{Type: "array", Items: userInfoOpenAPISchema()}
+	stringsSchema := &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}}
+	relativeTime := func(nullable bool) *huma.Schema {
+		return &huma.Schema{Type: "object", Nullable: nullable, Properties: map[string]*huma.Schema{
+			"day_offset": {Type: "integer", Format: "int32"}, "local_time": {Type: "string", Pattern: `^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`},
+		}, Required: []string{"day_offset", "local_time"}}
+	}
+	udas := &huma.Schema{Type: "object", AdditionalProperties: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"raw": {Type: "string"}, "type": {Type: "string"},
+	}, Required: []string{"raw"}}}
+	dates := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"due": relativeTime(true), "wait": relativeTime(true), "scheduled": relativeTime(true), "until": relativeTime(true),
+	}}
+	taskItem := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"ref": {Type: "string"}, "title": {Type: "string"}, "description": {Type: "string", Nullable: true},
+		"priority": {Type: "string", Nullable: true}, "tags": stringsSchema, "assignees": userList, "udas": udas, "dates": dates,
+		"parent_ref": {Type: "string", Nullable: true}, "depends_refs": stringsSchema,
+		"links": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"type": {Type: "string"}, "url": {Type: "string"}, "title": {Type: "string"},
+		}, Required: []string{"type", "url"}}},
+	}, Required: []string{"ref", "title", "tags", "assignees", "udas", "dates", "depends_refs", "links"}}
+	seriesItem := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"ref": {Type: "string"}, "title": {Type: "string"}, "description": {Type: "string", Nullable: true}, "priority": {Type: "string", Nullable: true},
+		"tags": stringsSchema, "assignees": userList, "udas": udas, "recurrence_rule": {Type: "string"}, "first_due": relativeTime(false), "until": relativeTime(true),
+	}, Required: []string{"ref", "title", "tags", "assignees", "udas", "recurrence_rule", "first_due"}}
+	automationItem := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"ref": {Type: "string"}, "name": {Type: "string"}, "description": {Type: "string"}, "trigger_type": {Type: "string"},
+		"trigger_config": {Type: "object", Properties: map[string]*huma.Schema{
+			"schedule_type": {Type: "string"}, "schedule_value": {Type: "string"}, "timezone": {Type: "string"}, "event_type": {Type: "string"},
+		}},
+		"condition": {Type: "object", Properties: map[string]*huma.Schema{
+			"task_filter": {Type: "string"}, "max_tasks": {Type: "integer", Format: "int32"}, "only_added_assignees": {Type: "boolean"},
+		}},
+		"action": {Type: "object", Properties: map[string]*huma.Schema{
+			"protocol": {Type: "string"}, "base_url_config_key": {Type: "string"}, "api_key_config_key": {Type: "string"}, "model_config_key": {Type: "string"},
+			"allowed_hosts_config_key": {Type: "string"}, "model_override": {Type: "string"}, "temperature": {Type: "number", Format: "double"},
+			"max_attempts": {Type: "integer", Format: "int32"}, "attach_metadata": {Type: "boolean"},
+		}, Required: []string{"protocol", "base_url_config_key", "api_key_config_key", "model_config_key", "temperature"}},
+		"context":              {Type: "object", Properties: map[string]*huma.Schema{"include": stringsSchema}, Required: []string{"include"}},
+		"instruction_template": {Type: "string"}, "system_prompt": {Type: "string"},
+	}, Required: []string{"ref", "name", "trigger_type", "trigger_config", "condition", "action", "context", "instruction_template"}}
+	return &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"project": {Type: "object", Properties: map[string]*huma.Schema{"description": {Type: "string"}}, Required: []string{"description"}},
+		"configs": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"key": {Type: "string"}, "mode": {Type: "string", Enum: []any{"literal", "secret_input"}}, "value": {Type: "string", Nullable: true},
+		}, Required: []string{"key", "mode"}}},
+		"tasks": {Type: "array", Items: taskItem}, "series": {Type: "array", Items: seriesItem},
+		"automations": {Type: "array", Items: automationItem},
+	}, Required: []string{"project", "configs", "tasks", "series", "automations"}}
+}
+
+func projectTemplateDetailOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"template": projectTemplateSummaryOpenAPISchema(), "snapshot": projectTemplatePublicSnapshotOpenAPISchema(),
+		"versions": {Type: "array", Items: projectTemplateSnapshotSummaryOpenAPISchema()},
+	}, Required: []string{"template"}}
+}
+
+func projectTemplateCapturePreviewOpenAPISchema() *huma.Schema {
+	selection := projectTemplateCaptureRequestOpenAPISchema(false).Properties["selection"]
+	issues := &huma.Schema{Type: "array", Items: projectTemplateIssueOpenAPISchema()}
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"selection": selection, "source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
+		"counts": projectTemplateCountsOpenAPISchema(), "blocking_issues": issues, "warnings": issues,
+		"snapshot": projectTemplatePublicSnapshotOpenAPISchema(),
+	}, Required: []string{"selection", "source_hash", "counts", "blocking_issues", "warnings"}}
+}
+
+func projectTemplateInstantiatePreviewOpenAPISchema() *huma.Schema {
+	issues := &huma.Schema{Type: "array", Items: projectTemplateIssueOpenAPISchema()}
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"template": projectTemplateSummaryOpenAPISchema(), "snapshot": projectTemplateSnapshotSummaryOpenAPISchema(),
+		"project": {Type: "object", Properties: map[string]*huma.Schema{
+			"slug": {Type: "string"}, "name": {Type: "string"}, "description": {Type: "string"}, "start_date": {Type: "string", Format: "date"},
+		}, Required: []string{"slug", "name", "description", "start_date"}},
+		"counts": projectTemplateCountsOpenAPISchema(),
+		"secret_resolutions": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"key": {Type: "string"}, "resolved_from": {Type: "string", Enum: []any{"input", "workspace", "default", "missing"}},
+		}, Required: []string{"key", "resolved_from"}}},
+		"assignee_issues": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"user": userInfoOpenAPISchema(), "affected_refs": {Type: "array", Items: &huma.Schema{Type: "string"}}, "resolution": {Type: "string"},
+		}, Required: []string{"user", "affected_refs", "resolution"}}},
+		"issues": issues, "warnings": issues,
+	}, Required: []string{"template", "snapshot", "project", "counts", "secret_resolutions", "assignee_issues", "issues", "warnings"}}
+}
+
 func defaultResponseStatus(route humaRoute) string {
 	if route.Status != 0 {
 		return fmt.Sprintf("%d", route.Status)
@@ -743,6 +1100,22 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/annotations", Tag: "Project Annotations", Summary: "List project annotations.", Handler: s.handleProjectAnnotationList},
 		{Method: http.MethodDelete, Path: "/api/v1/projects/{projectRef}/annotations/{annotationID}", Tag: "Project Annotations", Summary: "Delete a project annotation.", Handler: s.handleProjectAnnotationDelete},
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/timeline", Tag: "Projects", Summary: "List project timeline.", Handler: s.handleProjectTimeline},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/template-candidates/tasks", Tag: "Project Templates", Summary: "List bounded task candidates for a project template capture.", Handler: s.handleProjectTemplateTaskCandidates},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/template-candidates/series", Tag: "Project Templates", Summary: "List bounded series candidates for a project template capture.", Handler: s.handleProjectTemplateSeriesCandidates},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/template-candidates/configs", Tag: "Project Templates", Summary: "List bounded config candidates for a project template capture.", Handler: s.handleProjectTemplateConfigCandidates},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/template-candidates/automations", Tag: "Project Templates", Summary: "List bounded automation candidates for a project template capture.", Handler: s.handleProjectTemplateAutomationCandidates},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/template-candidates/resolve-selection", Tag: "Project Templates", Summary: "Resolve a candidate filter to explicit stable references.", Handler: s.handleProjectTemplateResolveSelection},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/capture-preview", Tag: "Project Templates", Summary: "Preview a project template capture.", Handler: s.handleProjectTemplateCapturePreview},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates", Tag: "Project Templates", Summary: "Create a project template and its first snapshot.", Handler: s.handleProjectTemplateCreate, Status: http.StatusCreated},
+		{Method: http.MethodGet, Path: "/api/v1/project-templates", Tag: "Project Templates", Summary: "List project template metadata.", Handler: s.handleProjectTemplateList},
+		{Method: http.MethodGet, Path: "/api/v1/project-templates/{templateRef}", Tag: "Project Templates", Summary: "Get project template detail and a selected snapshot.", Handler: s.handleProjectTemplateInfo},
+		{Method: http.MethodPatch, Path: "/api/v1/project-templates/{templateRef}", Tag: "Project Templates", Summary: "Modify project template metadata.", Handler: s.handleProjectTemplateModify},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/archive", Tag: "Project Templates", Summary: "Archive a project template.", Handler: s.handleProjectTemplateArchive},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/reactivate", Tag: "Project Templates", Summary: "Reactivate a project template.", Handler: s.handleProjectTemplateReactivate},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/snapshots/capture-preview", Tag: "Project Templates", Summary: "Preview a new immutable template snapshot.", Handler: s.handleProjectTemplateSnapshotCapturePreview},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/snapshots", Tag: "Project Templates", Summary: "Append an immutable template snapshot.", Handler: s.handleProjectTemplateSnapshotCreate, Status: http.StatusCreated},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/instantiate-preview", Tag: "Project Templates", Summary: "Preview instantiation from a selected snapshot.", Handler: s.handleProjectTemplateInstantiatePreview},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates/{templateRef}/instantiate", Tag: "Project Templates", Summary: "Instantiate a project from a selected snapshot.", Handler: s.handleProjectTemplateInstantiate, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/contexts", Tag: "Contexts", Summary: "List contexts.", Handler: s.handleContextList},
 		{Method: http.MethodPost, Path: "/api/v1/contexts", Tag: "Contexts", Summary: "Define a context.", Handler: s.handleContextDefine, Status: http.StatusCreated},
 		{Method: http.MethodPost, Path: "/api/v1/contexts/none", Tag: "Contexts", Summary: "Clear active context.", Handler: s.handleContextNone},

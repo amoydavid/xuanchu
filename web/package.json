@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "smoke:editing": "node scripts/playwright-editing-smoke.mjs",
+    "smoke:project-template": "node scripts/playwright-project-template-smoke.mjs",
     "smoke:task-series": "node scripts/playwright-task-series-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
