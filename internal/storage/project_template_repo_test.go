@@ -112,6 +112,18 @@ func TestProjectTemplateRepositoryAppendRequiresTransaction(t *testing.T) {
 	}
 }
 
+func TestProjectTemplateRepositoryLockByRefRequiresTransaction(t *testing.T) {
+	store, repo, ws := newProjectTemplateRepoTest(t)
+	tpl := templateRow("tpl-lock", ws.ID, "locked")
+	if err := repo.Create(tpl); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewProjectTemplateRepository(store.DB()).LockByRef(ws.ID, tpl.ID); !errors.Is(err, ErrProjectTemplateTransactionRequired) {
+		t.Fatalf("LockByRef outside transaction err=%v, want ErrProjectTemplateTransactionRequired", err)
+	}
+}
+
 func TestProjectTemplateRepositoryMapsUniqueConflicts(t *testing.T) {
 	store, repo, ws := newProjectTemplateRepoTest(t)
 	tpl := templateRow("tpl-1", ws.ID, "launch")

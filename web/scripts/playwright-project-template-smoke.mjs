@@ -189,7 +189,9 @@ async function runDesktopSmoke(browser, fixture) {
     await dialog.getByLabel("说明").fill("真实 server 端到端模板")
     await dialog.getByRole("button", { name: /下一步/ }).click()
 
-    await expectVisibleText(dialog, "51 条")
+    // UI 的“全部状态”显式发送 status=all，除默认 pending 51 条外还包含
+    // fixture 中 1 条可选 completed；上面的无 status API 仍验证默认 pending。
+    await expectVisibleText(dialog, "52 条")
     await ensureChecked(
       dialog.getByRole("checkbox", { name: "选择本页 50 项" })
     )

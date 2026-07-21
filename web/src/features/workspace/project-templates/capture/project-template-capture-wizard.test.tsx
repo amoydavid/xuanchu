@@ -187,12 +187,122 @@ describe("ProjectTemplateCaptureWizard", () => {
     )
   })
 
+  it("sends every candidate filter and uses explicit all status semantics", async () => {
+    renderCaptureWizard()
+    await enterSelectionStep()
+
+    await waitFor(() =>
+      expect(api.listProjectTemplateTaskCandidates).toHaveBeenLastCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({
+          status: "all",
+          priority: "all",
+          sort: "urgency",
+        })
+      )
+    )
+    await userEvent.selectOptions(screen.getByLabelText("任务优先级筛选"), "H")
+    await userEvent.type(screen.getByLabelText("任务负责人筛选"), "alice,bob")
+    await userEvent.type(screen.getByLabelText("任务标签筛选"), "launch,ops")
+    await userEvent.type(screen.getByLabelText("任务截止日期从"), "2026-07-01")
+    await userEvent.type(screen.getByLabelText("任务截止日期至"), "2026-07-31")
+    await userEvent.type(screen.getByLabelText("任务查询表达式"), "priority:H")
+    await userEvent.selectOptions(screen.getByLabelText("任务排序"), "due")
+    await waitFor(() =>
+      expect(api.listProjectTemplateTaskCandidates).toHaveBeenLastCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({
+          status: "all",
+          priority: "H",
+          assignees: ["alice", "bob"],
+          tags: ["launch", "ops"],
+          due_after: "2026-07-01",
+          due_before: "2026-07-31",
+          query: "priority:H",
+          sort: "due",
+        })
+      )
+    )
+    await userEvent.click(
+      screen.getByRole("button", { name: "选择全部 1001 条匹配结果" })
+    )
+    expect(
+      api.resolveProjectTemplateCandidateSelection
+    ).toHaveBeenLastCalledWith("acme", "launch", {
+      kind: "task",
+      task: {
+        q: undefined,
+        status: "all",
+        priority: "H",
+        assignees: ["alice", "bob"],
+        tags: ["launch", "ops"],
+        due_after: "2026-07-01",
+        due_before: "2026-07-31",
+        query: "priority:H",
+        sort: "due",
+      },
+    })
+
+    await userEvent.click(screen.getByRole("tab", { name: /^循环任务/ }))
+    await userEvent.type(screen.getByLabelText("循环任务负责人筛选"), "alice")
+    await userEvent.selectOptions(
+      screen.getByLabelText("循环任务排序"),
+      "modified"
+    )
+    await waitFor(() =>
+      expect(api.listProjectTemplateSeriesCandidates).toHaveBeenLastCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({
+          status: "all",
+          assignee: "alice",
+          sort: "modified",
+        })
+      )
+    )
+
+    await userEvent.click(screen.getByRole("tab", { name: /^配置/ }))
+    await userEvent.selectOptions(
+      screen.getByLabelText("配置类型筛选"),
+      "secret"
+    )
+    await waitFor(() =>
+      expect(api.listProjectTemplateConfigCandidates).toHaveBeenLastCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({ mode: "secret" })
+      )
+    )
+
+    await userEvent.click(screen.getByRole("tab", { name: /^自动化/ }))
+    await userEvent.selectOptions(
+      screen.getByLabelText("自动化状态筛选"),
+      "disabled"
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText("自动化触发类型筛选"),
+      "event"
+    )
+    await waitFor(() =>
+      expect(
+        api.listProjectTemplateAutomationCandidates
+      ).toHaveBeenLastCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({
+          status: "disabled",
+          trigger_type: "event",
+        })
+      )
+    )
+  })
+
   it("sends only explicit arrays and preview source hash", async () => {
     renderCaptureWizard()
     await enterSelectionStep()
-    await userEvent.click(
-      await screen.findByRole("checkbox", { name: "准备上线" })
-    )
+    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
 
@@ -461,7 +571,10 @@ describe("ProjectTemplateCaptureWizard", () => {
           recurrence_rule: "weekly",
           first_due: 1_721_548_800,
           assignees: [],
-          created_by: { id: "u1", name: "alice" },
+          created_by: {
+            type: "user",
+            user: { id: "u1", name: "alice" },
+          },
           warning_count: 0,
         },
       ],

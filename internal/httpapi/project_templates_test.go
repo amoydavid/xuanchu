@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 const projectTemplateFixtureSecret = "fixture-template-secret-literal"
@@ -222,6 +225,50 @@ func TestProjectTemplateCandidateRoutesWorkForWorkspaceToken(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("%s %s status=%d body=%s", test.method, test.path, rr.Code, rr.Body.String())
 		}
+	}
+}
+
+func TestProjectTemplateAutomationCandidateReturnsJSONActorInfo(t *testing.T) {
+	fixture := newHTTPProjectTemplateFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	tokenID, tokenName, tokenPrefix := "token-1", "部署机器人", "xuanchu_tat_1234"
+	if err := storage.NewProjectAutomationRuleRepository(fixture.server.store.DB()).Create(storage.ProjectAutomationRule{
+		ID: "token-rule", WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "Token 规则", Enabled: &enabled,
+		TriggerType: "event", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
+		CreatedByActorType: auth.TokenTypeTenantAccess, CreatedByTokenID: &tokenID, CreatedByTokenName: &tokenName, CreatedByTokenPrefix: &tokenPrefix,
+		CreatedAt: 1, ModifiedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/projects/ops/template-candidates/automations?workspace=local&status=all&trigger_type=all", authHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Items []struct {
+				CreatedBy task.JSONActorInfo `json:"created_by"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Data.Items) != 1 {
+		t.Fatalf("items=%#v", envelope.Data.Items)
+	}
+	actor := envelope.Data.Items[0].CreatedBy
+	if actor.Type != auth.TokenTypeTenantAccess || actor.User != nil || actor.Token == nil || actor.Token.ID != tokenID || actor.Token.Name != tokenName || actor.Token.Prefix != tokenPrefix {
+		t.Fatalf("created_by=%#v", actor)
 	}
 }
 

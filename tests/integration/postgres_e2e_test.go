@@ -143,6 +143,105 @@ func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
 	}
 }
 
+func TestPostgresE2EProjectTemplateLockSerializesCurrentMutation(t *testing.T) {
+	adminURL := postgresE2EAdminURL(t)
+	dbURL := createPostgresE2EDatabase(t, adminURL)
+	store, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	contender, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = contender.Close() })
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Create(&storage.Project{
+		ID: "lock-source", WorkspaceID: ws.ID, Slug: "locksrc", Name: "锁测试来源",
+		Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1,
+		CreatedAt: 100, ModifiedAt: 100,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	template := storage.ProjectTemplate{
+		ID: "lock-template", WorkspaceID: ws.ID, Key: "locked", Name: "锁测试模板",
+		Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 100,
+	}
+	if err := storage.NewProjectTemplateRepository(store.DB()).Create(template); err != nil {
+		t.Fatal(err)
+	}
+	var current storage.ProjectTemplateSnapshot
+	if err := store.Transaction(func(tx *storage.Store) error {
+		var appendErr error
+		current, appendErr = storage.NewProjectTemplateRepository(tx.DB()).AppendSnapshotLocked(ws.ID, template.ID, storage.ProjectTemplateSnapshot{
+			ID: "lock-snapshot-1", SourceProjectID: "lock-source", SnapshotJSON: `{"schema":"fixture/v1"}`,
+			SnapshotHash: "lock-hash-1", CreatedByActorType: "user", CreatedAt: 100,
+		})
+		return appendErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	lockDone := make(chan error, 1)
+	go func() {
+		lockDone <- store.Transaction(func(tx *storage.Store) error {
+			repo := storage.NewProjectTemplateRepository(tx.DB())
+			row, err := repo.LockByRef(ws.ID, template.ID)
+			if err != nil {
+				return err
+			}
+			if row.CurrentSnapshotID == nil || *row.CurrentSnapshotID != current.ID {
+				return fmt.Errorf("locked current=%v, want %s", row.CurrentSnapshotID, current.ID)
+			}
+			if _, err := repo.GetSnapshotLocked(ws.ID, template.ID, *row.CurrentSnapshotID); err != nil {
+				return err
+			}
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-locked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("PostgreSQL template lock was not acquired")
+	}
+
+	appendDone := make(chan error, 1)
+	go func() {
+		appendDone <- contender.Transaction(func(tx *storage.Store) error {
+			_, err := storage.NewProjectTemplateRepository(tx.DB()).AppendSnapshotLocked(ws.ID, template.ID, storage.ProjectTemplateSnapshot{
+				ID: "lock-snapshot-2", SourceProjectID: "lock-source", SnapshotJSON: `{"schema":"fixture/v1","version":2}`,
+				SnapshotHash: "lock-hash-2", CreatedByActorType: "user", CreatedAt: 101,
+			})
+			return err
+		})
+	}()
+	select {
+	case err := <-appendDone:
+		close(release)
+		t.Fatalf("concurrent append crossed PostgreSQL template lock: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(release)
+	if err := <-lockDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-appendDone; err != nil {
+		t.Fatal(err)
+	}
+	latest, err := storage.NewProjectTemplateRepository(contender.DB()).GetByRef(ws.ID, template.ID)
+	if err != nil || latest.CurrentSnapshotID == nil || *latest.CurrentSnapshotID != "lock-snapshot-2" {
+		t.Fatalf("latest template=%#v err=%v", latest, err)
+	}
+}
+
 func TestPostgresE2EProjectTemplateLegacySchemaUpgrade(t *testing.T) {
 	adminURL := postgresE2EAdminURL(t)
 	dbURL := createPostgresE2EDatabase(t, adminURL)

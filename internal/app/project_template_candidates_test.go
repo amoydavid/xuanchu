@@ -2,8 +2,10 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -91,7 +93,7 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 		t.Fatal(err)
 	}
 	automations, err := svc.ListProjectTemplateAutomationCandidates(AutomationCandidateListInput{SourceProjectRef: source.Slug, Q: "发布", Status: "enabled", TriggerType: "schedule"})
-	if err != nil || automations.Total != 1 || automations.Items[0].Ref != "candidate-automation" || automations.Items[0].CreatedBy.ID != actorID {
+	if err != nil || automations.Total != 1 || automations.Items[0].Ref != "candidate-automation" || automations.Items[0].CreatedBy.User == nil || automations.Items[0].CreatedBy.User.ID != actorID {
 		t.Fatalf("automation page = %#v, err=%v", automations, err)
 	}
 
@@ -103,6 +105,75 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 	})
 	if err != nil || byRef.Total != 1 || len(byRef.Items) != 1 || byRef.Items[0].Ref != "candidate-task-119" {
 		t.Fatalf("task ref page = %#v, err=%v", byRef, err)
+	}
+}
+
+func TestProjectTemplateCandidateAllStatusIncludesEverySelectableState(t *testing.T) {
+	svc, source, _ := projectTemplateCandidateFixture(t)
+	projectSlug, projectID := source.Slug, source.ID
+	taskRows := []storage.Task{
+		{UUID: "candidate-all-pending", WorkspaceID: source.WorkspaceID, Title: "待处理", Status: task.StatusPending, Entry: 1, Modified: 1, Project: &projectSlug, ProjectID: &projectID},
+		{UUID: "candidate-all-waiting", WorkspaceID: source.WorkspaceID, Title: "等待", Status: task.StatusWaiting, Entry: 2, Modified: 2, Project: &projectSlug, ProjectID: &projectID},
+		{UUID: "candidate-all-completed", WorkspaceID: source.WorkspaceID, Title: "完成", Status: task.StatusCompleted, Entry: 3, Modified: 3, Project: &projectSlug, ProjectID: &projectID},
+		{UUID: "candidate-all-deleted", WorkspaceID: source.WorkspaceID, Title: "删除", Status: task.StatusDeleted, Entry: 4, Modified: 4, Project: &projectSlug, ProjectID: &projectID},
+	}
+	if err := svc.store.DB().Create(&taskRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	taskPage, err := svc.ListProjectTemplateTaskCandidates(TaskCandidateListInput{SourceProjectRef: source.Slug, Status: "all", Sort: "entry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskStatuses := make([]string, 0, len(taskPage.Items))
+	for _, item := range taskPage.Items {
+		taskStatuses = append(taskStatuses, item.Status)
+	}
+	slices.Sort(taskStatuses)
+	if !slices.Equal(taskStatuses, []string{task.StatusCompleted, task.StatusPending, task.StatusWaiting}) {
+		t.Fatalf("task all statuses = %#v", taskStatuses)
+	}
+
+	seriesRepo := storage.NewTaskSeriesRepository(svc.store.DB())
+	for index, status := range []string{taskseries.StatusActive, taskseries.StatusEnded, taskseries.StatusStopped} {
+		series := testCandidateSeries(source, fmt.Sprintf("candidate-all-series-%d", index), status, int64(index+1))
+		series.Status = status
+		if _, err := seriesRepo.Create(series); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seriesPage, err := svc.ListProjectTemplateSeriesCandidates(SeriesCandidateListInput{SourceProjectRef: source.Slug, Status: "all", Sort: "source"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seriesStatuses := make([]string, 0, len(seriesPage.Items))
+	for _, item := range seriesPage.Items {
+		seriesStatuses = append(seriesStatuses, item.Status)
+	}
+	slices.Sort(seriesStatuses)
+	if !slices.Equal(seriesStatuses, []string{taskseries.StatusActive, taskseries.StatusEnded, taskseries.StatusStopped}) {
+		t.Fatalf("series all statuses = %#v", seriesStatuses)
+	}
+}
+
+func TestProjectTemplateAutomationCandidatePreservesTokenActor(t *testing.T) {
+	svc, source, _ := projectTemplateCandidateFixture(t)
+	enabled := true
+	tokenID, tokenName, tokenPrefix := "token-1", "部署机器人", "xuanchu_tat_1234"
+	if err := storage.NewProjectAutomationRuleRepository(svc.store.DB()).Create(storage.ProjectAutomationRule{
+		ID: "candidate-token-automation", WorkspaceID: source.WorkspaceID, ProjectID: source.ID, Name: "Token 创建的规则", Enabled: &enabled,
+		TriggerType: "event", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
+		CreatedByActorType: auth.TokenTypeTenantAccess, CreatedByTokenID: &tokenID, CreatedByTokenName: &tokenName, CreatedByTokenPrefix: &tokenPrefix,
+		CreatedAt: 1, ModifiedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.ListProjectTemplateAutomationCandidates(AutomationCandidateListInput{SourceProjectRef: source.Slug, Status: "all", TriggerType: "all"})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("automation page=%#v err=%v", page, err)
+	}
+	actor := page.Items[0].CreatedBy
+	if actor.Type != auth.TokenTypeTenantAccess || actor.User != nil || actor.Token == nil || actor.Token.ID != tokenID || actor.Token.Name != tokenName || actor.Token.Prefix != tokenPrefix {
+		t.Fatalf("created_by token actor = %#v", actor)
 	}
 }
 

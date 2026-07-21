@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/uda"
+	"gorm.io/gorm"
 )
 
 func instantiateTemplateInput(t *testing.T, svc *Service, templateRef, slug string) InstantiateInput {
@@ -247,6 +250,128 @@ func TestProjectTemplateInstantiateRollbackLeavesNothing(t *testing.T) {
 					t.Fatalf("rollback residue %T before=%d after=%d err=%v", model, before[i], count, err)
 				}
 			}
+		})
+	}
+}
+
+func TestProjectTemplateInstantiateLocksTemplateBeforeRecheckingCurrentState(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*storage.Store, storage.ProjectTemplate, projecttemplate.SnapshotV1) error
+		check  func(*testing.T, *storage.Store, storage.ProjectTemplate)
+	}{
+		{
+			name: "append-current-snapshot",
+			mutate: func(store *storage.Store, template storage.ProjectTemplate, snapshot projecttemplate.SnapshotV1) error {
+				snapshot.Project.Description = "并发追加的新 current"
+				raw, hash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
+				if err != nil {
+					return err
+				}
+				current, err := storage.NewProjectTemplateRepository(store.DB()).GetSnapshot(template.WorkspaceID, template.ID, *template.CurrentSnapshotID)
+				if err != nil {
+					return err
+				}
+				return store.Transaction(func(txStore *storage.Store) error {
+					_, err := storage.NewProjectTemplateRepository(txStore.DB()).AppendSnapshotLocked(template.WorkspaceID, template.ID, storage.ProjectTemplateSnapshot{
+						ID: uuid.NewString(), SourceProjectID: current.SourceProjectID, SnapshotJSON: string(raw), SnapshotHash: hash,
+						CreatedByActorType: actorTypeUser, CreatedAt: 101,
+					})
+					return err
+				})
+			},
+			check: func(t *testing.T, store *storage.Store, template storage.ProjectTemplate) {
+				var count int64
+				if err := store.DB().Model(&storage.ProjectTemplateSnapshot{}).Where("template_id = ?", template.ID).Count(&count).Error; err != nil || count != 2 {
+					t.Fatalf("snapshot count=%d err=%v, want 2", count, err)
+				}
+			},
+		},
+		{
+			name: "archive-template",
+			mutate: func(store *storage.Store, template storage.ProjectTemplate, _ projecttemplate.SnapshotV1) error {
+				now := int64(101)
+				return store.Transaction(func(txStore *storage.Store) error {
+					return storage.NewProjectTemplateRepository(txStore.DB()).SetStatus(template.WorkspaceID, template.ID, "archived", &now, now)
+				})
+			},
+			check: func(t *testing.T, store *storage.Store, template storage.ProjectTemplate) {
+				row, err := storage.NewProjectTemplateRepository(store.DB()).GetByRef(template.WorkspaceID, template.ID)
+				if err != nil || row.Status != "archived" {
+					t.Fatalf("template=%#v err=%v, want archived", row, err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+			store, err := storage.Open(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := instantiateSnapshot()
+			snapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+			template := seedProjectTemplate(t, svc, "locked-instantiate", snapshot)
+			input := instantiateTemplateInput(t, svc, template.ID, "locked1")
+
+			other, err := storage.Open(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = other.Close() })
+
+			readLockedState := make(chan struct{})
+			releaseInstantiate := make(chan struct{})
+			var pause atomic.Bool
+			pause.Store(true)
+			callbackName := "test:pause_project_template_instantiate_after_template_read"
+			if err := store.DB().Callback().Query().After("gorm:query").Register(callbackName, func(db *gorm.DB) {
+				table := db.Statement.Table
+				if table == "" && db.Statement.Schema != nil {
+					table = db.Statement.Schema.Table
+				}
+				if table != "project_templates" || !pause.CompareAndSwap(true, false) {
+					return
+				}
+				close(readLockedState)
+				<-releaseInstantiate
+			}); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.DB().Callback().Query().Remove(callbackName) })
+
+			instantiateDone := make(chan error, 1)
+			go func() {
+				_, err := svc.InstantiateCurrentProjectTemplate(template.ID, input)
+				instantiateDone <- err
+			}()
+			select {
+			case <-readLockedState:
+			case <-time.After(2 * time.Second):
+				t.Fatal("instantiate did not reach the locked template read")
+			}
+
+			mutationDone := make(chan error, 1)
+			go func() { mutationDone <- tc.mutate(other, template, snapshot) }()
+			select {
+			case err := <-mutationDone:
+				close(releaseInstantiate)
+				t.Fatalf("concurrent template mutation crossed instantiate lock: %v", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+			close(releaseInstantiate)
+			if err := <-instantiateDone; err != nil {
+				t.Fatalf("instantiate error: %v", err)
+			}
+			if err := <-mutationDone; err != nil {
+				t.Fatalf("concurrent mutation error: %v", err)
+			}
+			tc.check(t, other, template)
 		})
 	}
 }

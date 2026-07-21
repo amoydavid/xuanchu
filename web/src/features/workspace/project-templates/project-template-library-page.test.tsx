@@ -84,6 +84,14 @@ function response(data: unknown, status = 200) {
   )
 }
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 function listData(items = [template]) {
   return { items, total: items.length, limit: 20, offset: 0 }
 }
@@ -278,6 +286,7 @@ describe("ProjectTemplateLibraryPage", () => {
     expect(await screen.findByText("标准上线流程")).toBeTruthy()
     expect(screen.queryByRole("button", { name: "保存新模板" })).toBeNull()
     expect(screen.queryByRole("button", { name: "归档" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "编辑模板信息" })).toBeNull()
     expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
   })
 
@@ -400,7 +409,117 @@ describe("ProjectTemplateLibraryPage", () => {
     ).toBeTruthy()
     expect(screen.queryByRole("button", { name: "从模板创建" })).toBeNull()
     expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "编辑模板信息" })).toBeNull()
     expect(screen.getByRole("button", { name: "重新激活" })).toBeTruthy()
+  })
+
+  it("modifies reachable template metadata and refetches list and detail", async () => {
+    let modified = false
+    const updatedTemplate = {
+      ...template,
+      name: "新版上线流程",
+      description: "更新后的模板说明",
+      modified_at: template.modified_at + 1,
+    }
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input)
+        if (
+          url === "/api/v1/project-templates/launch?workspace=acme" &&
+          init?.method === "PATCH"
+        ) {
+          modified = true
+          return response(detailData(updatedTemplate))
+        }
+        if (url.includes("/launch?")) {
+          return response(detailData(modified ? updatedTemplate : template))
+        }
+        return response(listData([modified ? updatedTemplate : template]))
+      })
+    renderLibrary()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "编辑模板信息" })
+    )
+    const dialog = screen.getByRole("dialog", { name: "编辑模板信息" })
+    await userEvent.clear(within(dialog).getByLabelText("模板名称"))
+    await userEvent.type(
+      within(dialog).getByLabelText("模板名称"),
+      "新版上线流程"
+    )
+    await userEvent.clear(within(dialog).getByLabelText("模板说明"))
+    await userEvent.type(
+      within(dialog).getByLabelText("模板说明"),
+      "更新后的模板说明"
+    )
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "保存修改" })
+    )
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/project-templates/launch?workspace=acme",
+        expect.objectContaining({
+          body: JSON.stringify({
+            name: "新版上线流程",
+            description: "更新后的模板说明",
+          }),
+          method: "PATCH",
+        })
+      )
+    )
+    expect(await screen.findAllByText("新版上线流程")).not.toHaveLength(0)
+    expect(await screen.findByText("更新后的模板说明")).toBeTruthy()
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/launch?"))
+        .length
+    ).toBeGreaterThan(1)
+  })
+
+  it("keeps metadata edit open, disabled, and retryable after failure", async () => {
+    const pending = deferred<Response>()
+    let attempts = 0
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith("/launch?workspace=acme") && init?.method === "PATCH") {
+        attempts += 1
+        return attempts === 1
+          ? pending.promise
+          : response(detailData({ ...template, name: "重试成功" }))
+      }
+      return url.includes("/launch?")
+        ? response(detailData())
+        : response(listData())
+    })
+    renderLibrary()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "编辑模板信息" })
+    )
+    const dialog = screen.getByRole("dialog", { name: "编辑模板信息" })
+    await userEvent.clear(within(dialog).getByLabelText("模板名称"))
+    await userEvent.type(within(dialog).getByLabelText("模板名称"), "重试成功")
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "保存修改" })
+    )
+    expect(
+      (
+        within(dialog).getByRole("button", {
+          name: "正在保存",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+
+    pending.resolve(await response({}, 500))
+    expect(await within(dialog).findByText("修改模板信息失败")).toBeTruthy()
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "保存修改" })
+    )
+    await waitFor(() => expect(attempts).toBe(2))
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "编辑模板信息" })).toBeNull()
+    )
   })
 
   it("shows lifecycle failure without turning it into archived state", async () => {

@@ -96,7 +96,7 @@ type SeriesCandidateView struct {
 	RecurrenceRule string          `json:"recurrence_rule"`
 	FirstDue       int64           `json:"first_due"`
 	Assignees      []task.UserInfo `json:"assignees"`
-	CreatedBy      task.UserInfo   `json:"created_by"`
+	CreatedBy      task.ActorInfo  `json:"created_by"`
 	WarningCount   int             `json:"warning_count"`
 }
 
@@ -124,16 +124,16 @@ type ConfigCandidatePage struct {
 }
 
 type AutomationCandidateView struct {
-	Ref          string        `json:"ref"`
-	ID           string        `json:"id"`
-	ProjectID    string        `json:"project_id"`
-	Name         string        `json:"name"`
-	Description  string        `json:"description"`
-	Enabled      bool          `json:"enabled"`
-	TriggerType  string        `json:"trigger_type"`
-	CreatedBy    task.UserInfo `json:"created_by"`
-	CreatedAt    int64         `json:"created_at"`
-	WarningCount int           `json:"warning_count"`
+	Ref          string         `json:"ref"`
+	ID           string         `json:"id"`
+	ProjectID    string         `json:"project_id"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Enabled      bool           `json:"enabled"`
+	TriggerType  string         `json:"trigger_type"`
+	CreatedBy    task.ActorInfo `json:"created_by"`
+	CreatedAt    int64          `json:"created_at"`
+	WarningCount int            `json:"warning_count"`
 }
 
 type AutomationCandidatePage struct {
@@ -346,7 +346,7 @@ func (s *Service) listProjectTemplateSeriesCandidates(input SeriesCandidateListI
 		items = append(items, SeriesCandidateView{
 			Ref: row.ID, ProjectID: row.ProjectID, ProjectSeq: row.ProjectSeq, Title: row.Title, Status: row.Status,
 			RecurrenceRule: row.RecurrenceRule, FirstDue: row.FirstDue, Assignees: seriesUserInfoList(row, users),
-			CreatedBy: candidateUserInfo(row.CreatedBy, users), WarningCount: descriptionAttachmentWarningCount(row.Description),
+			CreatedBy: actorInfoFromColumns(actorColumns{Type: actorTypeUser, UserID: stringPtr(row.CreatedBy)}, row.CreatedBy, users), WarningCount: descriptionAttachmentWarningCount(row.Description),
 		})
 	}
 	return SeriesCandidatePage{Items: items, Total: page.Total, Limit: limit, Offset: offset}, nil
@@ -445,7 +445,7 @@ func (s *Service) listProjectTemplateAutomationCandidates(input AutomationCandid
 		items = append(items, AutomationCandidateView{
 			Ref: row.ID, ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, Description: row.Description,
 			Enabled: row.Enabled != nil && *row.Enabled, TriggerType: row.TriggerType,
-			CreatedBy: candidateUserInfo(valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt,
+			CreatedBy: actorInfoFromColumns(projectTemplateAutomationActorColumns(row), valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt,
 		})
 	}
 	return AutomationCandidatePage{Items: items, Total: page.Total, Limit: limit, Offset: offset}, nil
@@ -588,11 +588,11 @@ func candidateLimitError(kind string, total int64, limit int) RuntimeError {
 	return RuntimeError{Code: "project_template_candidate_limit_exceeded", Message: fmt.Sprintf("%s candidate count %d exceeds snapshot limit %d", kind, total, limit)}
 }
 
-func candidateUserInfo(id string, users map[string]task.UserInfo) task.UserInfo {
-	if user, ok := users[id]; ok {
-		return user
+func projectTemplateAutomationActorColumns(row storage.ProjectAutomationRule) actorColumns {
+	return actorColumns{
+		Type: row.CreatedByActorType, UserID: row.CreatedByUserID,
+		TokenID: row.CreatedByTokenID, TokenName: row.CreatedByTokenName, TokenPrefix: row.CreatedByTokenPrefix,
 	}
-	return task.UserInfo{ID: id, Name: id}
 }
 
 func descriptionAttachmentWarningCount(description *string) int {

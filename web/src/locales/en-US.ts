@@ -995,6 +995,16 @@ export const enUS = {
     lifecycleError: "Failed to update the project template lifecycle",
     lifecycleErrorDescription:
       "The template status did not change. Check permissions or the connection and retry.",
+    editMetadata: "Edit Template Details",
+    editMetadataDescription:
+      "Change the display name and description for {{key}}. The stable key will not change.",
+    nameField: "Template Name",
+    descriptionField: "Template Description",
+    saveMetadata: "Save Changes",
+    modifying: "Saving",
+    modifyError: "Failed to update template details",
+    modifyErrorDescription:
+      "The template details did not change. Check permissions or the connection and retry.",
     saveNew: "Save New Template",
     search: "Search templates",
     searchAction: "Search",

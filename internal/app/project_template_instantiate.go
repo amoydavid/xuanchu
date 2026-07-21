@@ -251,8 +251,9 @@ func (s *Service) InstantiateCurrentProjectTemplate(templateRef string, input Cu
 func (s *Service) instantiateProjectTemplate(templateRef string, input InstantiateInput, currentOnly bool) (InstantiateResult, error) {
 	var result InstantiateResult
 	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
-		// 必须在最终写事务内重建完整 plan；Preview 结果不作为写入依据。
-		plan, err := tx.buildInstantiatePlan(templateRef, input, currentOnly)
+		// 必须在最终写事务内锁住 Template/current Snapshot 后重建完整 plan；
+		// Preview 结果不作为写入依据，active/current pointer 也必须在锁内重查。
+		plan, err := tx.buildInstantiatePlanLocked(templateRef, input, currentOnly)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -498,10 +499,32 @@ func (s *Service) buildInstantiatePlan(templateRef string, input InstantiateInpu
 	if err != nil {
 		return instantiatePlan{}, err
 	}
+	return s.buildInstantiatePlanForTemplate(template, input, currentOnly, false)
+}
+
+func (s *Service) buildInstantiatePlanLocked(templateRef string, input InstantiateInput, currentOnly bool) (instantiatePlan, error) {
+	if err := s.rejectProjectTemplateProjectScope(); err != nil {
+		return instantiatePlan{}, err
+	}
+	if err := s.Require(PermissionProjectManage); err != nil {
+		return instantiatePlan{}, err
+	}
+	templateRef = strings.TrimSpace(templateRef)
+	if templateRef == "" {
+		return instantiatePlan{}, RuntimeError{Code: "project_template_not_found", Message: "project template reference is required"}
+	}
+	template, err := s.projectTemplateRepo.LockByRef(s.workspaceID, templateRef)
+	if err != nil {
+		return instantiatePlan{}, s.projectTemplateStorageError(templateRef, err)
+	}
+	return s.buildInstantiatePlanForTemplate(template, input, currentOnly, true)
+}
+
+func (s *Service) buildInstantiatePlanForTemplate(template storage.ProjectTemplate, input InstantiateInput, currentOnly, lockSnapshots bool) (instantiatePlan, error) {
 	if template.Status != "active" {
 		return instantiatePlan{}, RuntimeError{Code: "project_template_archived", Message: "archived project template cannot be instantiated"}
 	}
-	snapshot, err := s.instantiateSnapshotRow(template, input.SnapshotID, currentOnly)
+	snapshot, err := s.instantiateSnapshotRow(template, input.SnapshotID, currentOnly, lockSnapshots)
 	if err != nil {
 		return instantiatePlan{}, err
 	}
@@ -556,7 +579,7 @@ func (s *Service) buildInstantiatePlan(templateRef string, input InstantiateInpu
 	currentSnapshot := snapshot
 	currentDecoded := decoded
 	if template.CurrentSnapshotID != nil && *template.CurrentSnapshotID != snapshot.ID {
-		currentSnapshot, err = s.projectTemplateRepo.GetSnapshot(template.WorkspaceID, template.ID, *template.CurrentSnapshotID)
+		currentSnapshot, err = s.getInstantiateSnapshotRow(template.WorkspaceID, template.ID, *template.CurrentSnapshotID, lockSnapshots)
 		if err != nil {
 			return instantiatePlan{}, err
 		}
@@ -613,18 +636,36 @@ func decodeInstantiateSnapshot(raw []byte) (projecttemplate.Snapshot, []ProjectT
 	return decoded, []ProjectTemplateIssue{issue}, nil
 }
 
-func (s *Service) instantiateSnapshotRow(template storage.ProjectTemplate, requested string, currentOnly bool) (storage.ProjectTemplateSnapshot, error) {
+func (s *Service) instantiateSnapshotRow(template storage.ProjectTemplate, requested string, currentOnly, lockSnapshot bool) (storage.ProjectTemplateSnapshot, error) {
 	requested = strings.TrimSpace(requested)
 	if currentOnly {
 		if requested == "" || template.CurrentSnapshotID == nil || subtle.ConstantTimeCompare([]byte(requested), []byte(*template.CurrentSnapshotID)) != 1 {
 			return storage.ProjectTemplateSnapshot{}, snapshotHashMismatch("snapshot is not the template current snapshot")
 		}
 	}
-	var pointer *string
-	if requested != "" {
-		pointer = &requested
+	if requested == "" && template.CurrentSnapshotID != nil {
+		requested = *template.CurrentSnapshotID
 	}
-	return s.projectTemplateSnapshot(template, pointer)
+	if requested == "" {
+		return storage.ProjectTemplateSnapshot{}, RuntimeError{Code: "project_template_snapshot_not_found", Message: "project template has no current snapshot"}
+	}
+	return s.getInstantiateSnapshotRow(template.WorkspaceID, template.ID, requested, lockSnapshot)
+}
+
+func (s *Service) getInstantiateSnapshotRow(workspaceID, templateID, snapshotID string, locked bool) (storage.ProjectTemplateSnapshot, error) {
+	var (
+		row storage.ProjectTemplateSnapshot
+		err error
+	)
+	if locked {
+		row, err = s.projectTemplateRepo.GetSnapshotLocked(workspaceID, templateID, snapshotID)
+	} else {
+		row, err = s.projectTemplateRepo.GetSnapshot(workspaceID, templateID, snapshotID)
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		return storage.ProjectTemplateSnapshot{}, RuntimeError{Code: "project_template_snapshot_not_found", Message: fmt.Sprintf("project template snapshot %q not found", snapshotID)}
+	}
+	return row, err
 }
 
 func verifyExpectedSnapshotHash(expected, actual string) error {

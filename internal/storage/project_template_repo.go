@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -14,7 +15,7 @@ var (
 	ErrProjectTemplateKeyConflict         = errors.New("project template key conflict")
 	ErrProjectTemplateVersionConflict     = errors.New("project template snapshot version conflict")
 	ErrProjectTemplateHashConflict        = errors.New("project template snapshot hash conflict")
-	ErrProjectTemplateTransactionRequired = errors.New("project template snapshot append requires transaction")
+	ErrProjectTemplateTransactionRequired = errors.New("project template operation requires transaction")
 )
 
 type ProjectTemplateListOptions struct {
@@ -56,6 +57,58 @@ func (r *ProjectTemplateRepository) GetByRef(workspaceID, ref string) (ProjectTe
 		return ProjectTemplate{}, ErrNotFound
 	}
 	return row, err
+}
+
+// LockByRef 在当前事务内锁住 Template，并返回锁后的最新状态。
+// PostgreSQL 使用行级 FOR UPDATE；SQLite 通过无语义变更的 UPDATE 先取得
+// writer lock，再读取 status/current_snapshot_id，避免读后再写之间的 TOCTOU。
+func (r *ProjectTemplateRepository) LockByRef(workspaceID, ref string) (ProjectTemplate, error) {
+	if !gormDBInTransaction(r.db) {
+		return ProjectTemplate{}, ErrProjectTemplateTransactionRequired
+	}
+	if r.db.Dialector.Name() == "sqlite" {
+		if err := r.acquireSQLiteTemplateWriterLock(workspaceID, ref); err != nil {
+			return ProjectTemplate{}, err
+		}
+	}
+	var row ProjectTemplate
+	query := r.db.Where("workspace_id = ? AND (id = ? OR key = ?)", workspaceID, ref, ref)
+	if r.db.Dialector.Name() == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	if err := query.First(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return ProjectTemplate{}, ErrNotFound
+	} else if err != nil {
+		return ProjectTemplate{}, err
+	}
+	return row, nil
+}
+
+func (r *ProjectTemplateRepository) acquireSQLiteTemplateWriterLock(workspaceID, ref string) error {
+	const attempts = 200
+	for attempt := 0; attempt < attempts; attempt++ {
+		result := r.db.Model(&ProjectTemplate{}).
+			Where("workspace_id = ? AND (id = ? OR key = ?)", workspaceID, ref, ref).
+			UpdateColumn("modified_at", gorm.Expr("modified_at"))
+		if result.Error == nil {
+			if result.RowsAffected == 0 {
+				return ErrNotFound
+			}
+			return nil
+		}
+		message := strings.ToLower(result.Error.Error())
+		if !strings.Contains(message, "database is locked") &&
+			!strings.Contains(message, "database table is locked") &&
+			!strings.Contains(message, "sqlite_busy") &&
+			!strings.Contains(message, "sqlite_locked") {
+			return result.Error
+		}
+		if attempt+1 == attempts {
+			return result.Error
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return errors.New("unreachable SQLite project template writer lock retry")
 }
 
 func (r *ProjectTemplateRepository) List(options ProjectTemplateListOptions) (ProjectTemplatePage, error) {
@@ -119,26 +172,7 @@ func (r *ProjectTemplateRepository) AppendSnapshotLocked(workspaceID, templateID
 	if !gormDBInTransaction(r.db) {
 		return ProjectTemplateSnapshot{}, ErrProjectTemplateTransactionRequired
 	}
-	if r.db.Dialector.Name() == "sqlite" {
-		result := r.db.Model(&ProjectTemplate{}).
-			Where("workspace_id = ? AND id = ?", workspaceID, templateID).
-			UpdateColumn("modified_at", gorm.Expr("modified_at"))
-		if result.Error != nil {
-			return ProjectTemplateSnapshot{}, result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ProjectTemplateSnapshot{}, ErrNotFound
-		}
-	}
-
-	var template ProjectTemplate
-	query := r.db.Where("workspace_id = ? AND id = ?", workspaceID, templateID)
-	if r.db.Dialector.Name() == "postgres" {
-		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
-	}
-	if err := query.First(&template).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-		return ProjectTemplateSnapshot{}, ErrNotFound
-	} else if err != nil {
+	if _, err := r.LockByRef(workspaceID, templateID); err != nil {
 		return ProjectTemplateSnapshot{}, err
 	}
 
@@ -172,6 +206,25 @@ func (r *ProjectTemplateRepository) AppendSnapshotLocked(workspaceID, templateID
 func (r *ProjectTemplateRepository) GetSnapshot(workspaceID, templateID, snapshotID string) (ProjectTemplateSnapshot, error) {
 	var row ProjectTemplateSnapshot
 	err := r.db.Where("workspace_id = ? AND template_id = ? AND id = ?", workspaceID, templateID, snapshotID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ProjectTemplateSnapshot{}, ErrNotFound
+	}
+	return row, err
+}
+
+// GetSnapshotLocked 在 Template 已锁住的事务内锁定目标不可变 Snapshot。
+// PostgreSQL 的 SHARE lock 与未来维护/删除路径互斥；SQLite 已由 Template
+// writer lock 串行化，不需要额外语句。
+func (r *ProjectTemplateRepository) GetSnapshotLocked(workspaceID, templateID, snapshotID string) (ProjectTemplateSnapshot, error) {
+	if !gormDBInTransaction(r.db) {
+		return ProjectTemplateSnapshot{}, ErrProjectTemplateTransactionRequired
+	}
+	var row ProjectTemplateSnapshot
+	query := r.db.Where("workspace_id = ? AND template_id = ? AND id = ?", workspaceID, templateID, snapshotID)
+	if r.db.Dialector.Name() == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "SHARE"})
+	}
+	err := query.First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ProjectTemplateSnapshot{}, ErrNotFound
 	}

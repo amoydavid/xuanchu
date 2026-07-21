@@ -23,12 +23,16 @@ import {
   listProjectTemplateTaskCandidates,
   resolveProjectTemplateCandidateSelection,
   type AutomationCandidate,
+  type AutomationCandidateFilter,
   type CandidateKind,
   type ConfigCandidate,
+  type ConfigCandidateFilter,
   type Page,
   type ResolveCandidateSelectionInput,
   type SeriesCandidate,
+  type SeriesCandidateFilter,
   type TaskCandidate,
+  type TaskCandidateFilter,
 } from "../api/project-template-api"
 
 export type CandidateSummary = {
@@ -80,29 +84,82 @@ export function CandidatePicker({
   workspaceSlug,
 }: CandidatePickerProps) {
   const [q, setQ] = useState("")
-  const [status, setStatus] = useState("")
+  const [status, setStatus] = useState("all")
+  const [priority, setPriority] = useState("all")
+  const [assignees, setAssignees] = useState("")
+  const [tags, setTags] = useState("")
+  const [dueAfter, setDueAfter] = useState("")
+  const [dueBefore, setDueBefore] = useState("")
+  const [taskQuery, setTaskQuery] = useState("")
+  const [sort, setSort] = useState(kind === "task" ? "urgency" : "next")
+  const [mode, setMode] = useState("all")
+  const [triggerType, setTriggerType] = useState("all")
   const [offset, setOffset] = useState(0)
   const [resolving, setResolving] = useState(false)
   const refreshedKeyRef = useRef<number | undefined>(undefined)
-  const filter = useMemo(
-    () => buildResolveInput(kind, q, status),
-    [kind, q, status]
-  )
+  const filter = useMemo(() => {
+    const common = { q: q || undefined, status }
+    switch (kind) {
+      case "task":
+        return {
+          kind,
+          task: {
+            ...common,
+            priority,
+            assignees: splitFilterList(assignees),
+            tags: splitFilterList(tags),
+            due_after: dueAfter || undefined,
+            due_before: dueBefore || undefined,
+            query: taskQuery || undefined,
+            sort,
+          },
+        } satisfies ResolveCandidateSelectionInput
+      case "series":
+        return {
+          kind,
+          series: {
+            ...common,
+            assignee: assignees.trim() || undefined,
+            sort,
+          },
+        } satisfies ResolveCandidateSelectionInput
+      case "config":
+        return {
+          kind,
+          config: { q: common.q, mode },
+        } satisfies ResolveCandidateSelectionInput
+      case "automation":
+        return {
+          kind,
+          automation: { ...common, trigger_type: triggerType },
+        } satisfies ResolveCandidateSelectionInput
+    }
+  }, [
+    assignees,
+    dueAfter,
+    dueBefore,
+    kind,
+    mode,
+    priority,
+    q,
+    sort,
+    status,
+    tags,
+    taskQuery,
+    triggerType,
+  ])
   const query = useQuery({
     queryKey: [
       "project-template-candidates",
       workspaceSlug,
       sourceProjectRef,
       kind,
-      q,
-      status,
+      filter,
       offset,
       refreshKey,
     ],
     queryFn: () =>
-      listCandidates(kind, workspaceSlug, sourceProjectRef, {
-        q: q || undefined,
-        status: status || undefined,
+      listCandidates(kind, workspaceSlug, sourceProjectRef, filter, {
         limit: PAGE_SIZE,
         offset,
       }),
@@ -138,11 +195,17 @@ export function CandidatePicker({
     let cancelled = false
     void Promise.all(
       chunk(refs, 100).map((selectedRefs) =>
-        listCandidates(kind, workspaceSlug, sourceProjectRef, {
-          limit: selectedRefs.length,
-          offset: 0,
-          refs: selectedRefs,
-        })
+        listCandidates(
+          kind,
+          workspaceSlug,
+          sourceProjectRef,
+          emptyResolveInput(kind),
+          {
+            limit: selectedRefs.length,
+            offset: 0,
+            refs: selectedRefs,
+          }
+        )
       )
     ).then((pages) => {
       if (cancelled) return
@@ -156,7 +219,14 @@ export function CandidatePicker({
     return () => {
       cancelled = true
     }
-  }, [kind, onSummariesChange, refreshKey, selected, sourceProjectRef, workspaceSlug])
+  }, [
+    kind,
+    onSummariesChange,
+    refreshKey,
+    selected,
+    sourceProjectRef,
+    workspaceSlug,
+  ])
 
   function toggle(candidate: Candidate, checked: boolean) {
     const next = new Map(selected)
@@ -231,56 +301,161 @@ export function CandidatePicker({
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 border bg-muted/20 p-2 sm:grid-cols-[minmax(12rem,1fr)_10rem_auto]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
-          <Input
-            aria-label={labels[kind].search}
-            className="pl-8"
-            onChange={(event) => {
-              setQ(event.target.value)
-              setOffset(0)
-            }}
-            placeholder={labels[kind].search}
-            value={q}
-          />
+      <div className="space-y-2 border bg-muted/20 p-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
+            <Input
+              aria-label={labels[kind].search}
+              className="pl-8"
+              onChange={(event) => {
+                setQ(event.target.value)
+                setOffset(0)
+              }}
+              placeholder={labels[kind].search}
+              value={q}
+            />
+          </div>
+          <span className="self-center text-right text-xs text-muted-foreground tabular-nums sm:ml-auto">
+            {page.total} 条
+          </span>
         </div>
-        {kind === "task" || kind === "series" || kind === "automation" ? (
-          <select
-            aria-label="状态筛选"
-            className="h-8 border bg-background px-2 text-xs"
-            onChange={(event) => {
-              setStatus(event.target.value)
-              setOffset(0)
-            }}
-            value={status}
-          >
-            <option value="">全部状态</option>
-            {kind === "task" ? (
-              <>
-                <option value="pending">待处理</option>
-                <option value="waiting">等待中</option>
-                <option value="completed">已完成</option>
-              </>
-            ) : kind === "series" ? (
-              <>
-                <option value="active">进行中</option>
-                <option value="ended">已结束</option>
-                <option value="stopped">已停止</option>
-              </>
-            ) : (
-              <>
-                <option value="enabled">已启用</option>
-                <option value="disabled">已停用</option>
-              </>
-            )}
-          </select>
+        {kind === "task" ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <CandidateSelect
+              label="任务状态筛选"
+              onChange={(value) => updateFilter(value, setStatus, setOffset)}
+              value={status}
+              options={[
+                ["all", "全部状态"],
+                ["pending", "待处理"],
+                ["waiting", "等待中"],
+                ["completed", "已完成"],
+              ]}
+            />
+            <CandidateSelect
+              label="任务优先级筛选"
+              onChange={(value) => updateFilter(value, setPriority, setOffset)}
+              value={priority}
+              options={[
+                ["all", "全部优先级"],
+                ["H", "高优先级"],
+                ["M", "中优先级"],
+                ["L", "低优先级"],
+              ]}
+            />
+            <CandidateInput
+              label="任务负责人筛选"
+              onChange={(value) => updateFilter(value, setAssignees, setOffset)}
+              placeholder="名称或 ID，逗号分隔"
+              value={assignees}
+            />
+            <CandidateInput
+              label="任务标签筛选"
+              onChange={(value) => updateFilter(value, setTags, setOffset)}
+              placeholder="标签，逗号分隔"
+              value={tags}
+            />
+            <CandidateInput
+              label="任务截止日期从"
+              onChange={(value) => updateFilter(value, setDueAfter, setOffset)}
+              type="date"
+              value={dueAfter}
+            />
+            <CandidateInput
+              label="任务截止日期至"
+              onChange={(value) => updateFilter(value, setDueBefore, setOffset)}
+              type="date"
+              value={dueBefore}
+            />
+            <CandidateInput
+              label="任务查询表达式"
+              onChange={(value) => updateFilter(value, setTaskQuery, setOffset)}
+              placeholder="现有 task query 语法"
+              value={taskQuery}
+            />
+            <CandidateSelect
+              label="任务排序"
+              onChange={(value) => updateFilter(value, setSort, setOffset)}
+              value={sort}
+              options={[
+                ["urgency", "紧急度"],
+                ["entry", "创建时间"],
+                ["due", "截止时间"],
+                ["wait", "等待时间"],
+                ["completed", "完成时间"],
+              ]}
+            />
+          </div>
+        ) : kind === "series" ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <CandidateSelect
+              label="循环任务状态筛选"
+              onChange={(value) => updateFilter(value, setStatus, setOffset)}
+              value={status}
+              options={[
+                ["all", "全部状态"],
+                ["active", "进行中"],
+                ["ended", "已结束"],
+                ["stopped", "已停止"],
+              ]}
+            />
+            <CandidateInput
+              label="循环任务负责人筛选"
+              onChange={(value) => updateFilter(value, setAssignees, setOffset)}
+              placeholder="名称或 ID"
+              value={assignees}
+            />
+            <CandidateSelect
+              label="循环任务排序"
+              onChange={(value) => updateFilter(value, setSort, setOffset)}
+              value={sort}
+              options={[
+                ["next", "下次发生时间"],
+                ["title", "标题"],
+                ["modified", "修改时间"],
+              ]}
+            />
+          </div>
+        ) : kind === "config" ? (
+          <div className="grid grid-cols-1 gap-2 sm:max-w-xs">
+            <CandidateSelect
+              label="配置类型筛选"
+              onChange={(value) => updateFilter(value, setMode, setOffset)}
+              value={mode}
+              options={[
+                ["all", "全部配置"],
+                ["literal", "普通值"],
+                ["secret", "机密值"],
+              ]}
+            />
+          </div>
         ) : (
-          <span />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <CandidateSelect
+              label="自动化状态筛选"
+              onChange={(value) => updateFilter(value, setStatus, setOffset)}
+              value={status}
+              options={[
+                ["all", "全部状态"],
+                ["enabled", "已启用"],
+                ["disabled", "已停用"],
+              ]}
+            />
+            <CandidateSelect
+              label="自动化触发类型筛选"
+              onChange={(value) =>
+                updateFilter(value, setTriggerType, setOffset)
+              }
+              value={triggerType}
+              options={[
+                ["all", "全部触发类型"],
+                ["schedule", "定时触发"],
+                ["event", "事件触发"],
+              ]}
+            />
+          </div>
         )}
-        <span className="self-center text-right text-xs text-muted-foreground tabular-nums">
-          {page.total} 条
-        </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b pb-2">
@@ -395,13 +570,80 @@ export function CandidatePicker({
   )
 }
 
+function CandidateInput({
+  label,
+  onChange,
+  placeholder,
+  type = "text",
+  value,
+}: {
+  label: string
+  onChange: (value: string) => void
+  placeholder?: string
+  type?: string
+  value: string
+}) {
+  return (
+    <Input
+      aria-label={label}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      type={type}
+      value={value}
+    />
+  )
+}
+
+function CandidateSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string
+  onChange: (value: string) => void
+  options: Array<[string, string]>
+  value: string
+}) {
+  return (
+    <select
+      aria-label={label}
+      className="h-8 min-w-0 border bg-background px-2 text-xs"
+      onChange={(event) => onChange(event.target.value)}
+      value={value}
+    >
+      {options.map(([optionValue, optionLabel]) => (
+        <option key={optionValue} value={optionValue}>
+          {optionLabel}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function updateFilter(
+  value: string,
+  setValue: (value: string) => void,
+  setOffset: (value: number) => void
+) {
+  setValue(value)
+  setOffset(0)
+}
+
+function splitFilterList(value: string): string[] | undefined {
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return items.length ? items : undefined
+}
+
 function listCandidates(
   kind: CandidateKind,
   workspaceSlug: string,
   projectRef: string,
-  options: {
-    q?: string
-    status?: string
+  filter: ResolveCandidateSelectionInput,
+  pagination: {
     limit: number
     offset: number
     refs?: string[]
@@ -409,29 +651,28 @@ function listCandidates(
 ): Promise<Page<Candidate>> {
   switch (kind) {
     case "task":
-      return listProjectTemplateTaskCandidates(
-        workspaceSlug,
-        projectRef,
-        options
-      )
+      return listProjectTemplateTaskCandidates(workspaceSlug, projectRef, {
+        ...(filter.task ?? ({} as TaskCandidateFilter)),
+        ...pagination,
+      })
     case "series":
-      return listProjectTemplateSeriesCandidates(
-        workspaceSlug,
-        projectRef,
-        options
-      )
+      return listProjectTemplateSeriesCandidates(workspaceSlug, projectRef, {
+        ...(filter.series ?? ({} as SeriesCandidateFilter)),
+        ...pagination,
+      })
     case "config":
       return listProjectTemplateConfigCandidates(workspaceSlug, projectRef, {
-        q: options.q,
-        limit: options.limit,
-        offset: options.offset,
-        refs: options.refs,
+        ...(filter.config ?? ({} as ConfigCandidateFilter)),
+        ...pagination,
       })
     case "automation":
       return listProjectTemplateAutomationCandidates(
         workspaceSlug,
         projectRef,
-        options
+        {
+          ...(filter.automation ?? ({} as AutomationCandidateFilter)),
+          ...pagination,
+        }
       )
   }
 }
@@ -444,21 +685,18 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-function buildResolveInput(
-  kind: CandidateKind,
-  q: string,
-  status: string
+function emptyResolveInput(
+  kind: CandidateKind
 ): ResolveCandidateSelectionInput {
-  const values = { q: q || undefined, status: status || undefined }
   switch (kind) {
     case "task":
-      return { kind, task: values }
+      return { kind, task: {} }
     case "series":
-      return { kind, series: values }
+      return { kind, series: {} }
     case "config":
-      return { kind, config: { q: values.q } }
+      return { kind, config: {} }
     case "automation":
-      return { kind, automation: values }
+      return { kind, automation: {} }
   }
 }
 

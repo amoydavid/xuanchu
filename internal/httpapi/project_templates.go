@@ -187,21 +187,21 @@ type projectTemplateSeriesCandidateResponse struct {
 	RecurrenceRule string              `json:"recurrence_rule"`
 	FirstDue       int64               `json:"first_due"`
 	Assignees      []task.JSONUserInfo `json:"assignees"`
-	CreatedBy      task.JSONUserInfo   `json:"created_by"`
+	CreatedBy      task.JSONActorInfo  `json:"created_by"`
 	WarningCount   int                 `json:"warning_count"`
 }
 
 type projectTemplateAutomationCandidateResponse struct {
-	Ref          string            `json:"ref"`
-	ID           string            `json:"id"`
-	ProjectID    string            `json:"project_id"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Enabled      bool              `json:"enabled"`
-	TriggerType  string            `json:"trigger_type"`
-	CreatedBy    task.JSONUserInfo `json:"created_by"`
-	CreatedAt    int64             `json:"created_at"`
-	WarningCount int               `json:"warning_count"`
+	Ref          string             `json:"ref"`
+	ID           string             `json:"id"`
+	ProjectID    string             `json:"project_id"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	Enabled      bool               `json:"enabled"`
+	TriggerType  string             `json:"trigger_type"`
+	CreatedBy    task.JSONActorInfo `json:"created_by"`
+	CreatedAt    int64              `json:"created_at"`
+	WarningCount int                `json:"warning_count"`
 }
 
 type projectTemplateInstantiateResponse struct {
@@ -269,7 +269,7 @@ func (s *Server) handleProjectTemplateSeriesCandidates(w http.ResponseWriter, r 
 		items = append(items, projectTemplateSeriesCandidateResponse{
 			Ref: item.Ref, ProjectID: item.ProjectID, ProjectSeq: item.ProjectSeq, Title: item.Title, Status: item.Status,
 			RecurrenceRule: item.RecurrenceRule, FirstDue: item.FirstDue, Assignees: task.UserInfoListToJSON(item.Assignees),
-			CreatedBy: task.UserInfoToJSON(item.CreatedBy), WarningCount: item.WarningCount,
+			CreatedBy: task.ActorInfoToJSON(item.CreatedBy), WarningCount: item.WarningCount,
 		})
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"items": items, "total": page.Total, "limit": page.Limit, "offset": page.Offset}, nil)
@@ -317,7 +317,7 @@ func (s *Server) handleProjectTemplateAutomationCandidates(w http.ResponseWriter
 	for _, item := range page.Items {
 		items = append(items, projectTemplateAutomationCandidateResponse{
 			Ref: item.Ref, ID: item.ID, ProjectID: item.ProjectID, Name: item.Name, Description: item.Description,
-			Enabled: item.Enabled, TriggerType: item.TriggerType, CreatedBy: task.UserInfoToJSON(item.CreatedBy),
+			Enabled: item.Enabled, TriggerType: item.TriggerType, CreatedBy: task.ActorInfoToJSON(item.CreatedBy),
 			CreatedAt: item.CreatedAt, WarningCount: item.WarningCount,
 		})
 	}

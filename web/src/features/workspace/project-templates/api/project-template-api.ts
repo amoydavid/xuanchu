@@ -185,7 +185,7 @@ export type SeriesCandidate = {
   recurrence_rule: string
   first_due: number
   assignees: UserInfo[]
-  created_by: UserInfo
+  created_by: ActorInfo
   warning_count: number
 }
 
@@ -206,7 +206,7 @@ export type AutomationCandidate = {
   description: string
   enabled: boolean
   trigger_type: string
-  created_by: UserInfo
+  created_by: ActorInfo
   created_at: number
   warning_count: number
 }

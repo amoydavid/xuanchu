@@ -5,6 +5,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileClock,
+  Loader2,
+  Pencil,
   Plus,
   RotateCcw,
   Search,
@@ -23,7 +25,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { ProjectTemplateCaptureWizard } from "@/features/workspace/project-templates/capture/project-template-capture-wizard"
 import { ProjectTemplateInstantiateWizard } from "@/features/workspace/project-templates/instantiate/project-template-instantiate-wizard"
 import {
@@ -37,6 +41,7 @@ import {
   getProjectTemplate,
   invalidateProjectTemplateMutation,
   listProjectTemplates,
+  modifyProjectTemplate,
   projectTemplateDetailQueryKey,
   projectTemplateListQueryKey,
   reactivateProjectTemplate,
@@ -58,7 +63,7 @@ type ProjectTemplateLibraryPageProps = {
   canManage: boolean
   writeScopes: string[] | null | undefined
   initialSearch?: string
-  onCreateTemplate?: () => void
+  onCreateTemplate?: (sourceProject: ProjectWorkbenchProject) => void
   onCaptureSnapshot?: (templateRef: string) => void
   onInstantiate?: (selection: ProjectTemplateSelection) => void
 }
@@ -87,6 +92,7 @@ export function ProjectTemplateLibraryPage({
   const [captureSource, setCaptureSource] = useState<ProjectWorkbenchProject>()
   const [instantiateSelection, setInstantiateSelection] =
     useState<ProjectTemplateSelection>()
+  const [editTemplate, setEditTemplate] = useState<ProjectTemplateSummary>()
 
   const listQuery = useQuery({
     enabled: Boolean(workspaceSlug),
@@ -150,11 +156,34 @@ export function ProjectTemplateLibraryPage({
       })
     },
   })
+  const modifyMutation = useMutation({
+    mutationFn: ({
+      description,
+      name,
+      ref,
+    }: {
+      description: string
+      name: string
+      ref: string
+    }) => modifyProjectTemplate(workspaceSlug, ref, { name, description }),
+    onSuccess: async (_data, input) => {
+      await invalidateProjectTemplateMutation(queryClient, workspaceSlug, {
+        kind: "modify",
+        ref: input.ref,
+      })
+      setEditTemplate(undefined)
+    },
+  })
 
   function submitSearch(event: FormEvent) {
     event.preventDefault()
     setOffset(0)
     setQ(searchDraft.trim())
+  }
+
+  function startCreateTemplate() {
+    setCaptureTargetRef(undefined)
+    setSourcePickerOpen(true)
   }
 
   if (listQuery.isPending) {
@@ -198,7 +227,7 @@ export function ProjectTemplateLibraryPage({
           </p>
         </div>
         {canManage && !empty ? (
-          <Button onClick={onCreateTemplate}>
+          <Button onClick={startCreateTemplate}>
             <Plus />
             {t("projectTemplates.saveNew")}
           </Button>
@@ -252,7 +281,7 @@ export function ProjectTemplateLibraryPage({
         <LibraryEmpty
           canManage={canManage}
           hasFilters={hasFilters}
-          onCreate={onCreateTemplate}
+          onCreate={startCreateTemplate}
           onClearSearch={() => {
             setSearchDraft("")
             setQ("")
@@ -328,6 +357,10 @@ export function ProjectTemplateLibraryPage({
                   onInstantiate?.(nextSelection)
                   setInstantiateSelection(nextSelection)
                 }}
+                onModify={(template) => {
+                  modifyMutation.reset()
+                  setEditTemplate(template)
+                }}
                 onReactivate={(ref) => reactivateMutation.mutate(ref)}
                 onSelectVersion={(snapshotID) =>
                   setSelection({ ref: selectedRef!, snapshotID })
@@ -368,9 +401,13 @@ export function ProjectTemplateLibraryPage({
                     <button
                       className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/60"
                       onClick={() => {
-                        setCaptureSource(project)
                         setSourcePickerOpen(false)
-                        onCaptureSnapshot?.(captureTargetRef!)
+                        if (captureTargetRef) {
+                          setCaptureSource(project)
+                          onCaptureSnapshot?.(captureTargetRef)
+                        } else {
+                          onCreateTemplate?.(project)
+                        }
                       }}
                       type="button"
                     >
@@ -424,6 +461,15 @@ export function ProjectTemplateLibraryPage({
         open={Boolean(instantiateSelection)}
         writeScopes={writeScopes}
         workspaceSlug={workspaceSlug}
+      />
+      <TemplateMetadataDialog
+        error={modifyMutation.isError}
+        onOpenChange={(open) => {
+          if (!open && !modifyMutation.isPending) setEditTemplate(undefined)
+        }}
+        onSubmit={(input) => modifyMutation.mutate(input)}
+        pending={modifyMutation.isPending}
+        template={editTemplate}
       />
     </section>
   )
@@ -552,6 +598,7 @@ function TemplateDetail({
   onArchive,
   onCapture,
   onInstantiate,
+  onModify,
   onReactivate,
   onSelectVersion,
   selectedSnapshotID,
@@ -564,6 +611,7 @@ function TemplateDetail({
   onArchive: (ref: string) => void
   onCapture?: (ref: string) => void
   onInstantiate?: (selection: ProjectTemplateSelection) => void
+  onModify: (template: ProjectTemplateSummary) => void
   onReactivate: (ref: string) => void
   onSelectVersion: (id?: string) => void
   selectedSnapshotID?: string
@@ -634,6 +682,10 @@ function TemplateDetail({
                 </Button>
               ) : (
                 <>
+                  <Button onClick={() => onModify(template)} variant="outline">
+                    <Pencil />
+                    {t("projectTemplates.editMetadata")}
+                  </Button>
                   {selected && canInstantiate ? (
                     <Button
                       onClick={() =>
@@ -770,6 +822,130 @@ function TemplateDetail({
         </ol>
       </section>
     </div>
+  )
+}
+
+function TemplateMetadataDialog({
+  error,
+  onOpenChange,
+  onSubmit,
+  pending,
+  template,
+}: {
+  error: boolean
+  onOpenChange: (open: boolean) => void
+  onSubmit: (input: { description: string; name: string; ref: string }) => void
+  pending: boolean
+  template?: ProjectTemplateSummary
+}) {
+  if (!template) return null
+  return (
+    <TemplateMetadataDialogSession
+      error={error}
+      onOpenChange={onOpenChange}
+      onSubmit={onSubmit}
+      pending={pending}
+      template={template}
+    />
+  )
+}
+
+function TemplateMetadataDialogSession({
+  error,
+  onOpenChange,
+  onSubmit,
+  pending,
+  template,
+}: {
+  error: boolean
+  onOpenChange: (open: boolean) => void
+  onSubmit: (input: { description: string; name: string; ref: string }) => void
+  pending: boolean
+  template: ProjectTemplateSummary
+}) {
+  const { t } = useTranslation()
+  const [name, setName] = useState(template.name)
+  const [description, setDescription] = useState(template.description)
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open>
+      <DialogContent
+        className="max-w-lg"
+        onEscapeKeyDown={(event) => {
+          if (pending) event.preventDefault()
+        }}
+        showCloseButton={!pending}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("projectTemplates.editMetadata")}</DialogTitle>
+          <DialogDescription>
+            {t("projectTemplates.editMetadataDescription", {
+              key: template.key,
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("projectTemplates.modifyError")}</AlertTitle>
+            <AlertDescription>
+              {t("projectTemplates.modifyErrorDescription")}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSubmit({
+              description: description.trim(),
+              name: name.trim(),
+              ref: template.key,
+            })
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="project-template-edit-name">
+              {t("projectTemplates.nameField")}
+            </Label>
+            <Input
+              disabled={pending}
+              id="project-template-edit-name"
+              onChange={(event) => setName(event.target.value)}
+              value={name}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="project-template-edit-description">
+              {t("projectTemplates.descriptionField")}
+            </Label>
+            <Textarea
+              disabled={pending}
+              id="project-template-edit-description"
+              onChange={(event) => setDescription(event.target.value)}
+              value={description}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              disabled={pending}
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button disabled={pending || !name.trim()} type="submit">
+              {pending ? <Loader2 className="animate-spin" /> : null}
+              {t(
+                pending
+                  ? "projectTemplates.modifying"
+                  : "projectTemplates.saveMetadata"
+              )}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
