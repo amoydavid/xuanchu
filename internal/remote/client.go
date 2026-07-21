@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/auth"
 )
 
@@ -48,6 +49,24 @@ func (e APIError) Error() string {
 		return e.Message
 	}
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
+}
+
+// As 让 Remote HTTP 错误沿用本地 CLI 的稳定错误出口，同时保留 APIError
+// 原始的 HTTP status、code 和 message，供调用方按传输语义继续判断。
+func (e APIError) As(target any) bool {
+	switch value := target.(type) {
+	case *app.RuntimeError:
+		*value = app.RuntimeError{Code: e.Code, Message: e.Message}
+		return true
+	case *app.PermissionError:
+		if e.Status != http.StatusForbidden {
+			return false
+		}
+		*value = app.PermissionError{Code: e.Code, Message: e.Message}
+		return true
+	default:
+		return false
+	}
 }
 
 func NewClient(opts Options) (*Client, error) {

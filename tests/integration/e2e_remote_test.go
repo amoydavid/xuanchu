@@ -4,11 +4,71 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestE2ERemoteProjectTemplateJSONErrorsMatchLocalRuntimeErrors(t *testing.T) {
+	bin := buildXuanchu(t)
+	secret := "sk-remote-json-error-must-not-leak"
+	var instantiateCurrentOnly bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/project-templates":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":"permission_denied","message":"permission denied"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/project-templates/launch/instantiate":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			instantiateCurrentOnly, _ = body["current_only"].(bool)
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"project_template_snapshot_hash_mismatch","message":"current snapshot changed"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"route_not_found","message":"unexpected route"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	assertJSONError := func(t *testing.T, name string, args []string, stdin string, wantCode string) {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		cmd := exec.Command(bin, append([]string{"--server", srv.URL, "--token", "token", "--json"}, args...)...)
+		cmd.Stdin = strings.NewReader(stdin)
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err == nil {
+			t.Fatalf("%s succeeded: stdout=%q stderr=%q", name, stdout.String(), stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("%s stdout = %q, want empty", name, stdout.String())
+		}
+		var payload map[string]string
+		if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+			t.Fatalf("%s stderr is not JSON: %v\nstderr=%q", name, err, stderr.String())
+		}
+		if payload["code"] != wantCode {
+			t.Fatalf("%s error = %#v, want code %q", name, payload, wantCode)
+		}
+		if strings.Contains(stderr.String(), secret) {
+			t.Fatalf("%s stderr leaked secret: %q", name, stderr.String())
+		}
+	}
+
+	assertJSONError(t, "list permission", []string{"project", "template", "list"}, "", "permission_denied")
+	assertJSONError(t, "instantiate hash drift", []string{
+		"project", "template", "instantiate", "launch", "newproj", "name:新项目",
+		"--snapshot", "snapshot-1", "--snapshot-hash", strings.Repeat("a", 64), "--start-date", "2026-08-01", "--input", "-",
+	}, `{"secret_inputs":{"agent.api_key":"`+secret+`"}}`, "project_template_snapshot_hash_mismatch")
+	if !instantiateCurrentOnly {
+		t.Fatal("instantiate request did not preserve current_only")
+	}
+}
 
 func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 	bin := buildXuanchu(t)
