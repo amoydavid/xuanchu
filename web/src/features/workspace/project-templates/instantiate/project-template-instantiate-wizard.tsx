@@ -9,7 +9,13 @@ import {
   Loader2,
   Users,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -24,10 +30,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { getHome } from "@/features/workspace/home/home-api"
 import {
   listWorkspaceMembers,
   type WorkspaceMemberRow,
 } from "@/features/workspace/members/members-api"
+import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
 import { ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -44,6 +52,7 @@ import {
   type InstantiatePreview,
   type ProjectTemplateIssue,
 } from "../api/project-template-api"
+import { canInstantiateProjectTemplate } from "../project-template-instantiation-permissions"
 
 export type ProjectTemplateInstantiateSelection = {
   templateRef: string
@@ -52,31 +61,38 @@ export type ProjectTemplateInstantiateSelection = {
 }
 
 type ProjectTemplateInstantiateWizardProps = {
+  canInstantiate?: boolean
+  canManage?: boolean
   initialSelection?: ProjectTemplateInstantiateSelection
   onOpenChange: (open: boolean) => void
   open: boolean
+  writeScopes?: string[] | null
   workspaceSlug: string
 }
 
 const steps = ["选择模板", "项目信息", "处理问题", "确认创建"]
 const PROJECT_SLUG_PATTERN = /^[a-z][a-z0-9]{2,9}$/
 const REMOVE_ASSIGNEE = "__remove__"
+const TEMPLATE_PAGE_SIZE = 20
 
 export function ProjectTemplateInstantiateWizard(
   props: ProjectTemplateInstantiateWizardProps
 ) {
-  if (!props.open) return null
+  if (!props.open || !props.canInstantiate) return null
   return <ProjectTemplateInstantiateWizardSession {...props} />
 }
 
 function ProjectTemplateInstantiateWizardSession({
+  canManage = false,
   initialSelection,
   onOpenChange,
   open,
+  writeScopes,
   workspaceSlug,
 }: ProjectTemplateInstantiateWizardProps) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const feedback = useEditFeedback()
   const [step, setStep] = useState(initialSelection ? 1 : 0)
   const [selection, setSelection] = useState<
     ProjectTemplateInstantiateSelection | undefined
@@ -84,35 +100,51 @@ function ProjectTemplateInstantiateWizardSession({
   const [slug, setSlug] = useState("")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [startDate, setStartDate] = useState(localToday)
+  const [startDate, setStartDate] = useState("")
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({})
   const [assigneeReplacements, setAssigneeReplacements] = useState<
     Record<string, string | null>
   >({})
   const [preview, setPreview] = useState<InstantiatePreview>()
+  const [previewRevision, setPreviewRevision] = useState<number>()
   const [previewDirty, setPreviewDirty] = useState(false)
   const [previewPending, setPreviewPending] = useState(false)
   const [submitPending, setSubmitPending] = useState(false)
   const [error, setError] = useState<string>()
-  const [successMessage, setSuccessMessage] = useState<string>()
+  const [searchDraft, setSearchDraft] = useState("")
+  const [search, setSearch] = useState("")
+  const [templateOffset, setTemplateOffset] = useState(0)
   const [fieldErrors, setFieldErrors] = useState<{
     slug?: string
     name?: string
     startDate?: string
   }>({})
   const initializedDescription = useRef<string | undefined>(undefined)
+  const initializedStartDate = useRef(false)
+  const formRevision = useRef(0)
   const submitPendingRef = useRef(false)
 
   const listQuery = useQuery({
     enabled: open,
-    queryKey: projectTemplateListQueryKey(workspaceSlug, "active", "", 100, 0),
+    queryKey: projectTemplateListQueryKey(
+      workspaceSlug,
+      "active",
+      search,
+      TEMPLATE_PAGE_SIZE,
+      templateOffset
+    ),
     queryFn: () =>
       listProjectTemplates(workspaceSlug, {
         status: "active",
-        q: "",
-        limit: 100,
-        offset: 0,
+        q: search,
+        limit: TEMPLATE_PAGE_SIZE,
+        offset: templateOffset,
       }),
+  })
+  const homeQuery = useQuery({
+    enabled: open,
+    queryKey: ["home", workspaceSlug, "instantiate-date"],
+    queryFn: getHome,
   })
   const detailQuery = useQuery({
     enabled: Boolean(selection),
@@ -142,14 +174,26 @@ function ProjectTemplateInstantiateWizardSession({
     setDescription(detailQuery.data.snapshot?.project.description ?? "")
   }, [detailQuery.data, selection])
 
+  useEffect(() => {
+    if (initializedStartDate.current || !homeQuery.data?.today) return
+    initializedStartDate.current = true
+    setStartDate(homeQuery.data.today)
+  }, [homeQuery.data?.today])
+
   const unresolvedBlocking = useMemo(
     () =>
       preview?.issues.filter((issue) => issue.severity === "blocking") ?? [],
     [preview]
   )
 
+  function invalidatePreview() {
+    formRevision.current += 1
+    setPreviewRevision(undefined)
+    setPreviewDirty(true)
+  }
+
   function markPreviewDirty() {
-    if (preview) setPreviewDirty(true)
+    invalidatePreview()
     setError(undefined)
   }
 
@@ -158,12 +202,14 @@ function ProjectTemplateInstantiateWizardSession({
     snapshotID: string,
     hash: string
   ) {
+    formRevision.current += 1
     setSelection({ templateRef, snapshotID, snapshotHash: hash })
     initializedDescription.current = undefined
     setDescription("")
     setSecretInputs({})
     setAssigneeReplacements({})
     setPreview(undefined)
+    setPreviewRevision(undefined)
     setPreviewDirty(false)
     setError(undefined)
   }
@@ -214,9 +260,17 @@ function ProjectTemplateInstantiateWizardSession({
   }
 
   async function runPreview() {
-    if (!selection || !validateProjectFields() || previewPending) return false
+    if (
+      !selection ||
+      !validateProjectFields() ||
+      previewPending ||
+      !homeQuery.data?.today
+    ) {
+      return false
+    }
     const input = instantiateInput()
     if (!input) return false
+    const revision = formRevision.current
     setPreviewPending(true)
     setError(undefined)
     try {
@@ -225,6 +279,7 @@ function ProjectTemplateInstantiateWizardSession({
         selection.templateRef,
         input
       )
+      if (revision !== formRevision.current) return false
       if (
         next.snapshot.id !== selection.snapshotID ||
         next.snapshot.hash !== selection.snapshotHash
@@ -239,6 +294,7 @@ function ProjectTemplateInstantiateWizardSession({
       }
       setSelection(pinned)
       setPreview(next)
+      setPreviewRevision(revision)
       setPreviewDirty(false)
       setStep(2)
       return true
@@ -262,6 +318,7 @@ function ProjectTemplateInstantiateWizardSession({
       submitPendingRef.current ||
       !selection ||
       !preview ||
+      previewRevision !== formRevision.current ||
       previewDirty ||
       unresolvedBlocking.length > 0
     ) {
@@ -288,13 +345,15 @@ function ProjectTemplateInstantiateWizardSession({
         kind: "instantiate",
         ref: pinned.templateRef,
       })
-      setSuccessMessage(successCounts(result.counts))
+      feedback.success(successCounts(result.counts))
+      onOpenChange(false)
       void navigate({
         to: "/workspaces/$workspaceSlug/projects/$projectSlug",
         params: { workspaceSlug, projectSlug: result.project.slug },
       })
     } catch (caught) {
       setSecretInputs({})
+      invalidatePreview()
       if (
         caught instanceof ApiError &&
         caught.code === "project_template_snapshot_hash_mismatch"
@@ -317,30 +376,62 @@ function ProjectTemplateInstantiateWizardSession({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next && (submitPendingRef.current || submitPending)) return
+    if (
+      !next &&
+      (submitPendingRef.current || submitPending || previewPending)
+    ) {
+      return
+    }
     if (!next) setSecretInputs({})
     onOpenChange(next)
   }
 
+  function handleDialogKeyDown(event: ReactKeyboardEvent) {
+    if (event.key === "Escape" && (submitPending || previewPending)) {
+      event.preventDefault()
+      return
+    }
+    if (
+      event.key !== "Enter" ||
+      (!event.metaKey && !event.ctrlKey) ||
+      submitPending ||
+      previewPending
+    ) {
+      return
+    }
+    event.preventDefault()
+    if (step === 0) {
+      if (selection && !detailQuery.isPending && !detailQuery.isError) {
+        setStep(1)
+      }
+      return
+    }
+    if (step === 1) {
+      void runPreview()
+      return
+    }
+    if (step === 2) {
+      if (previewDirty || unresolvedBlocking.length > 0) {
+        void runPreview()
+      } else {
+        setStep(3)
+      }
+      return
+    }
+    void submit()
+  }
+
   return (
-    <>
-      {successMessage ? (
-        <div
-          className="fixed top-4 right-4 z-[70] max-w-sm border bg-background p-3 text-sm shadow-lg"
-          role="status"
-        >
-          {successMessage}
-        </div>
-      ) : null}
-      <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent
           className="w-full max-w-none sm:w-[min(56rem,calc(100vw-2rem))] sm:max-w-[min(56rem,calc(100vw-2rem))]"
           onEscapeKeyDown={(event) => {
-            if (submitPending) event.preventDefault()
+            if (submitPending || previewPending) event.preventDefault()
           }}
           onPointerDownOutside={(event) => {
-            if (submitPending) event.preventDefault()
+            if (submitPending || previewPending) event.preventDefault()
           }}
+          onKeyDown={handleDialogKeyDown}
           side="right"
         >
           <SheetHeader className="h-auto min-h-16 items-start justify-between gap-4 py-3">
@@ -351,7 +442,7 @@ function ProjectTemplateInstantiateWizardSession({
               </SheetDescription>
             </div>
             <Button
-              disabled={submitPending}
+              disabled={submitPending || previewPending}
               onClick={() => handleOpenChange(false)}
               size="sm"
               type="button"
@@ -392,17 +483,36 @@ function ProjectTemplateInstantiateWizardSession({
 
             {step === 0 ? (
               <TemplateStep
+                canManage={canManage}
                 isError={listQuery.isError}
                 isPending={listQuery.isPending}
                 items={listQuery.data?.items ?? []}
+                offset={templateOffset}
+                onNextPage={() =>
+                  setTemplateOffset((current) => current + TEMPLATE_PAGE_SIZE)
+                }
+                onPreviousPage={() =>
+                  setTemplateOffset((current) =>
+                    Math.max(0, current - TEMPLATE_PAGE_SIZE)
+                  )
+                }
                 onRetry={() => listQuery.refetch()}
+                onSearch={() => {
+                  setTemplateOffset(0)
+                  setSearch(searchDraft.trim())
+                }}
+                onSearchDraftChange={setSearchDraft}
                 onSelect={selectTemplate}
+                searchDraft={searchDraft}
                 selection={selection}
+                total={listQuery.data?.total ?? 0}
+                writeScopes={writeScopes}
               />
             ) : null}
             {step === 1 ? (
               <ProjectStep
                 description={description}
+                disabled={previewPending}
                 detailError={detailQuery.isError}
                 detailPending={detailQuery.isPending}
                 fieldErrors={fieldErrors}
@@ -421,17 +531,21 @@ function ProjectTemplateInstantiateWizardSession({
                   markPreviewDirty()
                 }}
                 onStartDateChange={(value) => {
+                  initializedStartDate.current = true
                   setStartDate(value)
                   markPreviewDirty()
                 }}
                 selection={selection}
                 slug={slug}
                 startDate={startDate}
+                workspaceDateError={homeQuery.isError}
+                workspaceDatePending={homeQuery.isPending}
               />
             ) : null}
             {step === 2 && preview ? (
               <ResolutionStep
                 assigneeReplacements={assigneeReplacements}
+                disabled={previewPending}
                 members={membersQuery.data ?? []}
                 membersError={membersQuery.isError}
                 onAssigneeChange={(userID, value) => {
@@ -455,7 +569,11 @@ function ProjectTemplateInstantiateWizardSession({
 
           <footer className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
             <Button
-              disabled={submitPending || (step === 0 && !selection)}
+              disabled={
+                submitPending ||
+                previewPending ||
+                (step === 0 && !selection)
+              }
               onClick={() => {
                 setError(undefined)
                 setStep((current) => Math.max(0, current - 1))
@@ -468,7 +586,9 @@ function ProjectTemplateInstantiateWizardSession({
             </Button>
             {step === 0 ? (
               <Button
-                disabled={!selection || detailQuery.isPending}
+                disabled={
+                  !selection || detailQuery.isPending || detailQuery.isError
+                }
                 onClick={() => setStep(1)}
                 type="button"
               >
@@ -479,7 +599,11 @@ function ProjectTemplateInstantiateWizardSession({
             {step === 1 ? (
               <Button
                 disabled={
-                  previewPending || detailQuery.isPending || detailQuery.isError
+                  previewPending ||
+                  detailQuery.isPending ||
+                  detailQuery.isError ||
+                  homeQuery.isPending ||
+                  homeQuery.isError
                 }
                 onClick={runPreview}
                 type="button"
@@ -525,25 +649,42 @@ function ProjectTemplateInstantiateWizardSession({
             ) : null}
           </footer>
         </SheetContent>
-      </Sheet>
-    </>
+    </Sheet>
   )
 }
 
 function TemplateStep({
+  canManage,
   isError,
   isPending,
   items,
+  offset,
+  onNextPage,
+  onPreviousPage,
   onRetry,
+  onSearch,
+  onSearchDraftChange,
   onSelect,
+  searchDraft,
   selection,
+  total,
+  writeScopes,
 }: {
+  canManage: boolean
   isError: boolean
   isPending: boolean
   items: Awaited<ReturnType<typeof listProjectTemplates>>["items"]
+  offset: number
+  onNextPage: () => void
+  onPreviousPage: () => void
   onRetry: () => void
+  onSearch: () => void
+  onSearchDraftChange: (value: string) => void
   onSelect: (ref: string, snapshotID: string, hash: string) => void
+  searchDraft: string
   selection?: ProjectTemplateInstantiateSelection
+  total: number
+  writeScopes?: string[] | null
 }) {
   if (isPending) return <p role="status">正在加载可用模板…</p>
   if (isError) {
@@ -558,13 +699,15 @@ function TemplateStep({
       </Alert>
     )
   }
-  if (!items.length) {
-    return (
-      <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
-        当前没有可用于创建项目的 active 模板。
-      </div>
-    )
-  }
+  const eligible = items.filter(
+    (item) =>
+      item.current_snapshot &&
+      canInstantiateProjectTemplate(
+        canManage,
+        writeScopes,
+        item.current_snapshot.counts
+      )
+  )
   return (
     <section
       aria-labelledby="instantiate-template-heading"
@@ -578,8 +721,19 @@ function TemplateStep({
           这里不会展示或自动切换历史版本；历史版本请从模板库进入。
         </p>
       </div>
+      <div className="flex gap-2">
+        <Input
+          aria-label="搜索模板"
+          onChange={(event) => onSearchDraftChange(event.target.value)}
+          placeholder="搜索模板"
+          value={searchDraft}
+        />
+        <Button aria-label="搜索" onClick={onSearch} type="button" variant="outline">
+          搜索
+        </Button>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {items.map((item) => {
+        {eligible.map((item) => {
           const snapshot = item.current_snapshot
           if (!snapshot) return null
           const active =
@@ -612,12 +766,41 @@ function TemplateStep({
           )
         })}
       </div>
+      {items.length === 0 ? (
+        <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
+          当前没有可用于创建项目的 active 模板。
+        </div>
+      ) : null}
+      {items.length > 0 && eligible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          当前页没有可用权限的模板。
+        </p>
+      ) : null}
+      <div className="flex justify-between border-t pt-3">
+        <Button
+          disabled={offset === 0}
+          onClick={onPreviousPage}
+          type="button"
+          variant="outline"
+        >
+          上一页
+        </Button>
+        <Button
+          disabled={offset + TEMPLATE_PAGE_SIZE >= total}
+          onClick={onNextPage}
+          type="button"
+          variant="outline"
+        >
+          下一页
+        </Button>
+      </div>
     </section>
   )
 }
 
 function ProjectStep({
   description,
+  disabled,
   detailError,
   detailPending,
   fieldErrors,
@@ -630,8 +813,11 @@ function ProjectStep({
   selection,
   slug,
   startDate,
+  workspaceDateError,
+  workspaceDatePending,
 }: {
   description: string
+  disabled: boolean
   detailError: boolean
   detailPending: boolean
   fieldErrors: { slug?: string; name?: string; startDate?: string }
@@ -644,6 +830,8 @@ function ProjectStep({
   selection?: ProjectTemplateInstantiateSelection
   slug: string
   startDate: string
+  workspaceDateError: boolean
+  workspaceDatePending: boolean
 }) {
   return (
     <section
@@ -684,6 +872,7 @@ function ProjectStep({
           <Input
             aria-invalid={Boolean(fieldErrors.slug)}
             autoComplete="off"
+            disabled={disabled}
             id="instantiate-project-slug"
             onChange={(event) => onSlugChange(event.target.value)}
             placeholder="launch26"
@@ -693,6 +882,7 @@ function ProjectStep({
         <Field label="项目名称" error={fieldErrors.name}>
           <Input
             aria-invalid={Boolean(fieldErrors.name)}
+            disabled={disabled}
             id="instantiate-project-name"
             onChange={(event) => onNameChange(event.target.value)}
             value={name}
@@ -701,20 +891,25 @@ function ProjectStep({
       </div>
       <Field label="开始日期" error={fieldErrors.startDate}>
         <Input
-          aria-invalid={Boolean(fieldErrors.startDate)}
-          className="sm:max-w-xs"
+            aria-invalid={Boolean(fieldErrors.startDate)}
+            className="sm:max-w-xs"
+            disabled={disabled || workspaceDatePending || workspaceDateError}
           id="instantiate-project-start-date"
           onChange={(event) => onStartDateChange(event.target.value)}
           type="date"
           value={startDate}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          模板中的相对日期会以 {startDate || "所选日期"} 为基准恢复。
+          {workspaceDateError
+            ? "无法读取工作区日期，不能生成预览。"
+            : workspaceDatePending
+              ? "正在读取工作区日期…"
+              : `模板中的相对日期会以 ${startDate || "所选日期"} 为基准恢复。`}
         </p>
       </Field>
       <Field label="项目说明">
         <Textarea
-          disabled={detailPending}
+          disabled={detailPending || disabled}
           id="instantiate-project-description"
           onChange={(event) => onDescriptionChange(event.target.value)}
           rows={5}
@@ -756,6 +951,7 @@ function Field({
 
 function ResolutionStep({
   assigneeReplacements,
+  disabled,
   members,
   membersError,
   onAssigneeChange,
@@ -765,6 +961,7 @@ function ResolutionStep({
   secretInputs,
 }: {
   assigneeReplacements: Record<string, string | null>
+  disabled: boolean
   members: WorkspaceMemberRow[]
   membersError: boolean
   onAssigneeChange: (userID: string, value: string) => void
@@ -843,6 +1040,7 @@ function ResolutionStep({
                   {showInput ? (
                     <Input
                       autoComplete="new-password"
+                      disabled={disabled}
                       id={inputID}
                       onChange={(event) =>
                         onSecretChange(resolution.key, event.target.value)
@@ -886,6 +1084,7 @@ function ResolutionStep({
           <div className="space-y-3">
             {preview.assignee_issues.map((issue) => (
               <AssigneeResolution
+                disabled={disabled}
                 issue={issue}
                 key={issue.user.id}
                 members={members}
@@ -908,11 +1107,13 @@ function ResolutionStep({
 }
 
 function AssigneeResolution({
+  disabled,
   issue,
   members,
   onChange,
   value,
 }: {
+  disabled: boolean
   issue: AssigneeIssue
   members: WorkspaceMemberRow[]
   onChange: (value: string) => void
@@ -935,6 +1136,7 @@ function AssigneeResolution({
       <select
         aria-label={`处理${label}`}
         className="h-9 border bg-background px-3 text-sm"
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
@@ -1055,10 +1257,4 @@ function errorLabel(error: unknown, fallback: string) {
     project_template_secret_required: "机密值不可用，请重新输入。",
   }
   return labels[error.code] ?? `${fallback}（${error.code}）`
-}
-
-function localToday() {
-  const now = new Date()
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 10)
 }

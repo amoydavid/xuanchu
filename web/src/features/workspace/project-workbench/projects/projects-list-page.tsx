@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { BoxesIcon, PlusIcon } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -10,6 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ProjectTemplateInstantiateWizard } from "@/features/workspace/project-templates/instantiate/project-template-instantiate-wizard"
+import {
+  listProjectTemplates,
+  projectTemplateListQueryKey,
+} from "@/features/workspace/project-templates/api/project-template-api"
+import { canInstantiateProjectTemplate } from "@/features/workspace/project-templates/project-template-instantiation-permissions"
+import { canProjectManage } from "@/features/workspace/project-workbench/permissions/permissions"
 
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { useProjectsQuery } from "../hooks/use-project-data"
@@ -24,13 +31,38 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const me = useMe()
-  const role = me.data?.effective_role ?? ""
-  const canManage = role === "owner" || role === "admin"
+  const writeScopes = me.data?.token?.scopes
+  const canManage = canProjectManage({
+    role: me.data?.effective_role,
+    scopes: writeScopes,
+  })
   const [createOpen, setCreateOpen] = useState(false)
   const [instantiateOpen, setInstantiateOpen] = useState(false)
   const { data: projects = [], isPending, isError } = useProjectsQuery(
     workspaceSlug,
     "all"
+  )
+  const templateList = useQuery({
+    enabled: canManage && workspaceSlug !== "",
+    queryKey: projectTemplateListQueryKey(workspaceSlug, "active", "", 100, 0),
+    queryFn: () =>
+      listProjectTemplates(workspaceSlug, {
+        status: "active",
+        q: "",
+        limit: 100,
+        offset: 0,
+      }),
+  })
+  const canInstantiate = Boolean(
+    templateList.data?.items.some(
+      (template) =>
+        template.current_snapshot &&
+        canInstantiateProjectTemplate(
+          canManage,
+          writeScopes,
+          template.current_snapshot.counts
+        )
+    )
   )
 
   function openProject(projectSlug: string) {
@@ -120,10 +152,12 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setInstantiateOpen(true)} variant="outline">
-            <BoxesIcon data-icon="inline-start" />
-            从模板创建
-          </Button>
+          {canInstantiate ? (
+            <Button onClick={() => setInstantiateOpen(true)} variant="outline">
+              <BoxesIcon data-icon="inline-start" />
+              从模板创建
+            </Button>
+          ) : null}
           <Button onClick={() => setCreateOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             {t("projectWorkbench.projects.create.button")}
@@ -148,8 +182,11 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
         }}
       />
       <ProjectTemplateInstantiateWizard
+        canInstantiate={canInstantiate}
+        canManage={canManage}
         onOpenChange={setInstantiateOpen}
         open={instantiateOpen}
+        writeScopes={writeScopes}
         workspaceSlug={workspaceSlug}
       />
     </div>

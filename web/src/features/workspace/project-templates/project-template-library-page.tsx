@@ -30,7 +30,6 @@ import {
   getProjects,
   type ProjectWorkbenchProject,
 } from "@/features/workspace/project-workbench/api/project-api"
-import { hasScope } from "@/features/workspace/project-workbench/permissions/permissions"
 import { cn } from "@/lib/utils"
 
 import {
@@ -44,6 +43,7 @@ import {
   type ComponentCounts,
   type ProjectTemplateSummary,
 } from "./api/project-template-api"
+import { canInstantiateProjectTemplate } from "./project-template-instantiation-permissions"
 
 const PAGE_SIZE = 20
 
@@ -415,11 +415,14 @@ export function ProjectTemplateLibraryPage({
         />
       ) : null}
       <ProjectTemplateInstantiateWizard
+        canInstantiate={Boolean(instantiateSelection)}
+        canManage={canManage}
         initialSelection={instantiateSelection}
         onOpenChange={(next) => {
           if (!next) setInstantiateSelection(undefined)
         }}
         open={Boolean(instantiateSelection)}
+        writeScopes={writeScopes}
         workspaceSlug={workspaceSlug}
       />
     </section>
@@ -768,24 +771,6 @@ function TemplateDetail({
       </section>
     </div>
   )
-}
-
-export function canInstantiateProjectTemplate(
-  canManage: boolean,
-  writeScopes: string[] | null | undefined,
-  counts: ComponentCounts
-) {
-  if (!canManage) return false
-  if (
-    (counts.tasks > 0 || counts.series > 0) &&
-    !hasScope(writeScopes, "task:write")
-  ) {
-    return false
-  }
-  if (counts.configs > 0 && !hasScope(writeScopes, "config:write")) {
-    return false
-  }
-  return counts.automations === 0 || hasScope(writeScopes, "hook:write")
 }
 
 function CountCell({ label, value }: { label: string; value: number }) {

@@ -1,10 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { EditFeedbackProvider } from "@/features/workspace/project-workbench/shared/edit-feedback"
+import * as homeApi from "@/features/workspace/home/home-api"
 import { i18n } from "@/i18n"
 import { ApiError } from "@/lib/api"
 
@@ -35,6 +38,11 @@ vi.mock("../../members/members-api", async (importActual) => {
   const actual =
     await importActual<typeof import("../../members/members-api")>()
   return { ...actual, listWorkspaceMembers: vi.fn() }
+})
+
+vi.mock("@/features/workspace/home/home-api", async (importActual) => {
+  const actual = await importActual<typeof import("@/features/workspace/home/home-api")>()
+  return { ...actual, getHome: vi.fn() }
 })
 
 const oldUser = {
@@ -153,7 +161,8 @@ function renderWizard(
     snapshotID: current.id,
     snapshotHash: current.hash,
   },
-  onOpenChange = vi.fn()
+  onOpenChange = vi.fn(),
+  canInstantiate = true
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
@@ -162,17 +171,59 @@ function renderWizard(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <ProjectTemplateInstantiateWizard
-            initialSelection={selection ?? undefined}
-            onOpenChange={onOpenChange}
-            open
-            workspaceSlug="acme"
-          />
+          <EditFeedbackProvider>
+            <ProjectTemplateInstantiateWizard
+              canInstantiate={canInstantiate}
+              canManage
+              initialSelection={selection ?? undefined}
+              onOpenChange={onOpenChange}
+              open
+              writeScopes={["project:write", "task:write", "config:write", "hook:write"]}
+              workspaceSlug="acme"
+            />
+          </EditFeedbackProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )
   return { onOpenChange, queryClient }
+}
+
+function WizardNavigationHarness() {
+  const [open, setOpen] = useState(true)
+  return (
+    <EditFeedbackProvider>
+      <ProjectTemplateInstantiateWizard
+        canInstantiate
+        canManage
+        initialSelection={{
+          templateRef: "launch",
+          snapshotID: current.id,
+          snapshotHash: current.hash,
+        }}
+        onOpenChange={setOpen}
+        open={open}
+        writeScopes={["project:write", "task:write", "config:write", "hook:write"]}
+        workspaceSlug="acme"
+      />
+      {!open ? <p>项目详情已打开</p> : null}
+    </EditFeedbackProvider>
+  )
+}
+
+function renderWizardNavigationHarness() {
+  const queryClient = new QueryClient({
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <WizardNavigationHarness />
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  )
 }
 
 async function fillProject() {
@@ -199,6 +250,13 @@ describe("ProjectTemplateInstantiateWizard", () => {
       total: 1,
       limit: 20,
       offset: 0,
+    })
+    vi.mocked(homeApi.getHome).mockResolvedValue({
+      generated_at: 1,
+      today: "2026-07-31",
+      actor_type: "user",
+      my_work: null,
+      project_attention: [],
     })
     vi.mocked(api.getProjectTemplate).mockResolvedValue(detail)
     vi.mocked(api.previewProjectTemplateInstantiation).mockImplementation(
@@ -262,6 +320,32 @@ describe("ProjectTemplateInstantiateWizard", () => {
         "已创建 12 个任务、3 个循环任务、4 项配置和 2 条停用自动化"
       )
     ).toBeTruthy()
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      params: { workspaceSlug: "acme", projectSlug: "newproj" },
+    })
+  })
+
+  it("keeps the success toast after closing the wizard for navigation", async () => {
+    renderWizardNavigationHarness()
+    await fillProject()
+    await userEvent.type(
+      screen.getByLabelText("agent.provider.api_key"),
+      "sk-input"
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText("处理已离开成员"),
+      "__remove__"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "重新预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步：确认" }))
+    await userEvent.click(screen.getByRole("button", { name: "创建项目" }))
+
+    expect(await screen.findByText("项目详情已打开")).toBeTruthy()
+    expect(screen.queryByRole("dialog", { name: "从模板创建项目" })).toBeNull()
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "已创建 12 个任务、3 个循环任务、4 项配置和 2 条停用自动化"
+    )
     expect(navigateMock).toHaveBeenCalledWith({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug",
       params: { workspaceSlug: "acme", projectSlug: "newproj" },
@@ -356,9 +440,15 @@ describe("ProjectTemplateInstantiateWizard", () => {
     expect(api.listProjectTemplates).toHaveBeenCalledWith("acme", {
       status: "active",
       q: "",
-      limit: 100,
+      limit: 20,
       offset: 0,
     })
+  })
+
+  it("does not render the wizard without an explicit instantiation grant", () => {
+    renderWizard(null, vi.fn(), false)
+
+    expect(screen.queryByRole("dialog", { name: "从模板创建项目" })).toBeNull()
   })
 
   it("returns hash drift to template selection without adopting the new version", async () => {
@@ -464,5 +554,89 @@ describe("ProjectTemplateInstantiateWizard", () => {
         .disabled
     ).toBe(true)
     expect(api.previewProjectTemplateInstantiation).not.toHaveBeenCalled()
+  })
+
+  it("uses the server workspace date instead of the browser local date", async () => {
+    renderWizard()
+
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("开始日期") as HTMLInputElement).value
+      ).toBe("2026-07-31")
+    )
+    expect(homeApi.getHome).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not accept a late preview after the form revision changed", async () => {
+    let resolvePreview!: (value: api.InstantiatePreview) => void
+    vi.mocked(api.previewProjectTemplateInstantiation).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        })
+    )
+    renderWizard()
+    await screen.findByRole("dialog", { name: "从模板创建项目" })
+    await userEvent.type(screen.getByLabelText("项目 Slug"), "newproj")
+    await userEvent.type(screen.getByLabelText("项目名称"), "新项目")
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+
+    const slug = screen.getByLabelText("项目 Slug") as HTMLInputElement
+    expect(slug.disabled).toBe(true)
+    fireEvent.change(slug, { target: { value: "changed" } })
+    resolvePreview(
+      preview({
+        snapshot_id: "snap-3",
+        expected_snapshot_hash: "hash-3",
+        project_slug: "newproj",
+        project_name: "新项目",
+        start_date: "2026-07-31",
+      })
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByText("补齐创建条件")).toBeNull()
+    )
+    expect(screen.getByRole("button", { name: "生成预览" })).toBeTruthy()
+  })
+
+  it("searches and pages active templates from the project entry", async () => {
+    vi.mocked(api.listProjectTemplates).mockImplementation(
+      async (_workspace, options) => ({
+        items:
+          options.offset === 20
+            ? [{ ...template, id: "template-2", key: "next", name: "下一页模板" }]
+            : [template],
+        total: 21,
+        limit: 20,
+        offset: options.offset,
+      })
+    )
+    renderWizard(null)
+
+    await userEvent.type(await screen.findByLabelText("搜索模板"), "上线")
+    await userEvent.click(screen.getByRole("button", { name: "搜索" }))
+    await waitFor(() =>
+      expect(api.listProjectTemplates).toHaveBeenLastCalledWith("acme", {
+        status: "active",
+        q: "上线",
+        limit: 20,
+        offset: 0,
+      })
+    )
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }))
+    expect(await screen.findByText("下一页模板")).toBeTruthy()
+  })
+
+  it("runs the current step with Cmd/Ctrl+Enter", async () => {
+    renderWizard()
+    await screen.findByRole("dialog", { name: "从模板创建项目" })
+    await userEvent.type(screen.getByLabelText("项目 Slug"), "newproj")
+    await userEvent.type(screen.getByLabelText("项目名称"), "新项目")
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+
+    await waitFor(() =>
+      expect(api.previewProjectTemplateInstantiation).toHaveBeenCalledTimes(1)
+    )
   })
 })
