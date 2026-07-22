@@ -26,6 +26,7 @@ const kindLabel: Record<CandidateKind, string> = {
 }
 
 type SelectedItemsSheetProps = {
+  lockedConfigKeys?: Set<string>
   onClearAll: () => void
   onOpenChange: (open: boolean) => void
   onRemove: (kind: CandidateKind, ref: string) => void
@@ -34,6 +35,7 @@ type SelectedItemsSheetProps = {
 }
 
 export function SelectedItemsSheet({
+  lockedConfigKeys,
   onClearAll,
   onOpenChange,
   onRemove,
@@ -58,6 +60,7 @@ export function SelectedItemsSheet({
         </SheetHeader>
         <SelectedItemsPanel
           items={items}
+          lockedConfigKeys={lockedConfigKeys}
           onClearAll={onClearAll}
           onQueryChange={setQ}
           onRemove={onRemove}
@@ -69,10 +72,14 @@ export function SelectedItemsSheet({
 }
 
 export function SelectedItemsDrawer({
+  lockedConfigKeys,
   onClearAll,
   onRemove,
   selection,
-}: Pick<SelectedItemsSheetProps, "onClearAll" | "onRemove" | "selection">) {
+}: Pick<
+  SelectedItemsSheetProps,
+  "lockedConfigKeys" | "onClearAll" | "onRemove" | "selection"
+>) {
   const [q, setQ] = useState("")
   const items = useMemo(() => selectedItems(selection, q), [q, selection])
   return (
@@ -86,6 +93,7 @@ export function SelectedItemsDrawer({
       </div>
       <SelectedItemsPanel
         items={items}
+        lockedConfigKeys={lockedConfigKeys}
         onClearAll={onClearAll}
         onQueryChange={setQ}
         onRemove={onRemove}
@@ -97,12 +105,14 @@ export function SelectedItemsDrawer({
 
 function SelectedItemsPanel({
   items,
+  lockedConfigKeys = new Set(),
   onClearAll,
   onQueryChange,
   onRemove,
   query,
 }: {
   items: Array<CandidateSummary & { kind: CandidateKind }>
+  lockedConfigKeys?: Set<string>
   onClearAll: () => void
   onQueryChange: (value: string) => void
   onRemove: (kind: CandidateKind, ref: string) => void
@@ -144,9 +154,13 @@ function SelectedItemsPanel({
                       {item.ref}
                     </span>
                   </div>
+				  {item.kind === "config" && lockedConfigKeys.has(item.ref) ? (
+					  <div className="mt-1 text-[11px] text-muted-foreground">由已选自动化依赖，取消自动化后才可移除</div>
+				  ) : null}
                 </div>
                 <Button
                   aria-label={`移除 ${item.label}`}
+				  disabled={item.kind === "config" && lockedConfigKeys.has(item.ref)}
                   onClick={() => onRemove(item.kind, item.ref)}
                   size="icon-sm"
                   variant="ghost"

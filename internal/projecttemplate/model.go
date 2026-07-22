@@ -61,9 +61,10 @@ type TaskBlueprintV1 struct {
 }
 
 type ConfigBlueprintV1 struct {
-	Key   string  `json:"key"`
-	Mode  string  `json:"mode"`
-	Value *string `json:"value,omitempty"`
+	Key              string  `json:"key"`
+	Mode             string  `json:"mode"`
+	Value            *string `json:"value,omitempty"`
+	SecretCiphertext *string `json:"secret_ciphertext,omitempty"`
 }
 
 type SeriesBlueprintV1 struct {

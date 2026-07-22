@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -75,13 +76,16 @@ func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 	dir := t.TempDir()
 	serverDB := filepath.Join(dir, "server.db")
 	sourceSecret := "sk-source-must-not-leak"
-	stdinSecret := "sk-stdin-must-not-leak"
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[security]\nconfig_secret_key = \"uH/SPe+6vEbjsJ7OljBz3SNy6BlKDInYsquKTz0MV/Q=\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "add", "tplsource", "name:模板来源")
 	run(t, bin, "--db", serverDB, "--workspace", "local", "config", "schema", "set", "template.api_key", "type:string", "scopes:project", "secret:true")
 	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tplsource", "template.api_key", sourceSecret)
 	token := parseRawToken(t, createTokenJSON(t, bin, "--db", serverDB, "template-remote-e2e", "*"))
-	server, baseURL := startXuanchuServer(t, bin, "--db", serverDB)
+	server, baseURL := startXuanchuServer(t, bin, "--config", configPath, "--db", serverDB)
 	defer stopXuanchuServer(t, server)
 	headers := authHeaders(token)
 
@@ -116,7 +120,7 @@ func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 		"project", "template", "instantiate", "launch", "remoteproj", "name:远程创建",
 		"--snapshot", historicalID, "--snapshot-hash", historicalHash, "--start-date", "2026-08-01", "--input", "-",
 	)
-	instantiate.Stdin = strings.NewReader(`{"description":"覆盖说明","secret_inputs":{"template.api_key":"` + stdinSecret + `"}}`)
+	instantiate.Stdin = strings.NewReader(`{"description":"覆盖说明"}`)
 	instantiate.Stdout, instantiate.Stderr = &stdout, &stderr
 	if err := instantiate.Run(); err != nil {
 		t.Fatalf("remote instantiate error=%v stdout=%s stderr=%s", err, stdout.String(), stderr.String())
@@ -124,7 +128,7 @@ func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 	if !strings.Contains(stdout.String(), "remoteproj") || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-	for _, secret := range []string{sourceSecret, stdinSecret} {
+	for _, secret := range []string{sourceSecret} {
 		if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
 			t.Fatalf("secret %q leaked: stdout=%q stderr=%q", secret, stdout.String(), stderr.String())
 		}
@@ -147,7 +151,7 @@ func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 		"project", "template", "instantiate", "launch", "stalecreate", "name:过期创建",
 		"--snapshot", historicalID, "--snapshot-hash", historicalHash, "--start-date", "2026-08-01", "--input", "-",
 	)
-	stale.Stdin = strings.NewReader(`{"secret_inputs":{"template.api_key":"` + stdinSecret + `"}}`)
+	stale.Stdin = strings.NewReader(`{}`)
 	stale.Stdout, stale.Stderr = &stdout, &stderr
 	if err := stale.Run(); err == nil {
 		t.Fatalf("stale remote instantiate succeeded: stdout=%s stderr=%s", stdout.String(), stderr.String())
@@ -155,8 +159,8 @@ func TestE2EProjectTemplateRemoteCLIUsesCurrentOnlySurface(t *testing.T) {
 	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "project_template_snapshot_hash_mismatch") {
 		t.Fatalf("stale stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-	if strings.Contains(stderr.String(), stdinSecret) {
-		t.Fatalf("stale error leaked stdin secret: %s", stderr.String())
+	if strings.Contains(stderr.String(), sourceSecret) {
+		t.Fatalf("stale error leaked source secret: %s", stderr.String())
 	}
 }
 

@@ -16,7 +16,7 @@
 - Snapshot 使用 `xuanchu.project-template-snapshot/v1` Go struct 严格编解码；拒绝未知字段、未知 schema、trailing JSON、非法 ref 和超限内容。
 - Snapshot 不可变；更新 Template 只能追加 version 并原子更新 `current_snapshot_id`。
 - 普通 task 生成新 UUID、开放状态和新 project seq；Series 生成 active Series 与一条 initial RuleVersion，不复制 occurrence、历史 RuleVersion、tombstone、skip 或 backlog。
-- 只保存 project 显式 config；secret 只保存 `secret_input` 占位，secret 值不得进入 Snapshot、audit、日志、错误或 preview response。
+- 只保存 project 显式 config；automation 选择会在服务端自动闭包其 provider config 依赖。secret 以 `secret_copy` 的 AES-GCM 密文保存到原始 Snapshot，实例化时直接复制；明文和密文均不得进入 view、audit、日志、错误或 preview response，旧 `secret_input` 仅兼容历史 Snapshot。
 - Automation 只复制规则定义，新规则固定 `enabled=false`，不复制 delivery/retry/request/response。
 - Capture 只接受四个显式选择数组；filter/query 只用于找候选和展开 refs，不进入 Snapshot。候选 GET 支持重复 `ref` 精确重取（最多 100 个）；来源 drift 后 Web 必须按已选 stable ref 分批重取摘要，不能只刷新当前分页或退化为模糊搜索。
 - 候选默认 `limit=50`、最大 100；Snapshot 上限 task 1,000、series 200、config 500、automation 200、canonical JSON 8 MiB。
@@ -647,7 +647,7 @@ type CaptureResolution struct {
 }
 ```
 
-服务端只能接受与当前 Preview blocking issue 精确匹配的 drop/override；未提示的关系不能删除。`ContentRefResolution.SourceKind` 只允许 `task|series`，因此 Task 和 Series description 的 task ref 都能被精确处理。普通 task 全部变成开放 blueprint，不保存 status/start/annotation/occurrence/attachment。active Series 用现有 recurrence engine 取 anchor date 当天或之后的第一个合法槽位；源 until 早于新 first_due 时清空并 warning。ended/stopped 无未来槽位时以 anchor date D+0 为 first_due、清空 until，并要求提交一个与默认值相同或经用户修改的 `SeriesScheduleOverride` 才解除 blocking confirmation。secret config 只写 `{mode:"secret_input",value:nil}`；automation 显式映射 typed struct且忽略 enabled/delivery。正文 task ref 改 local ref，user ref 保留同 workspace user ID，attachment 阻断。
+服务端只能接受与当前 Preview blocking issue 精确匹配的 drop/override；未提示的关系不能删除。`ContentRefResolution.SourceKind` 只允许 `task|series`，因此 Task 和 Series description 的 task ref 都能被精确处理。普通 task 全部变成开放 blueprint，不保存 status/start/annotation/occurrence/attachment。active Series 用现有 recurrence engine 取 anchor date 当天或之后的第一个合法槽位；源 until 早于新 first_due 时清空并 warning。ended/stopped 无未来槽位时以 anchor date D+0 为 first_due、清空 until，并要求提交一个与默认值相同或经用户修改的 `SeriesScheduleOverride` 才解除 blocking confirmation。选择 automation 后，服务端从归一化 action 计算 provider config 闭包，将来源项目中存在的显式 config 自动加入选择；secret config 写 `{mode:"secret_copy",secret_ciphertext:"enc:v1:..."}`，ciphertext 只存在原始 Snapshot，历史 `secret_input` 保持可读。automation 显式映射 typed struct且忽略 enabled/delivery。正文 task ref 改 local ref，user ref 保留同 workspace user ID，attachment 阻断。
 
 - [x] **Step 5: 同事务创建首个 Snapshot/追加版本、审计并提交**
 

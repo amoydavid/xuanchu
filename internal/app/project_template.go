@@ -469,7 +469,7 @@ func projectTemplateSnapshotView(snapshot projecttemplate.Snapshot, users map[st
 	view := &ProjectTemplateSnapshotView{Project: snapshot.Project, Configs: make([]ProjectTemplateConfigView, 0, len(snapshot.Configs)), Tasks: make([]ProjectTemplateTaskView, 0, len(snapshot.Tasks)), Series: make([]ProjectTemplateSeriesView, 0, len(snapshot.Series)), Automations: append([]ProjectTemplateAutomationView(nil), snapshot.Automations...)}
 	for _, config := range snapshot.Configs {
 		value := config.Value
-		if config.Mode == "secret_input" {
+		if config.Mode == "secret_input" || config.Mode == "secret_copy" {
 			value = nil
 		}
 		view.Configs = append(view.Configs, ProjectTemplateConfigView{Key: config.Key, Mode: config.Mode, Value: value})

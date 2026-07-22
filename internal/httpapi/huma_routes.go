@@ -918,9 +918,10 @@ func projectTemplateCapturePreviewOpenAPISchema() *huma.Schema {
 	issues := &huma.Schema{Type: "array", Items: projectTemplateIssueOpenAPISchema()}
 	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"selection": selection, "source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
-		"counts": projectTemplateCountsOpenAPISchema(), "blocking_issues": issues, "warnings": issues,
+		"required_config_keys": {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"counts":               projectTemplateCountsOpenAPISchema(), "blocking_issues": issues, "warnings": issues,
 		"snapshot": projectTemplatePublicSnapshotOpenAPISchema(),
-	}, Required: []string{"selection", "source_hash", "counts", "blocking_issues", "warnings"}}
+	}, Required: []string{"selection", "required_config_keys", "source_hash", "counts", "blocking_issues", "warnings"}}
 }
 
 func projectTemplateInstantiatePreviewOpenAPISchema() *huma.Schema {
@@ -932,7 +933,7 @@ func projectTemplateInstantiatePreviewOpenAPISchema() *huma.Schema {
 		}, Required: []string{"slug", "name", "description", "start_date"}},
 		"counts": projectTemplateCountsOpenAPISchema(),
 		"secret_resolutions": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
-			"key": {Type: "string"}, "resolved_from": {Type: "string", Enum: []any{"input", "workspace", "default", "missing"}},
+			"key": {Type: "string"}, "resolved_from": {Type: "string", Enum: []any{"input", "workspace", "default", "missing", "template", "unavailable"}},
 		}, Required: []string{"key", "resolved_from"}}},
 		"assignee_issues": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 			"user": userInfoOpenAPISchema(), "affected_refs": {Type: "array", Items: &huma.Schema{Type: "string"}}, "resolution": {Type: "string"},

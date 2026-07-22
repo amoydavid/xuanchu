@@ -26,10 +26,12 @@ func ValidateSnapshot(snapshot Snapshot, limits Limits) error {
 		return invalid("snapshot component count exceeds limit")
 	}
 	for _, config := range snapshot.Configs {
-		if config.Key == "" || (config.Mode != "literal" && config.Mode != "secret_input") {
+		if config.Key == "" || (config.Mode != "literal" && config.Mode != "secret_input" && config.Mode != "secret_copy") {
 			return invalid("config key or mode is invalid")
 		}
-		if (config.Mode == "literal" && config.Value == nil) || (config.Mode == "secret_input" && config.Value != nil) {
+		if (config.Mode == "literal" && (config.Value == nil || config.SecretCiphertext != nil)) ||
+			(config.Mode == "secret_input" && (config.Value != nil || config.SecretCiphertext != nil)) ||
+			(config.Mode == "secret_copy" && (config.Value != nil || config.SecretCiphertext == nil || strings.TrimSpace(*config.SecretCiphertext) == "")) {
 			return invalid("config value does not match mode")
 		}
 	}

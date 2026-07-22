@@ -310,18 +310,20 @@ type TaskBlueprintV1 struct {
 
 ```go
 type ConfigBlueprintV1 struct {
-    Key   string  `json:"key"`
-    Mode  string  `json:"mode"` // literal|secret_input
-    Value *string `json:"value,omitempty"`
+    Key              string  `json:"key"`
+    Mode             string  `json:"mode"` // literal|secret_input|secret_copy
+    Value            *string `json:"value,omitempty"`
+    SecretCiphertext *string `json:"secret_ciphertext,omitempty"`
 }
 ```
 
 约束：
 
 - `mode=literal` 时 `value` 必填，且 Capture 时 schema 必须不是 secret。
-- `mode=secret_input` 时 `value` 必须为空。
+- `mode=secret_input` 时 `value` 和 `secret_ciphertext` 必须为空；仅为旧版本 Snapshot 兼容保留，实例化时仍可输入或继承。
+- `mode=secret_copy` 时 `value` 必须为空，`secret_ciphertext` 必须是服务端以 `[security].config_secret_key` 加密后的 AES-GCM envelope。它只存在原始 Snapshot JSON，任何 HTTP/MCP/Remote/CLI view、preview、audit、日志和错误都不得返回密文或明文。
 - Snapshot 不保存 workspace 继承值或 default。
-- 即使调用方持有 secret read 能力，也不能把 secret 放入 Snapshot。
+- 当前 workspace 内的显式 project secret 会随 Snapshot 加密保存，实例化时由服务端解密并直接写入新项目；不要求用户重新输入，也不提供 secret reveal 接口。
 
 ### 9.5 Series blueprint
 
@@ -396,7 +398,7 @@ Capture 在写库前必须：
 - 使用标准 codec 序列化最终 struct；
 - 对最终字节计算 SHA-256。
 
-`snapshot_hash` 同时用于去重、预检防漂移和项目来源审计。
+`snapshot_hash` 同时用于去重、预检防漂移和项目来源审计。`secret_copy` 使用随机 nonce，因此相同 secret 的重新 Capture 仍会产生新快照 hash；这是加密语义的一部分，不能改用确定性加密。
 
 原始 `snapshot_json` 不通过 HTTP/MCP/Remote 直接返回。输出层返回 typed/redacted view，secret placeholder 只显示 key 和解析状态。
 
@@ -569,6 +571,10 @@ configs.scope_id     = source project id
 - 如果一个历史 literal key 后来被改为 secret，Instantiate 不得返回或使用 Snapshot literal，必须按 secret_input 处理并要求用户确认新的值或继承来源。历史 Snapshot 仍不可修改。
 
 ### 10.8 Automation
+
+选择 automation 时，Capture 必须执行依赖闭包：从已归一化的 action 读取实际 provider config key（base URL、API key、无 model override 时的 model、allowed hosts）。来源项目存在对应显式 project config 时，服务端自动加入 `selection.config_keys` 与 Snapshot；这些 key 是 required config，Web Console 必须标为“由自动化依赖”、不可单独取消。取消所有依赖该 key 的 automation 后才可移除。workspace/default 继承值不写入 Snapshot，仍由新项目在实例化时解析。
+
+后端独立执行闭包，不信任客户端 selection；若自动依赖加入后超过 config 上限则 Capture 阻断。依赖提取必须复用 automation provider 的归一化规则，不能维护另一份硬编码清单。
 
 - 候选列表来自 source Project 的 automation rule，包含 enabled/disabled；两者都可选。
 - Snapshot 保存规则结构，不保存 enabled 状态。

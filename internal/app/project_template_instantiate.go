@@ -847,6 +847,28 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 			issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "scope", "config no longer allows project scope"))
 			continue
 		}
+		if blueprint.Mode == "secret_copy" {
+			if !def.Secret {
+				issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "mode", "copied secret no longer matches the current config schema"))
+				continue
+			}
+			value, decryptErr := s.decryptProjectTemplateSecret(blueprint.SecretCiphertext)
+			if decryptErr != nil {
+				issues = append(issues, blockingTemplateIssue("project_template_secret_copy_unavailable", "config", blueprint.Key, "value", "template secret cannot be copied"))
+				secretViews = append(secretViews, SecretResolutionView{Key: blueprint.Key, ResolvedFrom: "unavailable"})
+				continue
+			}
+			value, validateErr := s.validateProspectiveProjectConfigValue(def, value)
+			if validateErr != nil {
+				issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "value", "copied secret is incompatible with current config schema"))
+				secretViews = append(secretViews, SecretResolutionView{Key: blueprint.Key, ResolvedFrom: "unavailable"})
+				continue
+			}
+			projectValues[blueprint.Key], effectiveValues[blueprint.Key] = value, value
+			secretViews = append(secretViews, SecretResolutionView{Key: blueprint.Key, ResolvedFrom: "template"})
+			applied++
+			continue
+		}
 		secret := blueprint.Mode == "secret_input" || def.Secret
 		if secret {
 			allowedSecretInputs[blueprint.Key] = true
@@ -892,6 +914,17 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 	}
 	sort.Slice(secretViews, func(i, j int) bool { return secretViews[i].Key < secretViews[j].Key })
 	return secretViews, issues, applied, nil
+}
+
+func (s *Service) decryptProjectTemplateSecret(ciphertext *string) (string, error) {
+	if ciphertext == nil || strings.TrimSpace(*ciphertext) == "" {
+		return "", ErrConfigSecretKeyMissing
+	}
+	value, err := DecryptConfigSecret(s.tokenSecretKey, *ciphertext)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func (s *Service) planInstantiateTaskContent(snapshot projecttemplate.Snapshot, startDate string, members instantiateMemberState, taskIDs, seriesIDs map[string]string, issues *[]ProjectTemplateIssue) ([]plannedTask, []plannedSeries, error) {

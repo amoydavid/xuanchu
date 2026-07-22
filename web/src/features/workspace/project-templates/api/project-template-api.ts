@@ -328,6 +328,7 @@ export type CaptureIssue = {
 
 export type CapturePreview = {
   selection: CaptureSelection
+  required_config_keys: string[]
   source_hash: string
   counts: ComponentCounts
   blocking_issues: CaptureIssue[]

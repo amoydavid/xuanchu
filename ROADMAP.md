@@ -679,7 +679,7 @@ docs/superpowers/plans/2026-07-17-web-console-user-home-implementation.md
 - Template 保存稳定 key、生命周期和 current Snapshot；版本内容全部写入带 schema 的 `snapshot_json TEXT`，由 Go strict codec、canonical JSON 和 SHA-256 hash 约束，SQLite/PostgreSQL 不依赖方言 JSON 类型。
 - Web Console 提供完整治理：四类候选由服务端筛选/count/分页，支持当前页全选、全部匹配展开、跨页已选清单、Capture Preview、冲突 resolution、版本查看/追加和 archive/reactivate。
 - Instantiate 再次校验 current hash、成员、Config/UDA、secret、Automation 和日期，在单事务中创建 planning Project、新 Task/Series/RuleVersion、显式 config 和 disabled automation；关系/ref 重映射，occurrence/history/delivery 不复制。
-- secret 只在 Snapshot 中保留 `secret_input` 占位，值不进入 Snapshot、audit、日志、错误或 preview response；不可用成员必须显式替换或移除。
+- automation 选择会自动闭包其显式项目配置依赖；项目级 secret 以加密密文保存为 `secret_copy` 并在实例化时直接复制，明文/密文均不进入 view、audit、日志、错误或 preview response；历史 `secret_input` 仍可兼容实例化，不可用成员必须显式替换或移除。
 - HTTP/Web 承担 candidate、Capture、Preview 和版本治理；CLI、Remote、MCP 只提供 active template list 与 current Snapshot instantiate。MCP 精确注册 `project_template_list`、`project_template_instantiate` 两个 tool。
 - 发布验证新增真实生产 Web 的 desktop/mobile Playwright smoke，以及由 `XUANCHU_E2E_POSTGRES_ADMIN_URL` opt-in 的 PostgreSQL HTTP Capture + MCP current workflow。
 
@@ -1681,7 +1681,7 @@ v0.5.5 至 v0.5.9 已依次完成任务详情重构、项目自动化、循环�
 
 v0.5.11 已完成。该里程碑继续保持 task description 的 Markdown 字符串契约，在现有 Tiptap 编辑器上交付了富文本粘贴、公网远程图片受控抓取转存、workspace 级通用附件基础及 task 首期接入、鉴权图片渲染、用户/任务语义引用和 `task.user_mentioned` 事件；附件通过 `attached_to_type + attached_to_id` 关联业务实体，后续 project/series/workspace 接入无需迁表。附件二进制默认使用本地文件系统，可选使用 private S3/MinIO，对外不暴露 bucket 或持久预签名 URL。
 
-v0.6.0 进入设计阶段。该里程碑新增 workspace 内项目模板：用户在 Web Console 通过服务端筛选、稳定分页和独立的跨页已选清单，从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；从模板创建项目时重新分配所有资源身份、按项目启动日恢复相对日期、重建任务引用、要求重新解析 secret，并确保自动化规则以停用状态创建。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。HTTP 保留 Web 所需的完整治理接口；CLI、Remote 和 MCP 只提供模板列表与从 current Snapshot 创建项目，其中 MCP 只注册 `project_template_list` / `project_template_instantiate` 两个 tool。
+v0.6.0 已完成。该里程碑新增 workspace 内项目模板：用户在 Web Console 通过服务端筛选、稳定分页和独立的跨页已选清单，从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；选择 automation 时服务端自动闭包其显式 config 依赖，项目级 secret 作为加密 `secret_copy` 随 Snapshot 保存并在创建项目时直接复制。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。HTTP 保留 Web 所需的完整治理接口；CLI、Remote 和 MCP 只提供模板列表与从 current Snapshot 创建项目，其中 MCP 只注册 `project_template_list` / `project_template_instantiate` 两个 tool。
 
 最新规格：
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -357,7 +358,7 @@ func TestCaptureRejectsChangedSourceAndNeverPersistsSecret(t *testing.T) {
 	if err := svc.store.DB().Where("id = ?", created.Template.CurrentSnapshot.ID).First(&snapshot).Error; err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(snapshot.SnapshotJSON, secret) || !strings.Contains(snapshot.SnapshotJSON, `"mode":"secret_input"`) {
+	if strings.Contains(snapshot.SnapshotJSON, secret) || !strings.Contains(snapshot.SnapshotJSON, `"mode":"secret_copy"`) || !strings.Contains(snapshot.SnapshotJSON, `"secret_ciphertext":"enc:v1:`) {
 		t.Fatalf("snapshot = %s", snapshot.SnapshotJSON)
 	}
 	var audits []storage.AuditLog
@@ -366,6 +367,60 @@ func TestCaptureRejectsChangedSourceAndNeverPersistsSecret(t *testing.T) {
 	}
 	if len(audits) != 2 || strings.Contains(string(mustJSON(audits)), secret) {
 		t.Fatalf("audits = %#v", audits)
+	}
+}
+
+func TestCaptureAutomationClosesConfigDependenciesAndCopiesSecret(t *testing.T) {
+	svc, project := captureFixture(t)
+	values := map[string]string{
+		"agent.provider.base_url":      "https://api.example.test",
+		"agent.provider.api_key":       "sk-template-copy-must-not-leak",
+		"agent.provider.model":         "gpt-test",
+		"agent.provider.allowed_hosts": "[]",
+	}
+	for key, value := range values {
+		if err := svc.configRepo.Set(storage.ConfigKey{WorkspaceID: project.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: key}, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enabled := true
+	rule := storage.ProjectAutomationRule{
+		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "自动巡检", Enabled: &enabled,
+		TriggerType: "schedule", TriggerConfigJSON: `{"schedule_type":"daily_at","schedule_value":"09:00","timezone":"Asia/Shanghai"}`,
+		ConditionJSON: `{"max_tasks":10}`, ActionType: ProjectAutomationActionOpenAI,
+		ActionConfigJSON:  `{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model","allowed_hosts_config_key":"agent.provider.allowed_hosts","temperature":0.2}`,
+		ContextConfigJSON: `{"include":["project"]}`, InstructionTemplate: "检查项目", CreatedAt: 1, ModifiedAt: 1,
+	}
+	if err := svc.projectAutomationRuleRepo.Create(rule); err != nil {
+		t.Fatal(err)
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{AutomationRuleIDs: []string{rule.ID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := []string{"agent.provider.allowed_hosts", "agent.provider.api_key", "agent.provider.base_url", "agent.provider.model"}
+	if !slices.Equal(preview.Selection.ConfigKeys, wantKeys) || !slices.Equal(preview.RequiredConfigKeys, wantKeys) || preview.Counts.Configs != len(wantKeys) {
+		t.Fatalf("capture closure = %#v", preview)
+	}
+	if strings.Contains(string(mustJSON(preview)), values["agent.provider.api_key"]) {
+		t.Fatalf("preview leaked secret: %s", mustJSON(preview))
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "auto-copy", Name: "自动复制", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := created.Template.CurrentSnapshot
+	result, err := svc.InstantiateProjectTemplate(created.Template.ID, InstantiateInput{SnapshotID: current.ID, ExpectedHash: current.Hash, ProjectSlug: "autocopy2", ProjectName: "自动复制新项目", StartDate: "2026-07-21"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range values {
+		got, ok, err := svc.configRepo.Get(storage.ConfigKey{WorkspaceID: project.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: result.Project.ID, Key: key})
+		if err != nil || !ok || got != want {
+			t.Fatalf("copied config %s = %q, %t, %v", key, got, ok, err)
+		}
 	}
 }
 

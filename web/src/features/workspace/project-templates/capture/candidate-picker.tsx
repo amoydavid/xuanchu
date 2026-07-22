@@ -55,6 +55,7 @@ type Candidate =
 
 type CandidatePickerProps = {
   kind: CandidateKind
+  lockedRefs?: Set<string>
   onChange: (next: Map<string, CandidateSummary>) => void
   onLimitError: (message?: string) => void
   onSummariesChange: (next: Map<string, CandidateSummary>) => void
@@ -75,6 +76,7 @@ const labels: Record<CandidateKind, { search: string; empty: string }> = {
 
 export function CandidatePicker({
   kind,
+  lockedRefs = new Set(),
   onChange,
   onLimitError,
   onSummariesChange,
@@ -229,6 +231,7 @@ export function CandidatePicker({
   ])
 
   function toggle(candidate: Candidate, checked: boolean) {
+	if (!checked && lockedRefs.has(candidate.ref)) return
     const next = new Map(selected)
     if (checked) next.set(candidate.ref, summarizeCandidate(candidate, kind))
     else next.delete(candidate.ref)
@@ -239,7 +242,7 @@ export function CandidatePicker({
     const next = new Map(selected)
     for (const candidate of page.items) {
       if (checked) next.set(candidate.ref, summarizeCandidate(candidate, kind))
-      else next.delete(candidate.ref)
+      else if (!lockedRefs.has(candidate.ref)) next.delete(candidate.ref)
     }
     onChange(next)
   }
@@ -256,7 +259,7 @@ export function CandidatePicker({
       const next = new Map(selected)
       for (const ref of result.refs) {
         if (action === "remove") {
-          next.delete(ref)
+		  if (!lockedRefs.has(ref)) next.delete(ref)
           continue
         }
         const current = page.items.find((item) => item.ref === ref)
@@ -504,6 +507,7 @@ export function CandidatePicker({
                 <Checkbox
                   aria-label={summary.label}
                   checked={selected.has(candidate.ref)}
+				  disabled={lockedRefs.has(candidate.ref)}
                   onCheckedChange={(checked) =>
                     toggle(candidate, checked === true)
                   }
@@ -532,6 +536,9 @@ export function CandidatePicker({
                       机密值不会显示或复制
                     </div>
                   ) : null}
+				  {lockedRefs.has(candidate.ref) ? (
+					  <Badge variant="outline">由自动化依赖</Badge>
+				  ) : null}
                 </div>
               </li>
             )

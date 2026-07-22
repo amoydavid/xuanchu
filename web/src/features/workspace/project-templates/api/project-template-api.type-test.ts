@@ -8,6 +8,7 @@ export const blockingCapturePreviewContract: CapturePreview = {
     config_keys: [],
     automation_rule_ids: [],
   },
+  required_config_keys: [],
   source_hash: "source-hash",
   counts: { tasks: 0, series: 0, configs: 0, automations: 0 },
   blocking_issues: [

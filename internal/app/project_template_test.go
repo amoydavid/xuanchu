@@ -25,7 +25,7 @@ type projectTemplateFixture struct {
 func newProjectTemplateFixture(t *testing.T) projectTemplateFixture {
 	t.Helper()
 	store := newTestStore(t)
-	owner, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+	owner, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}, TokenSecretKey: testSecretKey(t)})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

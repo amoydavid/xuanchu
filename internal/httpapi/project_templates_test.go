@@ -63,7 +63,7 @@ func TestProjectTemplateInstantiateCurrentOnlyRejectsHistoricalSnapshot(t *testi
 	fixture := newHTTPProjectTemplateFixture(t)
 	historical := seedHTTPProjectTemplate(t, fixture)
 
-	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local", TokenSecretKey: fixture.server.secretKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestProjectTemplateValidationErrorReturnsTypedIssues(t *testing.T) {
 
 func TestProjectTemplateProjectScopedTokenIsForbidden(t *testing.T) {
 	fixture := newHTTPProjectTemplateFixture(t)
-	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local", TokenSecretKey: fixture.server.secretKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func newHTTPProjectTemplateFixture(t *testing.T) httpTokenFixture {
 
 func seedHTTPProjectTemplate(t *testing.T, fixture httpTokenFixture) app.ProjectTemplateView {
 	t.Helper()
-	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local", TokenSecretKey: fixture.server.secretKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,6 @@ func instantiateRequestJSON(created app.ProjectTemplateView, slug string) string
 		"project_slug":           slug,
 		"project_name":           "从模板创建",
 		"start_date":             "2026-07-20",
-		"secret_inputs":          map[string]string{"template.api_key": projectTemplateFixtureSecret},
 	}
 	raw, _ := json.Marshal(body)
 	return string(raw)

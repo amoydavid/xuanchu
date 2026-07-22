@@ -141,7 +141,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 ### 项目模板
 
-项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project 显式配置和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」负责填写新项目字段、secret 和失效成员替换，并在一个事务中创建 planning Project。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
+项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project 显式配置和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。选择 automation 时，它依赖的显式项目配置会自动加入并锁定；项目级 secret 会以加密形式随快照复制，界面和接口均不显示其值。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」负责填写新项目字段、历史模板所需的 secret 与失效成员替换，并在一个事务中创建 planning Project。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
 
 CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 Capture、Preview、详情、归档或版本治理。先用 list 取得 current Snapshot ID/hash：
 
@@ -172,7 +172,7 @@ CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 C
 JSON
 ```
 
-`--input` 也接受最大 1 MiB 的 JSON 文件。Snapshot 只保存 secret key 占位，不保存 secret 值；响应、审计、日志和错误也不得回显输入值。若 current Snapshot 已变化，实例化返回 `project_template_snapshot_hash_mismatch`，必须重新 list 并由调用方确认新 ID/hash，不能自动切换版本。远程 CLI 使用同一组命令和字段，只需增加 `--server`、`--token` 与显式 `--workspace`。
+`--input` 也接受最大 1 MiB 的 JSON 文件。新 Snapshot 的项目级 secret 以加密密文保存并由服务端直接复制；`secret_inputs` 仅兼容历史 `secret_input` 模板。响应、审计、日志和错误都不得回显明文或密文。若 current Snapshot 已变化，实例化返回 `project_template_snapshot_hash_mismatch`，必须重新 list 并由调用方确认新 ID/hash，不能自动切换版本。远程 CLI 使用同一组命令和字段，只需增加 `--server`、`--token` 与显式 `--workspace`。
 
 普通 Console 的 `/members` 页面是 workspace 成员管理入口。owner/admin 可以搜索和筛选成员、添加已有用户或创建最小用户后加入 workspace、编辑成员 `display_name`、调整角色、移出成员；所有弹窗和危险确认都走 shadcn 组件。`/members/:userRef` 承载次级成员详情：身份快照、当前 membership、外部身份摘要、关联 token 跳转和最近成员审计。admin 只能管理非 owner 成员；owner 可以授予/降级 owner 或移出 owner，但服务端会保护最后一个 owner。member/viewer 只能查看成员名册和详情。`users.name` 仍是稳定引用名，`display_name` 只用于展示姓名；成员页修改展示姓名不会改变稳定名。浏览器 OIDC session 允许普通 `/api/v1/*` 的成员管理与 token 管理（创建/修改/吊销 PAT/Agent/tenant token）写入，但仍必须经过 CSRF、membership role 和 scope 检查，且不会因此获得 `impersonate`；token 管理动作最终仍受 app 层 `tokenManageAllowed(role)` 约束，仅 owner/admin 可执行。
 

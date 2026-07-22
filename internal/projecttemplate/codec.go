@@ -83,6 +83,7 @@ func normalizeV1(in SnapshotV1) (SnapshotV1, error) {
 		out.Configs[i].Key = strings.TrimSpace(out.Configs[i].Key)
 		out.Configs[i].Mode = strings.TrimSpace(out.Configs[i].Mode)
 		out.Configs[i].Value = trimPtr(out.Configs[i].Value)
+		out.Configs[i].SecretCiphertext = trimPtr(out.Configs[i].SecretCiphertext)
 	}
 	sort.Slice(out.Configs, func(i, j int) bool { return lessConfig(out.Configs[i], out.Configs[j]) })
 	out.Configs = uniqueConfigs(out.Configs)
@@ -111,7 +112,10 @@ func lessConfig(left, right ConfigBlueprintV1) bool {
 	if left.Mode != right.Mode {
 		return left.Mode < right.Mode
 	}
-	return configValue(left.Value) < configValue(right.Value)
+	if configValue(left.Value) != configValue(right.Value) {
+		return configValue(left.Value) < configValue(right.Value)
+	}
+	return configValue(left.SecretCiphertext) < configValue(right.SecretCiphertext)
 }
 
 func uniqueConfigs(configs []ConfigBlueprintV1) []ConfigBlueprintV1 {

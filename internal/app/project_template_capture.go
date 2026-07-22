@@ -123,24 +123,26 @@ func (issue CaptureIssue) MarshalJSON() ([]byte, error) {
 }
 
 type CapturePreview struct {
-	Selection      CaptureSelection             `json:"selection"`
-	SourceHash     string                       `json:"source_hash"`
-	Counts         ComponentCounts              `json:"counts"`
-	BlockingIssues []CaptureIssue               `json:"blocking_issues"`
-	Warnings       []CaptureIssue               `json:"warnings"`
-	Snapshot       *ProjectTemplateSnapshotView `json:"snapshot"`
+	Selection          CaptureSelection             `json:"selection"`
+	RequiredConfigKeys []string                     `json:"required_config_keys"`
+	SourceHash         string                       `json:"source_hash"`
+	Counts             ComponentCounts              `json:"counts"`
+	BlockingIssues     []CaptureIssue               `json:"blocking_issues"`
+	Warnings           []CaptureIssue               `json:"warnings"`
+	Snapshot           *ProjectTemplateSnapshotView `json:"snapshot"`
 }
 
 type captureSource struct {
-	Project     storage.Project
-	Selection   CaptureSelection
-	Tasks       []task.Task
-	Series      []taskseries.Series
-	Configs     []storage.ConfigCandidate
-	Automations []storage.ProjectAutomationRule
-	UDADefs     map[string]uda.Definition
-	Members     []storage.MemberWithUser
-	UserRefs    map[string][]string
+	Project            storage.Project
+	Selection          CaptureSelection
+	RequiredConfigKeys []string
+	Tasks              []task.Task
+	Series             []taskseries.Series
+	Configs            []storage.ConfigCandidate
+	Automations        []storage.ProjectAutomationRule
+	UDADefs            map[string]uda.Definition
+	Members            []storage.MemberWithUser
+	UserRefs           map[string][]string
 }
 
 type capturePlan struct {
@@ -162,7 +164,7 @@ func (s *Service) PreviewProjectTemplateCapture(input CaptureInput) (CapturePrev
 		return CapturePreview{}, err
 	}
 	return CapturePreview{
-		Selection: plan.Selection, SourceHash: plan.SourceHash, Counts: componentCounts(plan.Snapshot),
+		Selection: plan.Selection, RequiredConfigKeys: append([]string{}, plan.Source.RequiredConfigKeys...), SourceHash: plan.SourceHash, Counts: componentCounts(plan.Snapshot),
 		BlockingIssues: nonNilCaptureIssues(plan.Issues), Warnings: nonNilCaptureIssues(plan.Warnings),
 		Snapshot: projectTemplateSnapshotView(plan.Snapshot, plan.Users),
 	}, nil
@@ -578,7 +580,7 @@ func (s *Service) requireCaptureReadPermissions(selection CaptureSelection) erro
 			return err
 		}
 	}
-	if len(selection.ConfigKeys) > 0 {
+	if len(selection.ConfigKeys) > 0 || len(selection.AutomationRuleIDs) > 0 {
 		if err := s.Require(PermissionProjectConfigRead); err != nil {
 			return err
 		}
@@ -665,6 +667,18 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 			return captureSource{}, captureError("project_template_selection_invalid", "selected automation rule is outside source project")
 		}
 	}
+	requiredConfigKeys, err := captureAutomationRequiredConfigKeys(automations)
+	if err != nil {
+		return captureSource{}, err
+	}
+	configs, err = s.appendRequiredCaptureConfigs(project, configs, requiredConfigKeys)
+	if err != nil {
+		return captureSource{}, err
+	}
+	requiredConfigKeys = captureRequiredExplicitConfigKeys(requiredConfigKeys, configs)
+	if len(configs) > projecttemplate.DefaultLimits.MaxConfigs {
+		return captureSource{}, captureError("project_template_selection_invalid", "automation dependencies exceed snapshot config limit")
+	}
 
 	udaDefs, err := s.captureUDADefinitions(tasks, series)
 	if err != nil {
@@ -712,7 +726,79 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 	for _, row := range automations {
 		normalizedSelection.AutomationRuleIDs = append(normalizedSelection.AutomationRuleIDs, row.ID)
 	}
-	return captureSource{Project: project, Selection: normalizedSelection, Tasks: tasks, Series: series, Configs: configs, Automations: automations, UDADefs: udaDefs, Members: members, UserRefs: userRefs}, nil
+	return captureSource{Project: project, Selection: normalizedSelection, RequiredConfigKeys: requiredConfigKeys, Tasks: tasks, Series: series, Configs: configs, Automations: automations, UDADefs: udaDefs, Members: members, UserRefs: userRefs}, nil
+}
+
+// captureAutomationRequiredConfigKeys 必须与 provider 校验的读取路径一致。它只返回
+// automation 确实会读取的 key；继承 workspace/default 的 key 会在后续装载时自然跳过。
+func captureAutomationRequiredConfigKeys(rows []storage.ProjectAutomationRule) ([]string, error) {
+	keys := make([]string, 0, len(rows)*4)
+	for index, row := range rows {
+		blueprint, err := captureAutomationBlueprint(row, index+1)
+		if err != nil {
+			return nil, err
+		}
+		action := ProjectAutomationActionConfig(blueprint.Action)
+		keys = append(keys, action.BaseURLConfigKey, action.APIKeyConfigKey)
+		if strings.TrimSpace(action.ModelOverride) == "" {
+			keys = append(keys, action.ModelConfigKey)
+		}
+		allowed := strings.TrimSpace(action.AllowedHostsConfigKey)
+		if allowed == "" {
+			allowed = "agent.provider.allowed_hosts"
+		}
+		keys = append(keys, allowed)
+	}
+	return sortedUniqueCapture(keys), nil
+}
+
+func (s *Service) appendRequiredCaptureConfigs(project storage.Project, selected []storage.ConfigCandidate, requiredKeys []string) ([]storage.ConfigCandidate, error) {
+	selectedKeys := make(map[string]struct{}, len(selected))
+	for _, item := range selected {
+		selectedKeys[item.Config.Key] = struct{}{}
+	}
+	for _, key := range requiredKeys {
+		if _, exists := selectedKeys[key]; exists {
+			continue
+		}
+		value, exists, err := s.configRepo.Get(storage.ConfigKey{WorkspaceID: s.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: key})
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			continue // workspace/default 继承不写入项目模板。
+		}
+		definition, defined, err := s.configDefRepo.Get(s.workspaceID, key)
+		if err != nil || !defined {
+			return nil, invalidCaptureConfig()
+		}
+		view, err := configDefinitionViewFromRow(definition)
+		if err != nil {
+			return nil, invalidCaptureConfig()
+		}
+		normalized, err := s.validateScopedConfigValue(view, storage.ConfigScopeProject, value)
+		if err != nil {
+			return nil, invalidCaptureConfig()
+		}
+		selected = append(selected, storage.ConfigCandidate{Config: storage.Config{WorkspaceID: s.workspaceID, Scope: string(storage.ConfigScopeProject), ScopeID: project.ID, Key: key, Value: normalized}, Definition: definition})
+		selectedKeys[key] = struct{}{}
+	}
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Config.Key < selected[j].Config.Key })
+	return selected, nil
+}
+
+func captureRequiredExplicitConfigKeys(required []string, configs []storage.ConfigCandidate) []string {
+	explicit := make(map[string]struct{}, len(configs))
+	for _, item := range configs {
+		explicit[item.Config.Key] = struct{}{}
+	}
+	out := make([]string, 0, len(required))
+	for _, key := range required {
+		if _, ok := explicit[key]; ok {
+			out = append(out, key)
+		}
+	}
+	return out
 }
 
 func (s *Service) captureUDADefinitions(tasks []task.Task, series []taskseries.Series) (map[string]uda.Definition, error) {
@@ -991,7 +1077,11 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 	}
 	for _, item := range source.Configs {
 		if item.Definition.Secret {
-			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV1{Key: item.Config.Key, Mode: "secret_input"})
+			ciphertext, err := s.encryptProjectTemplateSecret(item.Config.Value)
+			if err != nil {
+				return projecttemplate.SnapshotV1{}, nil, nil, err
+			}
+			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV1{Key: item.Config.Key, Mode: "secret_copy", SecretCiphertext: &ciphertext})
 		} else {
 			value := item.Config.Value
 			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV1{Key: item.Config.Key, Mode: "literal", Value: &value})
@@ -1057,6 +1147,17 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 		}
 	}
 	return snapshot, unresolved, baseWarnings, nil
+}
+
+func (s *Service) encryptProjectTemplateSecret(value string) (string, error) {
+	ciphertext, err := EncryptConfigSecret(s.tokenSecretKey, value)
+	if err == nil {
+		return ciphertext, nil
+	}
+	if errors.Is(err, ErrConfigSecretKeyMissing) || errors.Is(err, ErrConfigSecretKeyInvalid) {
+		return "", RuntimeError{Code: "config_secret_key_missing", Message: "config secret key is required to copy template secrets"}
+	}
+	return "", RuntimeError{Code: "project_template_secret_copy_unavailable", Message: "template secret cannot be encrypted"}
 }
 
 func (s *Service) capturePreviewIssues(source captureSource, anchorDate string, localTasks map[string]string) ([]CaptureIssue, []CaptureIssue, error) {

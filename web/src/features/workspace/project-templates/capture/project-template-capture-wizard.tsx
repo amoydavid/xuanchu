@@ -109,6 +109,9 @@ function ProjectTemplateCaptureWizardSession({
   const [description, setDescription] = useState("")
   const [anchorDate, setAnchorDate] = useState(today)
   const [preview, setPreview] = useState<CapturePreview>()
+  const [requiredConfigKeys, setRequiredConfigKeys] = useState<Set<string>>(
+    () => new Set()
+  )
   const [resolution, setResolution] = useState<CaptureResolution>({})
   const [previewDirty, setPreviewDirty] = useState(false)
   const [pending, setPending] = useState(false)
@@ -239,6 +242,47 @@ function ProjectTemplateCaptureWizardSession({
     if (!pendingRef.current && !pending) onOpenChange(false)
   }, [onOpenChange, pending])
 
+  const applyPreviewSelection = useCallback((result: CapturePreview) => {
+    // 旧服务端不会返回 required_config_keys；保留当前本地选择，避免把旧响应的
+    // 不完整 selection 当作新的规范化结果。
+    if (!Array.isArray(result.required_config_keys)) return
+    const next = cloneSelection(selectionRef.current)
+    const requiredKeys = result.required_config_keys
+    const configByKey = new Map(
+      (result.snapshot?.configs ?? []).map((config) => [config.key, config])
+    )
+    const apply = (kind: CandidateKind, refs: string[]) => {
+      const current = next[kind]
+      const updated = new Map<string, CandidateSummary>()
+      for (const ref of refs) {
+        const existing = current.get(ref)
+        const config = kind === "config" ? configByKey.get(ref) : undefined
+        updated.set(
+          ref,
+          existing ?? {
+            ref,
+            label: config?.key ?? ref,
+            secondary:
+              kind === "config" && requiredKeys.includes(ref)
+                ? "由已选自动化依赖"
+                : "由服务端归一化选择",
+            secret:
+              config?.mode === "secret_copy" ||
+              config?.mode === "secret_input",
+          }
+        )
+      }
+      next[kind] = updated
+    }
+    apply("task", result.selection.task_refs)
+    apply("series", result.selection.series_refs)
+    apply("config", result.selection.config_keys)
+    apply("automation", result.selection.automation_rule_ids)
+    selectionRef.current = next
+    setSelection(next)
+    setRequiredConfigKeys(new Set(requiredKeys))
+  }, [])
+
   const runPreview = useCallback(async () => {
     if (pendingRef.current || defaultsPendingRef.current) return
     pendingRef.current = true
@@ -259,6 +303,7 @@ function ProjectTemplateCaptureWizardSession({
               templateRef!,
               body
             )
+      applyPreviewSelection(result)
       setPreview(result)
       setPreviewDirty(false)
     } catch (caught) {
@@ -268,6 +313,7 @@ function ProjectTemplateCaptureWizardSession({
       setPending(false)
     }
   }, [
+    applyPreviewSelection,
     anchorDate,
     mode,
     resolution,
@@ -377,12 +423,14 @@ function ProjectTemplateCaptureWizardSession({
   ) {
     const nextSelection = { ...selectionRef.current, [kind]: next }
     replaceSelection(nextSelection)
+    if (kind === "automation") setRequiredConfigKeys(new Set())
     setResolution((current) => sanitizeResolution(current, nextSelection))
     setPreview(undefined)
     setPreviewDirty(false)
   }
 
   function removeSelection(kind: CandidateKind, ref: string) {
+	if (kind === "config" && requiredConfigKeys.has(ref)) return
     const next = new Map(selection[kind])
     next.delete(ref)
     updateSelection(kind, next)
@@ -406,6 +454,7 @@ function ProjectTemplateCaptureWizardSession({
   function clearAllSelection() {
     const next = emptySelection()
     replaceSelection(next)
+	setRequiredConfigKeys(new Set())
     setResolution((current) => sanitizeResolution(current, next))
     setPreview(undefined)
     setPreviewDirty(false)
@@ -551,6 +600,7 @@ function ProjectTemplateCaptureWizardSession({
                       <div hidden={activeKind !== kind}>
                         <CandidatePicker
                           kind={kind}
+                          lockedRefs={kind === "config" ? requiredConfigKeys : undefined}
                           onChange={(next) => updateSelection(kind, next)}
                           onLimitError={setLimitError}
                           onSummariesChange={(next) =>
@@ -567,6 +617,7 @@ function ProjectTemplateCaptureWizardSession({
                 </Tabs>
               </div>
               <SelectedItemsDrawer
+                lockedConfigKeys={requiredConfigKeys}
                 onClearAll={clearAllSelection}
                 onRemove={removeSelection}
                 selection={selection}
@@ -579,6 +630,7 @@ function ProjectTemplateCaptureWizardSession({
                 onOpenChange={setSelectedOpen}
                 onRemove={removeSelection}
                 open={selectedOpen}
+                lockedConfigKeys={requiredConfigKeys}
                 selection={selection}
               />
             </div>
@@ -1067,7 +1119,7 @@ function ReviewStep({
         <Check />
         <AlertTitle>预览已通过</AlertTitle>
         <AlertDescription>
-          保存会生成不可变快照，不会复制机密值。
+          保存会生成不可变快照；自动化依赖的项目级机密值会以加密形式复制，且不会显示。
         </AlertDescription>
       </Alert>
       <dl className="grid gap-px border bg-border sm:grid-cols-2">
