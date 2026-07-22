@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
@@ -50,9 +51,9 @@ describe("ProjectNotesTimeline", () => {
     expect(nodes[1].textContent ?? "").toContain("第一条")
   })
 
-  it("canManage 时展示删除按钮并触发回调", () => {
+  it("canManage 时通过 shadcn 确认框删除备注", async () => {
     const onDelete = vi.fn()
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window, "confirm")
     render(
       <ProjectNotesTimeline
         entries={[
@@ -72,9 +73,13 @@ describe("ProjectNotesTimeline", () => {
         deleteConfirm="确认删除该备注？"
       />
     )
-    fireEvent.click(screen.getByText("删除"))
-    expect(confirmSpy).toHaveBeenCalled()
+    await userEvent.click(screen.getByText("删除"))
+    expect(screen.getByRole("alertdialog")).toBeTruthy()
+    expect(screen.getByText("确认删除该备注？")).toBeTruthy()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(onDelete).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole("button", { name: "删除" }))
     expect(onDelete).toHaveBeenCalledWith("a")
-    confirmSpy.mockRestore()
   })
 })

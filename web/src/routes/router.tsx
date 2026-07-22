@@ -64,6 +64,11 @@ const ProjectsListRoute = lazy(() =>
     default: module.ProjectsListRoute,
   }))
 )
+const ClosedProjectsRoute = lazy(() =>
+  import("@/routes/workspace/ClosedProjectsRoute").then((module) => ({
+    default: module.ClosedProjectsRoute,
+  }))
+)
 const MyTasksRoute = lazy(() =>
   import("@/routes/workspace/MyTasksRoute").then((module) => ({
     default: module.MyTasksRoute,
@@ -261,6 +266,17 @@ const projectsListRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/projects",
   component: lazyRoute(ProjectsListRoute),
+})
+
+const closedProjectsRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/projects/closed",
+  component: lazyRoute(ClosedProjectsRoute),
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { status: "archived" | "cancelled" } => ({
+    status: search.status === "cancelled" ? "cancelled" : "archived",
+  }),
 })
 
 const myTasksRoute = createRoute({
@@ -462,6 +478,7 @@ const routeTree = rootRoute.addChildren([
     tasksRedirectRoute,
     taskDetailRoute,
     projectsListRoute,
+    closedProjectsRoute,
     myTasksRoute,
     projectSettingsRoute.addChildren([
       projectSettingsIndexRoute,

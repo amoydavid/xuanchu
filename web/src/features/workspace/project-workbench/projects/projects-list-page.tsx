@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { BoxesIcon, PlusIcon } from "lucide-react"
+import { ArchiveIcon, ArrowLeftIcon, BoxesIcon, PlusIcon } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -19,9 +19,15 @@ import { ProjectRowActions } from "./project-row-actions"
 
 type ProjectsListPageProps = {
   workspaceSlug: string
+  view?: "current" | "closed"
+  closedStatus?: "archived" | "cancelled"
 }
 
-export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
+export function ProjectsListPage({
+  closedStatus = "archived",
+  view = "current",
+  workspaceSlug,
+}: ProjectsListPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const me = useMe()
@@ -32,15 +38,28 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
   })
   const [createOpen, setCreateOpen] = useState(false)
   const [instantiateOpen, setInstantiateOpen] = useState(false)
-  const { data: projects = [], isPending, isError } = useProjectsQuery(
-    workspaceSlug,
-    "all"
-  )
+  const statusFilter = view === "closed" ? closedStatus : "open"
+  const {
+    data: projects = [],
+    isPending,
+    isError,
+  } = useProjectsQuery(workspaceSlug, statusFilter)
   function openProject(projectSlug: string) {
     void navigate({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug",
       params: { workspaceSlug, projectSlug },
     })
+  }
+
+  function openClosedProjects(status: "archived" | "cancelled") {
+    void navigate({
+      to: "/projects/closed",
+      search: { status },
+    })
+  }
+
+  function openCurrentProjects() {
+    void navigate({ to: "/projects" })
   }
 
   if (isPending) {
@@ -116,50 +135,102 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">
-            {t("projectWorkbench.projects.title")}
+            {view === "closed"
+              ? t("projectWorkbench.projects.closed.title")
+              : t("projectWorkbench.projects.title")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("projectWorkbench.projects.subtitle")}
+            {view === "closed"
+              ? t("projectWorkbench.projects.closed.subtitle")
+              : t("projectWorkbench.projects.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canManage ? (
-            <Button onClick={() => setInstantiateOpen(true)} variant="outline">
-              <BoxesIcon data-icon="inline-start" />
-              从模板创建
+          {view === "closed" ? (
+            <Button onClick={openCurrentProjects} variant="outline">
+              <ArrowLeftIcon data-icon="inline-start" />
+              {t("projectWorkbench.projects.closed.currentProjects")}
             </Button>
-          ) : null}
-          <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon data-icon="inline-start" />
-            {t("projectWorkbench.projects.create.button")}
-          </Button>
+          ) : (
+            <>
+              <Button
+                onClick={() => openClosedProjects("archived")}
+                variant="outline"
+              >
+                <ArchiveIcon data-icon="inline-start" />
+                {t("projectWorkbench.projects.closed.entry")}
+              </Button>
+              {canManage ? (
+                <Button
+                  onClick={() => setInstantiateOpen(true)}
+                  variant="outline"
+                >
+                  <BoxesIcon data-icon="inline-start" />
+                  从模板创建
+                </Button>
+              ) : null}
+              <Button onClick={() => setCreateOpen(true)}>
+                <PlusIcon data-icon="inline-start" />
+                {t("projectWorkbench.projects.create.button")}
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {view === "closed" ? (
+        <div
+          aria-label={t("projectWorkbench.projects.closed.tabsLabel")}
+          className="flex w-fit border bg-muted/40 p-0.5"
+          role="tablist"
+        >
+          {(["archived", "cancelled"] as const).map((status) => (
+            <Button
+              aria-selected={closedStatus === status}
+              key={status}
+              onClick={() => openClosedProjects(status)}
+              role="tab"
+              size="sm"
+              variant={closedStatus === status ? "secondary" : "ghost"}
+            >
+              {t(`projectWorkbench.projects.closed.${status}`)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       <DataTable
         rows={projects}
         columns={columns}
-        empty={t("projectWorkbench.projects.empty")}
+        empty={
+          view === "closed"
+            ? t(`projectWorkbench.projects.closed.empty.${closedStatus}`)
+            : t("projectWorkbench.projects.empty")
+        }
         onRowClick={(project) => openProject(project.slug)}
       />
 
-      <ProjectCreateDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        workspaceSlug={workspaceSlug}
-        onCreated={(project) => {
-          setCreateOpen(false)
-          openProject(project.slug)
-        }}
-      />
-      <ProjectTemplateInstantiateWizard
-        canInstantiate={canManage}
-        canManage={canManage}
-        onOpenChange={setInstantiateOpen}
-        open={instantiateOpen}
-        writeScopes={writeScopes}
-        workspaceSlug={workspaceSlug}
-      />
+      {view === "current" ? (
+        <>
+          <ProjectCreateDialog
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            workspaceSlug={workspaceSlug}
+            onCreated={(project) => {
+              setCreateOpen(false)
+              openProject(project.slug)
+            }}
+          />
+          <ProjectTemplateInstantiateWizard
+            canInstantiate={canManage}
+            canManage={canManage}
+            onOpenChange={setInstantiateOpen}
+            open={instantiateOpen}
+            writeScopes={writeScopes}
+            workspaceSlug={workspaceSlug}
+          />
+        </>
+      ) : null}
     </div>
   )
 }

@@ -385,6 +385,7 @@ function isNavItemActive(key: PageKey, to: string, pathname: string): boolean {
   if (key === "projects") {
     return (
       pathname === "/projects" ||
+      pathname.startsWith("/projects/") ||
       /^\/workspaces\/[^/]+\/projects(?:\/|$)/.test(pathname)
     )
   }

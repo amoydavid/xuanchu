@@ -175,7 +175,8 @@ export const enUS = {
       download: "Download",
       remove: "Remove",
       empty: "No attachments",
-      inUse: "This attachment is still referenced by the description; remove the reference and save first",
+      inUse:
+        "This attachment is still referenced by the description; remove the reference and save first",
       content_gone: "Attachment content has been purged",
       load_failed: "Attachment failed to load",
       type_not_allowed: "This file type is not allowed",
@@ -1126,6 +1127,9 @@ export const enUS = {
     tabConfig: "Config",
     tabDefinitions: "Definitions",
     tabNotes: "Notes",
+    archive: "Archive",
+    cancel: "Cancel",
+    restoreActive: "Restore to active",
     configTitle: "Config",
     configDescription:
       "Manage project-scoped config. Keys are validated against workspace schema.",
@@ -1136,6 +1140,7 @@ export const enUS = {
     configSave: "Save",
     configCancel: "Cancel",
     configDelete: "Delete",
+    configDeleteTitle: "Delete config entry",
     configDeleteConfirm: "Delete this config entry?",
     configAdd: "Add config",
     configKeyExists: "This key already exists; edit the existing row instead",
@@ -1146,6 +1151,7 @@ export const enUS = {
     notesTitle: "Notes",
     notesEmpty: "No notes",
     noteDelete: "Delete",
+    noteDeleteTitle: "Delete project note",
     noteDeleteConfirm: "Delete this note?",
     noteNew: "Add a note",
     noteAdd: "Add note",
@@ -1290,6 +1296,20 @@ export const enUS = {
       actionsLabel: "Project actions",
       open: "Open",
       settings: "Settings",
+      closed: {
+        title: "Closed projects",
+        subtitle:
+          "Review archived or cancelled projects and restore them when needed.",
+        entry: "Closed projects",
+        currentProjects: "Current projects",
+        tabsLabel: "Closed project category",
+        archived: "Archived",
+        cancelled: "Cancelled",
+        empty: {
+          archived: "No archived projects",
+          cancelled: "No cancelled projects",
+        },
+      },
       column: {
         project: "Project",
         progress: "Progress",

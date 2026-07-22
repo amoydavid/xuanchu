@@ -55,6 +55,7 @@
 **路由（`web/src/routes/router.tsx`）**：
 
 - `/projects` → 项目列表页（新实现，替换原 ResourcePage 的 projects 配置）。
+- `/projects/closed` → 已关闭项目页；默认查看已归档项目，可切换查看已取消项目。
 - `/workspaces/$ws/projects/$p` → 项目详情页（复用现有 `ProjectReadonlyPage`，补全任务表格交互）。
 - `/workspaces/$ws/projects/$p/tasks/$ref` → 任务详情页（复用现有 `ProjectTaskDetailPage`，按 3.3 增强）。
 - 平铺的 `/tasks` 路由移除（或重定向到 `/projects`，避免外部书签 404）。
@@ -66,27 +67,28 @@
 | 列 | 内容 | 数据来源 |
 |---|---|---|
 | 项目名 | name / slug | `GET /projects` |
-| 状态 | active / pending / archived badge | `GET /projects` |
+| 状态 | active / planning badge | `GET /projects?status=open` |
 | 进度 | 进度条 + 百分比（completed / total） | 新增聚合字段 |
 | 任务数 | total / pending 计数 | 新增聚合字段 |
 
 > **实现降级（2026-06-17 评审）：** 原设计含「负责人」列，但当前 Project 数据模型没有 owner/负责人字段（只有任务的 assignees，项目本身无负责人概念）。补齐该列需要新增 schema 字段，超出本次范围。本次不实现该列，待后续引入项目负责人模型时再补。
 
-行点击 → 项目详情页。支持按列排序。
+`/projects` 是当前工作入口，只展示 `planning` / `active`。页头提供“已关闭项目”入口；
+`/projects/closed` 通过“已归档 / 已取消”标签分别请求 `status=archived` / `status=cancelled`，
+避免把历史项目混入日常工作列表。两个页面复用同一张项目表格，行点击均可进入只读项目详情。
 
 **原型：**
 
 ```
 ┌─ 侧边栏 ─┐ ┌────────────────────────── 主区域 ──────────────────────────┐
-│          │ │  项目                                          [ + 新建 ]    │
-│ Overview │ │                                                            │
+│          │ │  项目                                                        │
+│ Overview │ │                         [ 已关闭项目 ] [ 从模板创建 ] [ + 新建 ] │
 │ Projects │ │  ┌──────────────────────────────────────────────────────┐ │
 │ Workspaces│ │  │ 项目          状态      进度        负责人   任务数  │ │
 │ Members  │ │  ├──────────────────────────────────────────────────────┤ │
 │ Tokens   │ │  │ 迁移到新 DB   active   ████░ 40%   张三      4      → │ │
 │ Hooks    │ │  │ Web 重构      active   ██████ 65%  李四      10     → │ │
-│ ...      │ │  │ API 文档补全  pending  █░░░░ 20%   —         2      → │ │
-│          │ │  │ 旧迁移脚本    archived ░░░░░  0%   王五      12     → │ │
+│ ...      │ │  │ API 文档补全  planning █░░░░ 20%   —         2      → │ │
 │          │ │  └──────────────────────────────────────────────────────┘ │
 │          │ │  ← 行可点击进入项目详情                                     │
 └──────────┘ └────────────────────────────────────────────────────────────┘

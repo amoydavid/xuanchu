@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import { MoreHorizontalIcon } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -11,7 +11,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { transitionProject } from "../api/project-api"
+import type { ProjectStatus } from "../api/project-api"
+import { useTransitionProjectMutation } from "../hooks/use-project-mutations"
+import { isClosedProjectStatus } from "../project/project-status-menu"
+import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
 
 type ProjectRowActionsProps = {
   canManage: boolean
@@ -30,14 +33,9 @@ export function ProjectRowActions({
 }: ProjectRowActionsProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const transition = useMutation({
-    mutationFn: (next: string) =>
-      transitionProject(workspaceSlug, projectSlug, next),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["projects"] })
-    },
-  })
+  const [confirmStatus, setConfirmStatus] = useState<ProjectStatus | null>(null)
+  const transition = useTransitionProjectMutation(workspaceSlug, projectSlug)
+  const closed = isClosedProjectStatus(status)
 
   function gotoSettings() {
     void navigate({
@@ -68,51 +66,55 @@ export function ProjectRowActions({
           {canManage ? (
             <>
               <DropdownMenuSeparator />
-              {status !== "archived" ? (
+              {!closed ? (
                 <DropdownMenuItem
-                  onSelect={() => {
-                    if (
-                      window.confirm(
-                        t("projectSettings.transitionConfirm", {
-                          status: "archived",
-                        })
-                      )
-                    ) {
-                      transition.mutate("archived")
-                    }
+                  disabled={transition.isPending}
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setConfirmStatus("archived")
                   }}
                 >
-                  {t("projectSettings.archive", { defaultValue: "归档" })}
+                  {t("projectSettings.archive")}
                 </DropdownMenuItem>
               ) : null}
-              {status !== "cancelled" ? (
+              {!closed ? (
                 <DropdownMenuItem
-                  onSelect={() => {
-                    if (
-                      window.confirm(
-                        t("projectSettings.transitionConfirm", {
-                          status: "cancelled",
-                        })
-                      )
-                    ) {
-                      transition.mutate("cancelled")
-                    }
+                  disabled={transition.isPending}
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setConfirmStatus("cancelled")
                   }}
                 >
-                  {t("projectSettings.cancel", { defaultValue: "取消" })}
+                  {t("projectSettings.cancel")}
                 </DropdownMenuItem>
               ) : null}
-              {status === "archived" || status === "cancelled" ? (
-                <DropdownMenuItem onSelect={() => transition.mutate("active")}>
-                  {t("projectSettings.restoreActive", {
-                    defaultValue: "恢复到 active",
-                  })}
+              {closed ? (
+                <DropdownMenuItem
+                  disabled={transition.isPending}
+                  onSelect={() => transition.mutate("active")}
+                >
+                  {t("projectSettings.restoreActive")}
                 </DropdownMenuItem>
               ) : null}
             </>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      <DestructiveConfirmDialog
+        confirmLabel={t("projectWorkbench.project.closeProject")}
+        description={t("projectWorkbench.project.closeProjectDescription")}
+        onConfirm={async () => {
+          if (!confirmStatus) return
+          await transition.mutateAsync(confirmStatus)
+          setConfirmStatus(null)
+        }}
+        onOpenChange={(open) => {
+          if (!open) setConfirmStatus(null)
+        }}
+        open={confirmStatus !== null}
+        pending={transition.isPending}
+        title={t("projectWorkbench.project.closeProjectTitle")}
+      />
     </div>
   )
 }

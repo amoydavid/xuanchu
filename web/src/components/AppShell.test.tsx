@@ -227,6 +227,23 @@ describe("AppShell", () => {
     ).not.toContain("border-l-foreground")
   })
 
+  it("keeps 项目 active on the closed-project route", () => {
+    currentPath = "/projects/closed"
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(screen.getByRole("link", { name: "项目" }).className).toContain(
+      "border-l-foreground"
+    )
+  })
+
   // 移动端导航抽屉：验证汉堡按钮（移动端导航入口）被正确渲染。
   // 点击打开行为依赖 Radix 真实 PointerEvent，jsdom 下不稳定，
   // 这里只断言入口存在（响应式适配的核心：移动端不再丢失导航）。
