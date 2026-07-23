@@ -3,10 +3,10 @@ package app
 import (
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/schedule"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -336,11 +336,16 @@ func normalizeProjectAutomationAddInput(input ProjectAutomationRuleAddInput) (Pr
 		return input, RuntimeError{Code: "automation_rule_invalid", Message: "unsupported trigger"}
 	}
 	if input.TriggerType == ProjectAutomationTriggerSchedule {
-		if input.TriggerConfig.ScheduleType != "daily_at" || !validHHMM(input.TriggerConfig.ScheduleValue) {
-			return input, RuntimeError{Code: "automation_rule_invalid", Message: "invalid daily schedule"}
+		spec := schedule.Spec{
+			Type:     input.TriggerConfig.ScheduleType,
+			Value:    input.TriggerConfig.ScheduleValue,
+			Timezone: input.TriggerConfig.Timezone,
+		}
+		if err := spec.Validate(); err != nil {
+			return input, RuntimeError{Code: "automation_rule_invalid", Message: "invalid schedule: " + err.Error()}
 		}
 		if strings.TrimSpace(input.TriggerConfig.Timezone) == "" {
-			input.TriggerConfig.Timezone = "Asia/Shanghai"
+			input.TriggerConfig.Timezone = schedule.DefaultTimezone
 		}
 	}
 	if input.TriggerType == ProjectAutomationTriggerEvent {
@@ -373,14 +378,6 @@ func normalizeProjectAutomationAddInput(input ProjectAutomationRuleAddInput) (Pr
 		return input, RuntimeError{Code: "automation_rule_invalid", Message: "instruction template is required"}
 	}
 	return input, nil
-}
-
-func validHHMM(value string) bool {
-	if len(value) != 5 || value[2] != ':' {
-		return false
-	}
-	_, err := time.Parse("15:04", value)
-	return err == nil
 }
 
 func projectAutomationRuleAddInputFromRow(row storage.ProjectAutomationRule) ProjectAutomationRuleAddInput {
