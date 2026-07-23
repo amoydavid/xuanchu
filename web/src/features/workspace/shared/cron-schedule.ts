@@ -51,30 +51,58 @@ export function describeCron(expr: string): string {
   if (month !== "*") return expr
   const timeOK = isSimpleField(hour) && isSimpleField(minute)
   const hhmm = `${pad2(hour)}:${pad2(minute)}`
+  // 只有日期/周是通配或简单周模式时才尝试时间类解读；带具体几号走月维度分支。
+  const wdLabel = weekdayLabel(week) // "每天 "|"每工作日 "|"每周X "|null
+  const dayWildcard = dayOfMonth === "*" && wdLabel !== null
 
-  // 每N分钟：*/N * * * *
-  if (minute.startsWith("*/") && hour === "*" && dayOfMonth === "*" && week === "*") {
+  // 每 N 分钟：*/N * * * *  （高频全频次，不加日期前缀）
+  if (minute.startsWith("*/") && hour === "*" && dayWildcard) {
     return `每 ${minute.slice(2)} 分钟触发`
   }
-  // 每小时整点：0 * * * *
-  if (minute === "0" && hour === "*" && dayOfMonth === "*" && week === "*") {
-    return "每小时整点触发"
+  // 每 N 小时整点：0 */N * * *  （如 0 */6 * * 1-5 = 工作日每 6 小时）
+  // 非"每天"时加范围前缀（"工作日每 6 小时"），"每天"时省略（"每 6 小时"）。
+  if (minute === "0" && hour.startsWith("*/") && dayWildcard) {
+    const prefix = weekdayScopePrefix(week)
+    return `${prefix}每 ${hour.slice(2)} 小时触发`
   }
-  // 每天 HH:MM
-  if (timeOK && dayOfMonth === "*" && week === "*") {
-    return `每天 ${hhmm} 触发`
+  // 每小时整点：0 * * * *
+  if (minute === "0" && hour === "*" && dayWildcard) {
+    const prefix = weekdayScopePrefix(week)
+    return `${prefix}每小时整点触发`
+  }
+  // 简单时刻（HH:MM）
+  if (timeOK && dayWildcard) {
+    return `${wdLabel}${hhmm} 触发`
   }
   // 每月 N 日 HH:MM
   if (timeOK && dayOfMonth !== "*" && week === "*") {
     return `每月 ${dayOfMonth} 日 ${hhmm} 触发`
   }
-  // 周维度
-  if (timeOK && dayOfMonth === "*" && week !== "*") {
-    if (week === "1-5") return `每工作日 ${hhmm} 触发`
-    const wd = parseWeekday(week)
-    if (wd) return `每周${wd} ${hhmm} 触发`
-  }
   return expr
+}
+
+/**
+ * weekdayLabel 把 cron 周字段映射为中文范围前缀（带尾空格，便于拼接）。
+ * "*" → "每天 "；"1-5" → "每工作日 "；单数字 → "每周X "；其它 → null（无法简化，调用方应回退）。
+ */
+function weekdayLabel(week: string): string | null {
+  if (week === "*") return "每天 "
+  if (week === "1-5") return "每工作日 "
+  const wd = parseWeekday(week)
+  if (wd) return `每周${wd} `
+  return null
+}
+
+/**
+ * weekdayScopePrefix 用于"每 N 小时/每小时整点"这类高频场景的范围前缀。
+ * 与 weekdayLabel 不同：这里"每天"省略（高频本身隐含每天），"1-5"用"工作日"避免"每工作日 每 6 小时"拗口。
+ */
+function weekdayScopePrefix(week: string): string {
+  if (week === "*") return ""
+  if (week === "1-5") return "工作日"
+  const wd = parseWeekday(week)
+  if (wd) return `周${wd} `
+  return ""
 }
 
 function isSimpleField(s: string): boolean {

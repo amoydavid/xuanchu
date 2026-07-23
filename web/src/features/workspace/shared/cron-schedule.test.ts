@@ -29,6 +29,13 @@ describe("describeCron", () => {
     expect(describeCron("0 9 1 * *")).toBe("每月 1 日 09:00 触发")
   })
 
+  it("支持每 N 小时整点（含工作日限定）", () => {
+    // 用户实际配置场景：0 */6 * * 1-5 = 工作日每 6 小时整点
+    expect(describeCron("0 */6 * * 1-5")).toBe("工作日每 6 小时触发")
+    expect(describeCron("0 */6 * * *")).toBe("每 6 小时触发")
+    expect(describeCron("0 */6 * * 1")).toBe("周一 每 6 小时触发")
+  })
+
   it("未匹配的非常规表达式回退为原始表达式", () => {
     expect(describeCron("*/20 8-18 * * 1-5")).toBe("*/20 8-18 * * 1-5")
   })
