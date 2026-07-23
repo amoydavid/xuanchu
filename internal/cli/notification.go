@@ -1044,7 +1044,8 @@ func newReminderRuleAddCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
 	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
 	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
-	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50")
+	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50 或 cron 表达式（分 时 日 月 周，如 50 8 * * 1-5 表示每工作日 8:50）")
+	cmd.Flags().StringVar(&input.timezone, "timezone", "", "调度时区，例如 Asia/Shanghai；默认 Asia/Shanghai")
 	cmd.Flags().StringVar(&input.filterSource, "filter", "", "任务过滤表达式，例如 due.before:now+24h")
 	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
 	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
@@ -1059,6 +1060,7 @@ type reminderRuleCLIInput struct {
 	after        string
 	repeat       string
 	schedule     string
+	timezone     string
 	filterSource string
 	audience     string
 	recipients   []string
@@ -1093,6 +1095,7 @@ func (input reminderRuleCLIInput) toApp(name string) (app.ReminderRuleAddInput, 
 		RepeatPolicy:  input.repeat,
 		ScheduleType:  scheduleType,
 		ScheduleValue: scheduleValue,
+		Timezone:      input.timezone,
 		FilterSource:  input.filterSource,
 		AudienceType:  input.audience,
 		Recipients:    input.recipients,
@@ -1140,6 +1143,9 @@ func (input reminderRuleCLIInput) toModifyApp(cmd *cobra.Command) (app.ReminderR
 		scheduleType, scheduleValue := parseReminderScheduleFlag(input.schedule)
 		mod.ScheduleType = &scheduleType
 		mod.ScheduleValue = &scheduleValue
+	}
+	if cmd.Flags().Changed("timezone") {
+		mod.Timezone = &input.timezone
 	}
 	if cmd.Flags().Changed("filter") {
 		mod.FilterSource = &input.filterSource
@@ -1302,7 +1308,8 @@ func newReminderRuleModifyCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
 	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
 	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
-	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50")
+	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50 或 cron 表达式（分 时 日 月 周，如 50 8 * * 1-5 表示每工作日 8:50）")
+	cmd.Flags().StringVar(&input.timezone, "timezone", "", "调度时区，例如 Asia/Shanghai；默认 Asia/Shanghai")
 	cmd.Flags().StringVar(&input.filterSource, "filter", "", "任务过滤表达式，例如 due.before:now+24h")
 	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
 	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
@@ -1551,6 +1558,7 @@ func reminderRuleInputToRemote(input app.ReminderRuleAddInput) remote.ReminderRu
 		RepeatPolicy:  input.RepeatPolicy,
 		ScheduleType:  input.ScheduleType,
 		ScheduleValue: input.ScheduleValue,
+		Timezone:      input.Timezone,
 		FilterSource:  input.FilterSource,
 		AudienceType:  input.AudienceType,
 		Recipients:    input.Recipients,
@@ -1568,6 +1576,7 @@ func reminderRuleModifyInputToRemote(input app.ReminderRuleModifyInput) remote.R
 		RepeatPolicy:  input.RepeatPolicy,
 		ScheduleType:  input.ScheduleType,
 		ScheduleValue: input.ScheduleValue,
+		Timezone:      input.Timezone,
 		FilterSource:  input.FilterSource,
 		AudienceType:  input.AudienceType,
 		Recipients:    input.Recipients,
@@ -1624,6 +1633,7 @@ func reminderRuleViewForJSON(row app.ReminderRuleView) map[string]any {
 		"repeat_policy":   row.RepeatPolicy,
 		"schedule_type":   row.ScheduleType,
 		"schedule_value":  row.ScheduleValue,
+		"timezone":        row.Timezone,
 		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForJSON(row.RecipientUsers),

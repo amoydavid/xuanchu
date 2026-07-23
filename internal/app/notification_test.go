@@ -209,6 +209,102 @@ func TestAddReminderRuleWithScheduleAndFilterReturnsViewFields(t *testing.T) {
 	}
 }
 
+// TestAddReminderRuleWithCronSchedule 验证 cron 类型提醒规则能创建并正确回显 timezone 字段。
+func TestAddReminderRuleWithCronSchedule(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.AddReminderRule(ReminderRuleAddInput{
+		Name:          "工作日提醒",
+		ScheduleType:  "cron",
+		ScheduleValue: "50 8 * * 1-5",
+		Timezone:      "Asia/Shanghai",
+		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
+		AudienceType:  "assignees",
+		SinkRef:       sink.ID,
+	})
+	if err != nil {
+		t.Fatalf("AddReminderRule cron error = %v", err)
+	}
+	if view.ScheduleType != "cron" || view.ScheduleValue != "50 8 * * 1-5" {
+		t.Fatalf("cron schedule view = %#v", view)
+	}
+	if view.Timezone != "Asia/Shanghai" {
+		t.Fatalf("timezone = %q, want Asia/Shanghai", view.Timezone)
+	}
+}
+
+// TestAddReminderRuleWithCronScheduleDefaultsTimezone 验证 cron 规则未指定时区时回填默认 Asia/Shanghai。
+func TestAddReminderRuleWithCronScheduleDefaultsTimezone(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.AddReminderRule(ReminderRuleAddInput{
+		Name:          "默认时区",
+		ScheduleType:  "cron",
+		ScheduleValue: "0 9 * * 1-5",
+		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
+		AudienceType:  "assignees",
+		SinkRef:       sink.ID,
+	})
+	if err != nil {
+		t.Fatalf("AddReminderRule error = %v", err)
+	}
+	if view.Timezone != "Asia/Shanghai" {
+		t.Fatalf("默认时区应为 Asia/Shanghai，得到 %q", view.Timezone)
+	}
+}
+
+// TestAddReminderRuleRejectsLegacyHourlyWeeklyAt 验证旧的 hourly/weekly_at 选项被明确拒绝。
+func TestAddReminderRuleRejectsLegacyHourlyWeeklyAt(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, scheduleType := range []string{"hourly", "weekly_at"} {
+		_, err := svc.AddReminderRule(ReminderRuleAddInput{
+			Name:          "legacy-" + scheduleType,
+			ScheduleType:  scheduleType,
+			ScheduleValue: "08:50",
+			FilterSource:  "end.isnull and start.isnull",
+			AudienceType:  "assignees",
+			SinkRef:       sink.ID,
+		})
+		assertRuntimeCode(t, err, "reminder_rule_invalid")
+	}
+}
+
+// TestAddReminderRuleRejectsInvalidCron 验证非法 cron 表达式被拒绝。
+func TestAddReminderRuleRejectsInvalidCron(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddReminderRule(ReminderRuleAddInput{
+		Name:          "bad-cron",
+		ScheduleType:  "cron",
+		ScheduleValue: "0 9 * *", // 字段不足
+		FilterSource:  "end.isnull and start.isnull",
+		AudienceType:  "assignees",
+		SinkRef:       sink.ID,
+	})
+	assertRuntimeCode(t, err, "reminder_rule_invalid")
+}
+
 func TestAddReminderRuleWithScheduleRejectsInvalidFilter(t *testing.T) {
 	svc, cleanup := notificationTestEnv(t)
 	defer cleanup()

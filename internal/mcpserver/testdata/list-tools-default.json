@@ -3069,15 +3069,19 @@
             "type": "string"
           },
           "schedule_type": {
-            "description": "daily_at or daily@HH:MM",
+            "description": "daily_at, daily@HH:MM, or cron",
             "type": "string"
           },
           "schedule_value": {
-            "description": "daily schedule time such as 08:50",
+            "description": "daily time such as 08:50, or standard 5-field cron expression such as 50 8 * * 1-5 (minute hour day month weekday)",
             "type": "string"
           },
           "sink": {
             "description": "notification sink name or ID",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA timezone such as Asia/Shanghai; defaults to Asia/Shanghai",
             "type": "string"
           },
           "trigger_type": {
@@ -3358,14 +3362,14 @@
             "type": "string"
           },
           "schedule_type": {
-            "description": "new schedule type: daily_at or daily@HH:MM",
+            "description": "new schedule type: daily_at, daily@HH:MM, or cron",
             "type": [
               "null",
               "string"
             ]
           },
           "schedule_value": {
-            "description": "new daily schedule time such as 08:50",
+            "description": "new daily time such as 08:50, or standard 5-field cron expression",
             "type": [
               "null",
               "string"
@@ -3373,6 +3377,13 @@
           },
           "sink": {
             "description": "notification sink name or ID",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timezone": {
+            "description": "new IANA timezone such as Asia/Shanghai",
             "type": [
               "null",
               "string"
@@ -5169,7 +5180,7 @@
             "type": "string"
           },
           "recurrence_rule": {
-            "description": "recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO",
+            "description": "recurrence rule: daily, weekly, monthly, \u003cN\u003edays, \u003cN\u003eweeks, \u003cN\u003emonths (e.g. 2weeks, 3months)",
             "type": "string"
           },
           "tags": {

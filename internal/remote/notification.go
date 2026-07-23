@@ -53,8 +53,9 @@ type ReminderRuleRequest struct {
 	RepeatPolicy  string   `json:"repeat_policy"`
 	ScheduleType  string   `json:"schedule_type"`
 	ScheduleValue string   `json:"schedule_value"`
+	Timezone      string   `json:"timezone"`
 	FilterSource  string   `json:"filter_source"`
-	AudienceType  string   `json:"audience_type"`
+	AudienceType string   `json:"audience_type"`
 	Recipients    []string `json:"recipients"`
 	SinkRef       string   `json:"sink_ref"`
 }
@@ -68,6 +69,7 @@ type ReminderRuleModifyRequest struct {
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
 	ScheduleType  *string   `json:"schedule_type,omitempty"`
 	ScheduleValue *string   `json:"schedule_value,omitempty"`
+	Timezone      *string   `json:"timezone,omitempty"`
 	FilterSource  *string   `json:"filter_source,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
