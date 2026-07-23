@@ -46,3 +46,17 @@ export const assigneeFeishuTemplateInput: ProjectAutomationRuleInput = {
   instruction_template: "有任务分配给了新负责人。请根据 added_assignees 和项目配置，完成后续协作动作。",
   system_prompt: defaultAutomationSystemPrompt,
 }
+
+// weeklyReviewAutomationInput 是「每周项目回顾」模板的默认表单值，演示 cron 定时。
+export const weeklyReviewAutomationInput: ProjectAutomationRuleInput = {
+  name: "每周项目回顾",
+  description: "",
+  enabled: true,
+  trigger_type: "schedule",
+  trigger_config: { schedule_type: "cron", schedule_value: "0 9 * * 1", timezone: "Asia/Shanghai" },
+  condition: { task_filter: "status:pending or status:waiting", max_tasks: 50 },
+  action: defaultScheduleAutomationInput.action,
+  context: { include: ["workspace", "project", "task_summary", "matched_tasks", "project_config"] },
+  instruction_template: "请读取这个项目的本周任务执行情况，生成每周项目回顾报告。如果项目配置中包含飞书群信息，请自行处理发送。",
+  system_prompt: defaultAutomationSystemPrompt,
+}
