@@ -490,6 +490,7 @@ export type ReminderRule = {
   repeat_policy?: string
   schedule_type?: string
   schedule_value?: string
+  timezone?: string
   filter_source?: string
   audience_type?: string
   recipient_user_ids?: string[]
@@ -508,6 +509,7 @@ export type ReminderRuleCreateInput = {
   repeat_policy?: string
   schedule_type?: string
   schedule_value?: string
+  timezone?: string
   filter_source?: string
   audience_type?: string
   recipients?: string[]

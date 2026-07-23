@@ -122,6 +122,43 @@ func TestE2EProjectAutomation(t *testing.T) {
 	if data["provider_request_id"] != "chatcmpl_e2e" {
 		t.Fatalf("provider_request_id = %#v, want chatcmpl_e2e", data["provider_request_id"])
 	}
+
+	// 7. 创建 cron 规则并验证字段正确回显（schedule_type=cron、schedule_value、timezone）。
+	cronBody := `{
+		"name":"每周项目回顾",
+		"enabled":true,
+		"trigger_type":"schedule",
+		"trigger_config":{"schedule_type":"cron","schedule_value":"0 9 * * 1","timezone":"Asia/Shanghai"},
+		"action":{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model","temperature":0.2},
+		"context":{"include":["workspace","project","project_config"]},
+		"instruction_template":"生成周报"
+	}`
+	cronCreated := httpJSONRaw(t, http.MethodPost, baseURL+"/api/v1/projects/adsops/automations", cronBody, headers)
+	cronData, _ := cronCreated["data"].(map[string]any)
+	cronCfg, _ := cronData["trigger_config"].(map[string]any)
+	if cronCfg["schedule_type"] != "cron" {
+		t.Fatalf("cron rule schedule_type = %#v, want cron", cronCfg["schedule_type"])
+	}
+	if cronCfg["schedule_value"] != "0 9 * * 1" {
+		t.Fatalf("cron rule schedule_value = %#v", cronCfg["schedule_value"])
+	}
+	if cronCfg["timezone"] != "Asia/Shanghai" {
+		t.Fatalf("cron rule timezone = %#v, want Asia/Shanghai", cronCfg["timezone"])
+	}
+
+	// 8. 非法 cron 表达式被拒绝。
+	badCronBody := `{
+		"name":"bad-cron",
+		"trigger_type":"schedule",
+		"trigger_config":{"schedule_type":"cron","schedule_value":"0 9 *","timezone":"Asia/Shanghai"},
+		"action":{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model"},
+		"instruction_template":"x"
+	}`
+	badResp, _ := httpDo(t, http.MethodPost, baseURL+"/api/v1/projects/adsops/automations", strings.NewReader(badCronBody), headers)
+	defer badResp.Body.Close()
+	if badResp.StatusCode < 400 {
+		t.Fatalf("非法 cron 表达式应被拒绝，status = %d", badResp.StatusCode)
+	}
 }
 
 func hostFromURL(t *testing.T, raw string) string {

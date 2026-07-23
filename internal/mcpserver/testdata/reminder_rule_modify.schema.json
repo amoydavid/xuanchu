@@ -75,14 +75,14 @@
         "type": "string"
       },
       "schedule_type": {
-        "description": "new schedule type: daily_at or daily@HH:MM",
+        "description": "new schedule type: daily_at, daily@HH:MM, or cron",
         "type": [
           "null",
           "string"
         ]
       },
       "schedule_value": {
-        "description": "new daily schedule time such as 08:50",
+        "description": "new daily time such as 08:50, or standard 5-field cron expression",
         "type": [
           "null",
           "string"
@@ -90,6 +90,13 @@
       },
       "sink": {
         "description": "notification sink name or ID",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "timezone": {
+        "description": "new IANA timezone such as Asia/Shanghai",
         "type": [
           "null",
           "string"

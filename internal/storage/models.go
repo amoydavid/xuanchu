@@ -386,6 +386,7 @@ type ReminderRule struct {
 	RepeatPolicy         string  `gorm:"not null;default:'once'"`
 	ScheduleType         string  `gorm:"not null;default:'';index"`
 	ScheduleValue        string  `gorm:"not null;default:''"`
+	Timezone             string  `gorm:"not null;default:''"`
 	FilterSource         string  `gorm:"not null;default:''"`
 	AudienceType         string  `gorm:"not null"`
 	RecipientUserIDsJSON string  `gorm:"not null;default:'[]'"`

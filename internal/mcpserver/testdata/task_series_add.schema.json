@@ -50,7 +50,7 @@
         "type": "string"
       },
       "recurrence_rule": {
-        "description": "recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO",
+        "description": "recurrence rule: daily, weekly, monthly, \u003cN\u003edays, \u003cN\u003eweeks, \u003cN\u003emonths (e.g. 2weeks, 3months)",
         "type": "string"
       },
       "tags": {

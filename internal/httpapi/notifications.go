@@ -57,6 +57,7 @@ type reminderRuleRequest struct {
 	RepeatPolicy  string   `json:"repeat_policy"`
 	ScheduleType  string   `json:"schedule_type"`
 	ScheduleValue string   `json:"schedule_value"`
+	Timezone      string   `json:"timezone"`
 	FilterSource  string   `json:"filter_source"`
 	AudienceType  string   `json:"audience_type"`
 	Recipients    []string `json:"recipients"`
@@ -72,6 +73,7 @@ type reminderRuleModifyRequest struct {
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
 	ScheduleType  *string   `json:"schedule_type,omitempty"`
 	ScheduleValue *string   `json:"schedule_value,omitempty"`
+	Timezone      *string   `json:"timezone,omitempty"`
 	FilterSource  *string   `json:"filter_source,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
@@ -341,6 +343,7 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 		RepeatPolicy:  req.RepeatPolicy,
 		ScheduleType:  req.ScheduleType,
 		ScheduleValue: req.ScheduleValue,
+		Timezone:      req.Timezone,
 		FilterSource:  req.FilterSource,
 		AudienceType:  req.AudienceType,
 		Recipients:    req.Recipients,
@@ -391,6 +394,7 @@ func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request
 		RepeatPolicy:  req.RepeatPolicy,
 		ScheduleType:  req.ScheduleType,
 		ScheduleValue: req.ScheduleValue,
+		Timezone:      req.Timezone,
 		FilterSource:  req.FilterSource,
 		AudienceType:  req.AudienceType,
 		Recipients:    req.Recipients,
@@ -688,6 +692,7 @@ func reminderRuleResponse(row app.ReminderRuleView) map[string]any {
 		"repeat_policy":   row.RepeatPolicy,
 		"schedule_type":   row.ScheduleType,
 		"schedule_value":  row.ScheduleValue,
+		"timezone":        row.Timezone,
 		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": userInfosToJSON(row.RecipientUsers),

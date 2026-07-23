@@ -114,7 +114,7 @@ v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作�
 - **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。终态任务（`completed`/`deleted`）urgency 恒为 0，不参与优先级排序，与 Taskwarrior 行为一致。
 - **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。
 - **出站集成控制台**（v0.5.3，`/hooks` = `/integrations` = `/notifications`）：把 `/hooks` 升级为统一控制台，覆盖 Sinks（webhook / http_template CRUD）、Hooks（sink 下拉 + 分组事件 checkbox + project 选择器）、通知规则、定时规则和概览。新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递，写 audit 不污染 delivery 表，受 SSRF / allowed hosts / secret 防护。事件名统一为 `task.completed` / `project.archived` 等白名单，旧的 `task.done` 已废弃。
-- **项目自动化页**（`/workspaces/<workspace-slug>/projects/<project-slug>/automations`）：项目详情新增「自动化」tab，可配置 project-scoped 定时规则和事件规则。首版动作统一为调用 OpenAI 兼容 Agent Provider，默认投递到 `{agent.provider.base_url}/v1/chat/completions`，凭据和默认 model 从 project effective config 读取；规则编辑页可点击「预览投递 JSON」查看脱敏后的最终请求体。璇础只负责触发、上下文构造、投递和记录，不直接调用飞书，也不判断 Agent 是否完成外部动作。
+- **项目自动化页**（`/workspaces/<workspace-slug>/projects/<project-slug>/automations`）：项目详情新增「自动化」tab，可配置 project-scoped 定时规则和事件规则。定时规则支持两种方式：每天固定时刻（`daily_at` + `HH:MM`）或标准 cron 表达式（如 `0 9 * * 1-5` 表示每工作日 9 点），后者在前端提供常用预设按钮和中文解读（如「每工作日 09:00 触发」），并支持时区选择。首版动作统一为调用 OpenAI 兼容 Agent Provider，默认投递到 `{agent.provider.base_url}/v1/chat/completions`，凭据和默认 model 从 project effective config 读取；规则编辑页可点击「预览投递 JSON」查看脱敏后的最终请求体。璇础只负责触发、上下文构造、投递和记录，不直接调用飞书，也不判断 Agent 是否完成外部动作。
 
 所有改动只复用现有 `/api/v1/*`、authz、CSRF、`task.UserInfo` 和 closed-project 规则；未引入新 UI 库或状态管理库。后端能力缺口（task restore、workspace unarchive、project annotation PATCH、audit actor/action/time 全量服务端搜索）在前端以置灰、说明文案或「当前结果筛选」明确标注，不静默失败。
 
@@ -1165,7 +1165,7 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 
 通知系统复用 notification sink，但规则分两类：
 
-- reminder rule：定时扫描任务过滤器，适合到期前和逾期后的提醒。
+- reminder rule：定时扫描任务过滤器，适合到期前和逾期后的提醒。定时方式支持每天固定时刻（`daily_at`）或标准 cron 表达式（如 `50 8 * * 1-5` 表示每工作日 08:50），可配时区，默认 `Asia/Shanghai`；cron 按分钟级去重，支持每小时、每 N 分钟等高频提醒。
 - notification rule：监听事件并解析 audience，适合 `task.unblocked`、项目 annotation 等事件通知。
 
 管理员先创建 notification sink，再创建 reminder rule 或 notification rule；`xuanchu server` 的后台 scheduler / dispatcher 命中规则后生成 delivery。

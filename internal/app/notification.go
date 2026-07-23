@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/schedule"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -105,6 +105,7 @@ type ReminderRuleAddInput struct {
 	RepeatPolicy  string
 	ScheduleType  string
 	ScheduleValue string
+	Timezone      string
 	FilterSource  string
 	AudienceType  string
 	Recipients    []string
@@ -120,6 +121,7 @@ type ReminderRuleModifyInput struct {
 	RepeatPolicy  *string
 	ScheduleType  *string
 	ScheduleValue *string
+	Timezone      *string
 	FilterSource  *string
 	AudienceType  *string
 	Recipients    *[]string
@@ -138,6 +140,7 @@ type ReminderRuleView struct {
 	RepeatPolicy     string          `json:"repeat_policy"`
 	ScheduleType     string          `json:"schedule_type"`
 	ScheduleValue    string          `json:"schedule_value"`
+	Timezone         string          `json:"timezone"`
 	FilterSource     string          `json:"filter_source"`
 	AudienceType     string          `json:"audience_type"`
 	RecipientUserIDs []string        `json:"-"`
@@ -430,7 +433,7 @@ func (s *Service) AddReminderRule(input ReminderRuleAddInput) (ReminderRuleView,
 		}
 		projectID = &project.ID
 	}
-	name, sink, recipientIDs, scheduleType, scheduleValue, filterSource, err := s.normalizeReminderRuleFields(input)
+	name, sink, recipientIDs, scheduleType, scheduleValue, timezone, filterSource, err := s.normalizeReminderRuleFields(input)
 	if err != nil {
 		return ReminderRuleView{}, err
 	}
@@ -454,6 +457,7 @@ func (s *Service) AddReminderRule(input ReminderRuleAddInput) (ReminderRuleView,
 		RepeatPolicy:         repeat,
 		ScheduleType:         scheduleType,
 		ScheduleValue:        scheduleValue,
+		Timezone:             timezone,
 		FilterSource:         filterSource,
 		AudienceType:         audience,
 		RecipientUserIDsJSON: mustJSON(recipientIDs),
@@ -574,7 +578,7 @@ func (s *Service) ModifyReminderRule(ruleID string, input ReminderRuleModifyInpu
 		}
 	}
 	applyReminderRuleModifyInput(&candidate, input)
-	name, sink, recipientIDs, scheduleType, scheduleValue, filterSource, err := s.normalizeReminderRuleFields(candidate)
+	name, sink, recipientIDs, scheduleType, scheduleValue, timezone, filterSource, err := s.normalizeReminderRuleFields(candidate)
 	if err != nil {
 		return ReminderRuleView{}, err
 	}
@@ -593,6 +597,7 @@ func (s *Service) ModifyReminderRule(ruleID string, input ReminderRuleModifyInpu
 	}
 	row.ScheduleType = scheduleType
 	row.ScheduleValue = scheduleValue
+	row.Timezone = timezone
 	row.FilterSource = filterSource
 	row.AudienceType = strings.TrimSpace(candidate.AudienceType)
 	row.RecipientUserIDsJSON = mustJSON(recipientIDs)
@@ -948,6 +953,7 @@ func reminderRuleAddInputFromRow(row storage.ReminderRule) ReminderRuleAddInput 
 		RepeatPolicy:  row.RepeatPolicy,
 		ScheduleType:  row.ScheduleType,
 		ScheduleValue: row.ScheduleValue,
+		Timezone:      row.Timezone,
 		FilterSource:  row.FilterSource,
 		AudienceType:  row.AudienceType,
 		Recipients:    decodeStringListNoError(row.RecipientUserIDsJSON),
@@ -977,6 +983,9 @@ func applyReminderRuleModifyInput(input *ReminderRuleAddInput, mod ReminderRuleM
 	if mod.ScheduleValue != nil {
 		input.ScheduleValue = *mod.ScheduleValue
 	}
+	if mod.Timezone != nil {
+		input.Timezone = *mod.Timezone
+	}
 	if mod.FilterSource != nil {
 		input.FilterSource = *mod.FilterSource
 	}
@@ -991,25 +1000,28 @@ func applyReminderRuleModifyInput(input *ReminderRuleAddInput, mod ReminderRuleM
 	}
 }
 
-func (s *Service) normalizeReminderRuleFields(input ReminderRuleAddInput) (string, storage.NotificationSink, []string, string, string, string, error) {
+func (s *Service) normalizeReminderRuleFields(input ReminderRuleAddInput) (string, storage.NotificationSink, []string, string, string, string, string, error) {
 	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "reminder_rule_invalid", Message: "rule name is required"}
+	emptyRet := func(err error) (string, storage.NotificationSink, []string, string, string, string, string, error) {
+		return "", storage.NotificationSink{}, nil, "", "", "", "", err
 	}
-	scheduleType, scheduleValue, filterSource, usesScheduleFilter, err := normalizeReminderScheduleFilter(input.ScheduleType, input.ScheduleValue, input.FilterSource)
+	if name == "" {
+		return emptyRet(RuntimeError{Code: "reminder_rule_invalid", Message: "rule name is required"})
+	}
+	scheduleType, scheduleValue, timezone, filterSource, usesScheduleFilter, err := normalizeReminderScheduleFilter(input.ScheduleType, input.ScheduleValue, input.Timezone, input.FilterSource)
 	if err != nil {
-		return "", storage.NotificationSink{}, nil, "", "", "", err
+		return emptyRet(err)
 	}
 	if !usesScheduleFilter {
 		trigger := strings.TrimSpace(input.TriggerType)
 		switch trigger {
 		case "due_before":
 			if input.OffsetSeconds <= 0 {
-				return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "reminder_rule_invalid", Message: "due_before requires positive offset"}
+				return emptyRet(RuntimeError{Code: "reminder_rule_invalid", Message: "due_before requires positive offset"})
 			}
 		case "overdue":
 		default:
-			return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported trigger"}
+			return emptyRet(RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported trigger"})
 		}
 	}
 	repeat := strings.TrimSpace(input.RepeatPolicy)
@@ -1017,56 +1029,60 @@ func (s *Service) normalizeReminderRuleFields(input ReminderRuleAddInput) (strin
 		repeat = "once"
 	}
 	if repeat != "once" && !strings.HasPrefix(repeat, "every:") {
-		return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported repeat policy"}
+		return emptyRet(RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported repeat policy"})
 	}
 	audience := strings.TrimSpace(input.AudienceType)
 	switch audience {
 	case "assignees", "explicit_users", "assignees_and_explicit_users":
 	case "project_owner", "project_maintainer", "assignees_and_project_owner":
-		return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "audience_unsupported", Message: "audience is not supported"}
+		return emptyRet(RuntimeError{Code: "audience_unsupported", Message: "audience is not supported"})
 	default:
-		return "", storage.NotificationSink{}, nil, "", "", "", RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported audience"}
+		return emptyRet(RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported audience"})
 	}
 	sink, err := s.resolveNotificationSink(input.SinkRef)
 	if err != nil {
-		return "", storage.NotificationSink{}, nil, "", "", "", err
+		return emptyRet(err)
 	}
 	recipientIDs, err := s.resolveReminderRecipientIDs(input.Recipients)
 	if err != nil {
-		return "", storage.NotificationSink{}, nil, "", "", "", err
+		return emptyRet(err)
 	}
-	return name, sink, recipientIDs, scheduleType, scheduleValue, filterSource, nil
+	return name, sink, recipientIDs, scheduleType, scheduleValue, timezone, filterSource, nil
 }
 
-func normalizeReminderScheduleFilter(scheduleType, scheduleValue, filterSource string) (string, string, string, bool, error) {
+func normalizeReminderScheduleFilter(scheduleType, scheduleValue, timezone, filterSource string) (string, string, string, string, bool, error) {
 	scheduleType = strings.TrimSpace(scheduleType)
 	scheduleValue = strings.TrimSpace(scheduleValue)
+	timezone = strings.TrimSpace(timezone)
 	filterSource = strings.TrimSpace(filterSource)
 	usesScheduleFilter := scheduleType != "" || scheduleValue != "" || filterSource != ""
 	if !usesScheduleFilter {
-		return "", "", "", false, nil
+		return "", "", "", "", false, nil
 	}
 	if strings.HasPrefix(scheduleType, "daily@") && scheduleValue == "" {
 		scheduleValue = strings.TrimPrefix(scheduleType, "daily@")
 		scheduleType = "daily_at"
 	}
-	if scheduleType != "daily_at" {
-		return "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "unsupported schedule"}
+	// 支持 daily_at 和 cron 两种调度类型，统一用 schedule.Spec 校验。
+	spec := schedule.Spec{Type: scheduleType, Value: scheduleValue, Timezone: timezone}
+	if err := spec.Validate(); err != nil {
+		return "", "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "invalid schedule: " + err.Error()}
 	}
-	if _, err := time.Parse("15:04", scheduleValue); err != nil {
-		return "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "invalid daily schedule"}
+	// 校验通过后回填默认时区。
+	if timezone == "" {
+		timezone = schedule.DefaultTimezone
 	}
 	if filterSource == "" {
-		return "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "filter is required"}
+		return "", "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "filter is required"}
 	}
 	expr, err := query.ParseQuery(filterSource)
 	if err != nil {
-		return "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "invalid filter"}
+		return "", "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "invalid filter"}
 	}
 	if reminderFilterContainsProjectPredicate(expr) {
-		return "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "filter project predicate is not supported"}
+		return "", "", "", "", true, RuntimeError{Code: "reminder_rule_invalid", Message: "filter project predicate is not supported"}
 	}
-	return scheduleType, scheduleValue, filterSource, true, nil
+	return scheduleType, scheduleValue, timezone, filterSource, true, nil
 }
 
 func reminderFilterContainsProjectPredicate(expr query.Expr) bool {
@@ -1201,6 +1217,7 @@ func reminderRuleViewFromRow(row storage.ReminderRule, userInfos map[string]task
 		RepeatPolicy:     row.RepeatPolicy,
 		ScheduleType:     row.ScheduleType,
 		ScheduleValue:    row.ScheduleValue,
+		Timezone:         row.Timezone,
 		FilterSource:     row.FilterSource,
 		AudienceType:     row.AudienceType,
 		RecipientUserIDs: recipientIDs,

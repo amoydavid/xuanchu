@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/schedule"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -74,7 +75,8 @@ func NewAutomationBackgroundServiceFactory(store *storage.Store, clock Clock) fu
 	}
 }
 
-// RunOnce 扫描所有启用规则，对到期的 daily_at 规则入队，按 dedupe_key 去重。
+// RunOnce 扫描所有启用规则，对到期的 schedule 规则（daily_at 或 cron）入队，按 dedupe_key 去重。
+// 触发点后 1 小时调度窗口内视为到期，防调度间隙漏触发。dedupe key 粒度：daily_at 按天、cron 按分钟。
 func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutomationSchedulerRunResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -86,6 +88,7 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 		return ProjectAutomationSchedulerRunResult{}, err
 	}
 	now := s.clock.Unix()
+	nowTime := time.Unix(now, 0)
 	result := ProjectAutomationSchedulerRunResult{RulesChecked: len(rules)}
 	for _, rule := range rules {
 		if ctx.Err() != nil {
@@ -95,10 +98,20 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 			continue
 		}
 		cfg := decodeProjectAutomationTriggerConfig(rule.TriggerConfigJSON)
-		if cfg.ScheduleType != "daily_at" || !automationScheduleDue(cfg, now) {
+		spec := schedule.Spec{Type: cfg.ScheduleType, Value: cfg.ScheduleValue, Timezone: cfg.Timezone}
+		fire, ok, err := spec.LastFireAt(nowTime)
+		if err != nil || !ok {
 			continue
 		}
-		key := fmt.Sprintf("%s:%s:%s:%s:%s", rule.WorkspaceID, rule.ProjectID, rule.ID, automationLocalDate(cfg, now), cfg.ScheduleValue)
+		// 保留 1 小时调度窗口：触发点后 1 小时内才算到期，防调度间隙漏触发。
+		if nowTime.Sub(fire) > time.Hour {
+			continue
+		}
+		dedupe, err := spec.DedupeKey(nowTime)
+		if err != nil {
+			continue
+		}
+		key := fmt.Sprintf("%s:%s:%s:%s", rule.WorkspaceID, rule.ProjectID, rule.ID, dedupe)
 		exists, err := deliveryRepo.ExistsByDedupeKey(key)
 		if err != nil {
 			return result, err
@@ -142,33 +155,6 @@ func (s *ProjectAutomationScheduler) Run(ctx context.Context, interval time.Dura
 			}
 		}
 	}
-}
-
-// automationScheduleDue 判断当前时间是否已经过了规则今天的计划时间。
-// 为保证调度窗口能覆盖到点，规则计划时间到后 1 小时内都视为到期。
-func automationScheduleDue(cfg ProjectAutomationTriggerConfig, now int64) bool {
-	loc, err := time.LoadLocation(cfg.Timezone)
-	if err != nil {
-		loc = time.Local
-	}
-	local := time.Unix(now, 0).In(loc)
-	scheduled, err := time.ParseInLocation("15:04", cfg.ScheduleValue, loc)
-	if err != nil {
-		return false
-	}
-	// 取今天的计划时间点。
-	today := time.Date(local.Year(), local.Month(), local.Day(), scheduled.Hour(), scheduled.Minute(), 0, 0, loc)
-	// 计划时间已到、但未超过 1 小时调度窗口。
-	return !local.Before(today) && local.Sub(today) <= time.Hour
-}
-
-// automationLocalDate 返回规则时区下的本地日期字符串，用于 dedupe_key。
-func automationLocalDate(cfg ProjectAutomationTriggerConfig, now int64) string {
-	loc, err := time.LoadLocation(cfg.Timezone)
-	if err != nil {
-		loc = time.Local
-	}
-	return time.Unix(now, 0).In(loc).Format("2006-01-02")
 }
 
 // EnqueueProjectAutomationForEvents 在事件提交后匹配事件规则并入队。

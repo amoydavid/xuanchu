@@ -95,8 +95,9 @@ type ReminderRuleAddInput struct {
 	OffsetSeconds int64    `json:"offset_seconds,omitempty" jsonschema:"seconds before due for due_before"`
 	AfterSeconds  int64    `json:"after_seconds,omitempty" jsonschema:"seconds after due for overdue"`
 	RepeatPolicy  string   `json:"repeat_policy,omitempty" jsonschema:"once or every:<duration>"`
-	ScheduleType  string   `json:"schedule_type,omitempty" jsonschema:"daily_at or daily@HH:MM"`
-	ScheduleValue string   `json:"schedule_value,omitempty" jsonschema:"daily schedule time such as 08:50"`
+	ScheduleType  string   `json:"schedule_type,omitempty" jsonschema:"daily_at, daily@HH:MM, or cron"`
+	ScheduleValue string   `json:"schedule_value,omitempty" jsonschema:"daily time such as 08:50, or standard 5-field cron expression such as 50 8 * * 1-5 (minute hour day month weekday)"`
+	Timezone      string   `json:"timezone,omitempty" jsonschema:"IANA timezone such as Asia/Shanghai; defaults to Asia/Shanghai"`
 	FilterSource  string   `json:"filter_source,omitempty" jsonschema:"task filter expression for scheduled rules"`
 	AudienceType  string   `json:"audience_type" jsonschema:"assignees, explicit_users, or assignees_and_explicit_users"`
 	Recipients    []string `json:"recipients,omitempty" jsonschema:"explicit recipient user refs"`
@@ -129,8 +130,9 @@ type ReminderRuleModifyInput struct {
 	OffsetSeconds *int64    `json:"offset_seconds,omitempty" jsonschema:"new seconds before due for due_before"`
 	AfterSeconds  *int64    `json:"after_seconds,omitempty" jsonschema:"new seconds after due for overdue"`
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty" jsonschema:"new repeat policy: once or every:<duration>"`
-	ScheduleType  *string   `json:"schedule_type,omitempty" jsonschema:"new schedule type: daily_at or daily@HH:MM"`
-	ScheduleValue *string   `json:"schedule_value,omitempty" jsonschema:"new daily schedule time such as 08:50"`
+	ScheduleType  *string   `json:"schedule_type,omitempty" jsonschema:"new schedule type: daily_at, daily@HH:MM, or cron"`
+	ScheduleValue *string   `json:"schedule_value,omitempty" jsonschema:"new daily time such as 08:50, or standard 5-field cron expression"`
+	Timezone      *string   `json:"timezone,omitempty" jsonschema:"new IANA timezone such as Asia/Shanghai"`
 	FilterSource  *string   `json:"filter_source,omitempty" jsonschema:"new task filter expression for scheduled rules"`
 	AudienceType  *string   `json:"audience_type,omitempty" jsonschema:"new audience: assignees, explicit_users, or assignees_and_explicit_users"`
 	Recipients    *[]string `json:"recipients,omitempty" jsonschema:"new explicit recipient user refs"`
@@ -346,6 +348,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			RepeatPolicy:  strings.TrimSpace(in.RepeatPolicy),
 			ScheduleType:  strings.TrimSpace(in.ScheduleType),
 			ScheduleValue: strings.TrimSpace(in.ScheduleValue),
+			Timezone:      strings.TrimSpace(in.Timezone),
 			FilterSource:  strings.TrimSpace(in.FilterSource),
 			AudienceType:  strings.TrimSpace(in.AudienceType),
 			Recipients:    in.Recipients,
@@ -383,6 +386,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			RepeatPolicy:  in.RepeatPolicy,
 			ScheduleType:  in.ScheduleType,
 			ScheduleValue: in.ScheduleValue,
+			Timezone:      in.Timezone,
 			FilterSource:  in.FilterSource,
 			AudienceType:  in.AudienceType,
 			Recipients:    in.Recipients,
@@ -646,6 +650,7 @@ func reminderRuleViewForMCP(row app.ReminderRuleView) map[string]any {
 		"repeat_policy":   row.RepeatPolicy,
 		"schedule_type":   row.ScheduleType,
 		"schedule_value":  row.ScheduleValue,
+		"timezone":        row.Timezone,
 		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForMCP(row.RecipientUsers),

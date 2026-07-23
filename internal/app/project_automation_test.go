@@ -343,6 +343,124 @@ func TestProjectAutomationSchedulerEnqueuesDailyRuleOnce(t *testing.T) {
 	}
 }
 
+// TestProjectAutomationSchedulerEnqueuesCronRuleOnce 验证 cron 规则能在命中时刻入队，且本轮去重生效。
+func TestProjectAutomationSchedulerEnqueuesCronRuleOnce(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	rule, err := f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:                "每周项目回顾",
+		Enabled:             true,
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "cron", ScheduleValue: "0 9 * * 1", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"workspace", "project"}},
+		InstructionTemplate: "生成本周回顾",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	defineProviderConfigForTest(t, f.svc)
+	// 2026-07-27 是周一，09:01 落在 09:00 触发点的 1 小时窗口内。
+	f.clock.NowUnix = mustUnix(t, "2026-07-27T09:01:00+08:00")
+	scheduler := NewProjectAutomationScheduler(ProjectAutomationSchedulerOptions{Store: f.store, Clock: f.clock, ServiceFactory: f.serviceFactory})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.DeliveriesEnqueued != 1 {
+		t.Fatalf("DeliveriesEnqueued = %d, want 1", result.DeliveriesEnqueued)
+	}
+	// 同一触发点再跑一次，按 dedupe 去重。
+	result, err = scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce duplicate: %v", err)
+	}
+	if result.DeliveriesEnqueued != 0 {
+		t.Fatalf("duplicate run enqueued %d deliveries for rule %s", result.DeliveriesEnqueued, rule.ID)
+	}
+}
+
+// TestProjectAutomationSchedulerCronOutsideWindow 验证 cron 触发点超出 1 小时窗口时不入队（防漏触发窗口语义）。
+func TestProjectAutomationSchedulerCronOutsideWindow(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	_, err = f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:                "每周项目回顾",
+		Enabled:             true,
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "cron", ScheduleValue: "0 9 * * 1", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"workspace", "project"}},
+		InstructionTemplate: "生成本周回顾",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	defineProviderConfigForTest(t, f.svc)
+	// 2026-07-27 周一 10:30，触发点 09:00 已超 1 小时窗口 → 不入队。
+	f.clock.NowUnix = mustUnix(t, "2026-07-27T10:30:00+08:00")
+	scheduler := NewProjectAutomationScheduler(ProjectAutomationSchedulerOptions{Store: f.store, Clock: f.clock, ServiceFactory: f.serviceFactory})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.DeliveriesEnqueued != 0 {
+		t.Fatalf("超窗 cron 应不入队，DeliveriesEnqueued = %d", result.DeliveriesEnqueued)
+	}
+}
+
+// TestProjectAutomationSchedulerHighFreqCronNotSwallowed 验证高频 cron（每 15 分钟）的不同触发点
+// 各自独立入队，不会被按天去重吞掉。
+func TestProjectAutomationSchedulerHighFreqCronNotSwallowed(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	_, err = f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:                "高频巡检",
+		Enabled:             true,
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "cron", ScheduleValue: "*/15 * * * *", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"workspace", "project"}},
+		InstructionTemplate: "高频巡检",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	defineProviderConfigForTest(t, f.svc)
+
+	// 第一次：09:16，触发点 09:15 → 入队 1。
+	f.clock.NowUnix = mustUnix(t, "2026-07-23T09:16:00+08:00")
+	scheduler := NewProjectAutomationScheduler(ProjectAutomationSchedulerOptions{Store: f.store, Clock: f.clock, ServiceFactory: f.serviceFactory})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce 09:16: %v", err)
+	}
+	if result.DeliveriesEnqueued != 1 {
+		t.Fatalf("09:16 应入队 1，得到 %d", result.DeliveriesEnqueued)
+	}
+
+	// 第二次：09:31，触发点 09:30 → 分钟级 dedupe key 不同，应再入队 1。
+	// 注意：FixedClock 是值类型，修改 NowUnix 后需重新构造 scheduler 让其捕获新值。
+	f.clock.NowUnix = mustUnix(t, "2026-07-23T09:31:00+08:00")
+	scheduler = NewProjectAutomationScheduler(ProjectAutomationSchedulerOptions{Store: f.store, Clock: f.clock, ServiceFactory: f.serviceFactory})
+	result, err = scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce 09:31: %v", err)
+	}
+	if result.DeliveriesEnqueued != 1 {
+		t.Fatalf("09:31 应入队 1（不同触发点），得到 %d", result.DeliveriesEnqueued)
+	}
+}
+
 func TestProjectAutomationEventEnqueueUsesAddedAssignees(t *testing.T) {
 	f := newProjectAutomationServiceFixture(t)
 	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})

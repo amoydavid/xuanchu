@@ -20,7 +20,7 @@ type TaskSeriesAddInput struct {
 	ProjectID      string            `json:"project_id,omitempty"`
 	Title          string            `json:"title" jsonschema:"series title"`
 	Description    *string           `json:"description,omitempty" jsonschema:"series details"`
-	RecurrenceRule string            `json:"recurrence_rule" jsonschema:"recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO"`
+	RecurrenceRule string            `json:"recurrence_rule" jsonschema:"recurrence rule: daily, weekly, monthly, <N>days, <N>weeks, <N>months (e.g. 2weeks, 3months)"`
 	FirstDue       *int64            `json:"first_due,omitempty" jsonschema:"first occurrence due time, unix seconds"`
 	FirstDueDate   *string           `json:"first_due_date,omitempty" jsonschema:"first occurrence due date as YYYY-MM-DD; stored at local 23:59:59"`
 	Until          *int64            `json:"until,omitempty" jsonschema:"series end time, unix seconds"`

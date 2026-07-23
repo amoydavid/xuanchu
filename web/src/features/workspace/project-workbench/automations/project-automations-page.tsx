@@ -7,6 +7,7 @@ import { listProjectConfig } from "@/features/workspace/project-workbench/api/pr
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { DestructiveConfirmDialog } from "@/features/workspace/project-workbench/shared/destructive-confirm-dialog"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
+import { describeCron } from "@/features/workspace/shared/cron-schedule"
 
 import {
   deleteProjectAutomation,
@@ -230,10 +231,15 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
 
 function triggerSummary(rule: {
   trigger_type: string
-  trigger_config: { schedule_value?: string; event_type?: string }
+  trigger_config: { schedule_type?: string; schedule_value?: string; event_type?: string }
 }) {
   if (rule.trigger_type === "schedule") {
-    return `schedule / 每天 ${rule.trigger_config.schedule_value ?? ""}`
+    const value = rule.trigger_config.schedule_value ?? ""
+    if (rule.trigger_config.schedule_type === "cron") {
+      // cron 用中文解读展示；解读不命中时回退为原始表达式。
+      return `schedule / ${describeCron(value)}`
+    }
+    return `schedule / 每天 ${value}`
   }
   return `event / ${rule.trigger_config.event_type ?? ""}`
 }

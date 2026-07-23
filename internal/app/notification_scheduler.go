@@ -8,6 +8,7 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/schedule"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
@@ -151,7 +152,8 @@ func (s *ReminderScheduler) RunOnce(ctx context.Context) (result ReminderSchedul
 
 func schedulerTasksForRule(repo *storage.TaskRepository, rule storage.ReminderRule, now int64, limit int, dialect string) ([]task.Task, error) {
 	if reminderRuleUsesFilter(rule) {
-		if !scheduledRuleDueForRun(rule, now, time.Local) {
+		ruleLoc := schedule.Spec{Type: rule.ScheduleType, Value: rule.ScheduleValue, Timezone: rule.Timezone}.Location()
+		if !scheduledRuleDueForRun(rule, now, ruleLoc) {
 			return nil, nil
 		}
 		expr, err := query.ParseQuery(rule.FilterSource)
@@ -218,6 +220,8 @@ func reminderRuleUsesFilter(rule storage.ReminderRule) bool {
 	return strings.TrimSpace(rule.FilterSource) != ""
 }
 
+// scheduledRuleDueForRun 判断定时过滤规则在当前时刻是否到期。
+// 提醒规则无调度窗口（一过点即到期），靠 scheduleDateKey/dedupe 保证每个触发点只发一次。
 func scheduledRuleDueForRun(rule storage.ReminderRule, now int64, loc *time.Location) bool {
 	if !reminderRuleUsesFilter(rule) {
 		return true
@@ -228,16 +232,12 @@ func scheduledRuleDueForRun(rule storage.ReminderRule, now int64, loc *time.Loca
 		scheduleValue = strings.TrimPrefix(scheduleType, "daily@")
 		scheduleType = "daily_at"
 	}
-	if scheduleType != "daily_at" {
-		return false
-	}
-	parsed, err := time.Parse("15:04", scheduleValue)
+	spec := schedule.Spec{Type: scheduleType, Value: scheduleValue, Timezone: rule.Timezone}
+	_, ok, err := spec.LastFireAt(time.Unix(now, 0))
 	if err != nil {
 		return false
 	}
-	current := time.Unix(now, 0).In(loc)
-	scheduled := time.Date(current.Year(), current.Month(), current.Day(), parsed.Hour(), parsed.Minute(), 0, 0, loc)
-	return !current.Before(scheduled)
+	return ok
 }
 
 func recipientIDsForRule(rule storage.ReminderRule, tsk task.Task) []string {
@@ -343,7 +343,8 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 	eventType := reminderEventType(rule, tsk, now)
 	deliveryID := uuid.NewString()
 	eventID := uuid.NewString()
-	windowStart, windowEnd := reminderWindow(rule, tsk, now, time.Local)
+	ruleLoc := schedule.Spec{Type: rule.ScheduleType, Value: rule.ScheduleValue, Timezone: rule.Timezone}.Location()
+	windowStart, windowEnd := reminderWindow(rule, tsk, now, ruleLoc)
 	sequence, err := reminderDeliverySequence(db, rule, tsk, recipient)
 	if err != nil {
 		return storage.NotificationDelivery{}, err
@@ -370,7 +371,7 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 	if err != nil {
 		return storage.NotificationDelivery{}, err
 	}
-	window := scheduleDateKey(rule, tsk, now, time.Local)
+	window := scheduleDateKey(rule, tsk, now, ruleLoc)
 	return storage.NotificationDelivery{
 		ID:                          deliveryID,
 		WorkspaceID:                 rule.WorkspaceID,
@@ -510,8 +511,19 @@ func reminderWindowStart(rule storage.ReminderRule, tsk task.Task, now int64) in
 
 func scheduleDateKey(rule storage.ReminderRule, tsk task.Task, now int64, loc *time.Location) string {
 	scheduleType := strings.TrimSpace(rule.ScheduleType)
-	if reminderRuleUsesFilter(rule) && (scheduleType == "daily_at" || strings.HasPrefix(scheduleType, "daily@")) {
-		return time.Unix(now, 0).In(loc).Format("2006-01-02")
+	if reminderRuleUsesFilter(rule) {
+		// 定时过滤规则：daily_at 按天去重，cron 按分钟去重，统一委托 schedule.Spec。
+		if scheduleType == "cron" {
+			spec := schedule.Spec{Type: scheduleType, Value: strings.TrimSpace(rule.ScheduleValue), Timezone: rule.Timezone}
+			if key, err := spec.DedupeKey(time.Unix(now, 0)); err == nil {
+				return key
+			}
+			// 异常时回退到分钟级时间戳。
+			return time.Unix(now, 0).In(loc).Format("2006-01-02T15:04")
+		}
+		if scheduleType == "daily_at" || strings.HasPrefix(scheduleType, "daily@") {
+			return time.Unix(now, 0).In(loc).Format("2006-01-02")
+		}
 	}
 	return fmt.Sprintf("%d", reminderWindowStart(rule, tsk, now))
 }

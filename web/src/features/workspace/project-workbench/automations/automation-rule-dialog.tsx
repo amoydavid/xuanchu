@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { CronScheduleInput } from "@/features/workspace/shared/cron-schedule-input"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
 
 import {
@@ -164,21 +165,83 @@ export function AutomationRuleDialog({
               </select>
             </div>
             {form.trigger_type === "schedule" ? (
-              <div className="grid gap-2">
-                <label className="text-sm font-medium" htmlFor="automation-time">时间</label>
-                <Input
-                  id="automation-time"
-                  aria-label="时间"
-                  value={form.trigger_config.schedule_value ?? ""}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      trigger_config: { ...form.trigger_config, schedule_value: event.target.value },
-                    })
-                  }
-                  disabled={disabled}
-                  placeholder="09:30"
-                />
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">定时方式</label>
+                  <select
+                    aria-label="定时方式"
+                    value={form.trigger_config.schedule_type ?? "daily_at"}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        trigger_config: {
+                          ...form.trigger_config,
+                          schedule_type: event.target.value as "daily_at" | "cron",
+                          // 切换类型时清空旧值，避免 daily_at 的 HH:MM 残留为 cron
+                          schedule_value: "",
+                        },
+                      })
+                    }
+                    disabled={disabled}
+                    className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                  >
+                    <option value="daily_at">每天定时</option>
+                    <option value="cron">自定义 cron</option>
+                  </select>
+                </div>
+                {form.trigger_config.schedule_type === "cron" ? (
+                  <CronScheduleInput
+                    value={form.trigger_config.schedule_value ?? ""}
+                    timezone={form.trigger_config.timezone ?? "Asia/Shanghai"}
+                    onChange={({ value: schedule_value, timezone }) =>
+                      setForm({
+                        ...form,
+                        trigger_config: { ...form.trigger_config, schedule_value, timezone },
+                      })
+                    }
+                    disabled={disabled}
+                  />
+                ) : (
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium" htmlFor="automation-time">时间</label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="automation-time"
+                        aria-label="时间"
+                        value={form.trigger_config.schedule_value ?? ""}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            trigger_config: { ...form.trigger_config, schedule_value: event.target.value },
+                          })
+                        }
+                        disabled={disabled}
+                        placeholder="09:30"
+                      />
+                      <Select
+                        value={form.trigger_config.timezone ?? "Asia/Shanghai"}
+                        onValueChange={(timezone) =>
+                          setForm({
+                            ...form,
+                            trigger_config: { ...form.trigger_config, timezone },
+                          })
+                        }
+                        disabled={disabled}
+                      >
+                        <SelectTrigger aria-label="时区" className="w-[160px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Asia/Shanghai">Asia/Shanghai</SelectItem>
+                          <SelectItem value="UTC">UTC</SelectItem>
+                          <SelectItem value="America/Los_Angeles">America/Los_Angeles</SelectItem>
+                          <SelectItem value="America/New_York">America/New_York</SelectItem>
+                          <SelectItem value="Europe/London">Europe/London</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid gap-2">

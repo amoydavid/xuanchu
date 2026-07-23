@@ -32,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ApiError } from "@/lib/api"
+import { CronScheduleInput } from "@/features/workspace/shared/cron-schedule-input"
 
 import {
   createReminderRule,
@@ -48,7 +49,7 @@ import { TemplateVarHints } from "../template-vars/template-var-hints"
 const QUERY_KEY = ["outbound", "reminder-rules"] as const
 
 const AUDIENCE_TYPES = ["assignees", "explicit_users", "assignees_and_explicit_users"]
-const SCHEDULE_TYPES = ["daily_at", "hourly", "weekly_at", "cron"]
+const SCHEDULE_TYPES = ["daily_at", "cron"]
 
 export function ReminderRuleList({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation()
@@ -216,6 +217,7 @@ function ReminderRuleCreateDialog({
   const [projectRef, setProjectRef] = useState("")
   const [scheduleType, setScheduleType] = useState("daily_at")
   const [scheduleValue, setScheduleValue] = useState("08:50")
+  const [timezone, setTimezone] = useState("Asia/Shanghai")
   const [filterSource, setFilterSource] = useState("status:pending")
   const [audienceType, setAudienceType] = useState("assignees")
   const [recipients, setRecipients] = useState("")
@@ -236,6 +238,7 @@ function ReminderRuleCreateDialog({
     setProjectRef("")
     setScheduleType("daily_at")
     setScheduleValue("08:50")
+    setTimezone("Asia/Shanghai")
     setFilterSource("status:pending")
     setAudienceType("assignees")
     setRecipients("")
@@ -263,6 +266,7 @@ function ReminderRuleCreateDialog({
       name: name.trim(),
       schedule_type: scheduleType,
       schedule_value: scheduleValue,
+      timezone,
       filter_source: filterSource,
       audience_type: audienceType,
       sink_ref: sink,
@@ -301,13 +305,17 @@ function ReminderRuleCreateDialog({
               value={name}
             />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("outbound.reminderRuleScheduleType")}</Label>
               <select
                 aria-label={t("outbound.reminderRuleScheduleType")}
                 className="h-9 w-full rounded-md border bg-transparent px-2 text-sm"
-                onChange={(e) => setScheduleType(e.target.value)}
+                onChange={(e) => {
+                  setScheduleType(e.target.value)
+                  // 切换类型时清空旧值，避免 daily_at 的 HH:MM 残留为 cron
+                  setScheduleValue(e.target.value === "cron" ? "0 9 * * 1-5" : "08:50")
+                }}
                 value={scheduleType}
               >
                 {SCHEDULE_TYPES.map((s) => (
@@ -317,14 +325,27 @@ function ReminderRuleCreateDialog({
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{t("outbound.reminderRuleScheduleValue")}</Label>
-              <Input
-                aria-label={t("outbound.reminderRuleScheduleValue")}
-                onChange={(e) => setScheduleValue(e.target.value)}
+            {scheduleType === "cron" ? (
+              <CronScheduleInput
                 value={scheduleValue}
+                timezone={timezone}
+                onChange={({ value: v, timezone: tz }) => {
+                  setScheduleValue(v)
+                  setTimezone(tz)
+                }}
+                label={t("outbound.reminderRuleScheduleValue")}
               />
-            </div>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("outbound.reminderRuleScheduleValue")}</Label>
+                <Input
+                  aria-label={t("outbound.reminderRuleScheduleValue")}
+                  onChange={(e) => setScheduleValue(e.target.value)}
+                  value={scheduleValue}
+                  placeholder="08:50"
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">

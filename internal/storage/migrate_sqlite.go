@@ -563,6 +563,7 @@ func (s *Store) prepareReminderRuleScheduleColumns() error {
 	}{
 		{name: "schedule_type", sql: "ALTER TABLE reminder_rules ADD COLUMN schedule_type TEXT NOT NULL DEFAULT ''"},
 		{name: "schedule_value", sql: "ALTER TABLE reminder_rules ADD COLUMN schedule_value TEXT NOT NULL DEFAULT ''"},
+		{name: "timezone", sql: "ALTER TABLE reminder_rules ADD COLUMN timezone TEXT NOT NULL DEFAULT ''"},
 		{name: "filter_source", sql: "ALTER TABLE reminder_rules ADD COLUMN filter_source TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, column := range columns {

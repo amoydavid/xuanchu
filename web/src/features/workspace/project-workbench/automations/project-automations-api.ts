@@ -17,7 +17,7 @@ export type AutomationDeliveryStatus =
   | "dead_lettered"
 
 export type AutomationTriggerConfig = {
-  schedule_type?: "daily_at"
+  schedule_type?: "daily_at" | "cron"
   schedule_value?: string
   timezone?: string
   event_type?: string
