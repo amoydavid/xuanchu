@@ -59,6 +59,7 @@
 | v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
 | v0.5.11 | 已完成 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
 | v0.6.0 | 已完成 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
+| v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
