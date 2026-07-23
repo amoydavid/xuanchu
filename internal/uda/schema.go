@@ -43,7 +43,61 @@ func ValidateDefinition(def Definition) error {
 			return err
 		}
 	}
+	if strings.TrimSpace(def.Default) != "" {
+		if _, err := NormalizeValue(def, def.Default); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// NormalizeDefinition 对 definition 做一次完整、可持久化的规范化。
+// values 保留首次出现顺序；default 必须基于规范化后的 values 校验，避免
+// numeric/date/duration enum 与 default 使用两套字符串形态。
+func NormalizeDefinition(def Definition) (Definition, error) {
+	out := def
+	out.Name = strings.TrimSpace(out.Name)
+	out.Type = Type(strings.TrimSpace(string(out.Type)))
+	if out.Type == "" {
+		out.Type = TypeString
+	}
+	out.Label = strings.TrimSpace(out.Label)
+	base := Definition{Name: out.Name, Type: out.Type}
+	if err := ValidateDefinition(base); err != nil {
+		return Definition{}, err
+	}
+	seen := make(map[string]struct{}, len(out.Values))
+	values := make([]string, 0, len(out.Values))
+	for _, raw := range out.Values {
+		value, err := NormalizeValue(base, raw)
+		if err != nil {
+			return Definition{}, err
+		}
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	if values == nil {
+		values = []string{}
+	}
+	out.Values = values
+	out.Default = strings.TrimSpace(out.Default)
+	if out.Default != "" {
+		value, err := NormalizeValue(out, out.Default)
+		if err != nil {
+			return Definition{}, err
+		}
+		out.Default = value
+	}
+	if err := ValidateDefinition(out); err != nil {
+		return Definition{}, err
+	}
+	return out, nil
 }
 
 func NormalizeValue(def Definition, raw string) (string, error) {

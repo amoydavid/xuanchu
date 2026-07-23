@@ -12,23 +12,24 @@ import (
 )
 
 type TaskAddInput struct {
-	Workspace     string   `json:"workspace,omitempty"`
-	Project       string   `json:"project,omitempty"`
-	ProjectID     string   `json:"project_id,omitempty"`
-	Title         string   `json:"title" jsonschema:"task title"`
-	Description   *string  `json:"description,omitempty" jsonschema:"task details"`
-	Tags          []string `json:"tags,omitempty" jsonschema:"task tags to add"`
-	Assignees     []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
-	Priority      string   `json:"priority,omitempty" jsonschema:"task priority: H, M, or L; omit for no priority"`
-	Due           *int64   `json:"due,omitempty" jsonschema:"deadline time, unix seconds"`
-	DueDate       string   `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
-	Wait          *int64   `json:"wait,omitempty" jsonschema:"defer-until time, unix seconds"`
-	WaitDate      string   `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
-	Scheduled     *int64   `json:"scheduled,omitempty" jsonschema:"scheduled start time, unix seconds"`
-	ScheduledDate string   `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
-	Until         *int64   `json:"until,omitempty" jsonschema:"effective-until time, unix seconds"`
-	UntilDate     string   `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
-	Annotations   []string `json:"annotations,omitempty" jsonschema:"initial annotations"`
+	Workspace     string            `json:"workspace,omitempty"`
+	Project       string            `json:"project,omitempty"`
+	ProjectID     string            `json:"project_id,omitempty"`
+	Title         string            `json:"title" jsonschema:"task title"`
+	Description   *string           `json:"description,omitempty" jsonschema:"task details"`
+	Tags          []string          `json:"tags,omitempty" jsonschema:"task tags to add"`
+	UDAs          map[string]string `json:"udas,omitempty" jsonschema:"user-defined attributes"`
+	Assignees     []string          `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
+	Priority      string            `json:"priority,omitempty" jsonschema:"task priority: H, M, or L; omit for no priority"`
+	Due           *int64            `json:"due,omitempty" jsonschema:"deadline time, unix seconds"`
+	DueDate       string            `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
+	Wait          *int64            `json:"wait,omitempty" jsonschema:"defer-until time, unix seconds"`
+	WaitDate      string            `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
+	Scheduled     *int64            `json:"scheduled,omitempty" jsonschema:"scheduled start time, unix seconds"`
+	ScheduledDate string            `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
+	Until         *int64            `json:"until,omitempty" jsonschema:"effective-until time, unix seconds"`
+	UntilDate     string            `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
+	Annotations   []string          `json:"annotations,omitempty" jsonschema:"initial annotations"`
 }
 
 func (in TaskAddInput) scopeInput() RequestScopeInput {
@@ -278,6 +279,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			Scheduled:   scheduled,
 			Until:       until,
 			Tags:        in.Tags,
+			UDAs:        in.UDAs,
 		}, in.Annotations)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

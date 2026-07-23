@@ -60,6 +60,7 @@
 | v0.5.11 | 已完成 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
 | v0.6.0 | 已完成 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
 | v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
+| v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -689,6 +690,25 @@ docs/superpowers/plans/2026-07-17-web-console-user-home-implementation.md
 ```text
 docs/superpowers/specs/2026-07-20-project-template-snapshot-design.md
 docs/superpowers/plans/2026-07-20-project-template-snapshot-implementation.md
+```
+
+## v0.6.2：Workspace 自定义字段管理与填写体验
+
+**状态：已完成。**
+
+自定义字段收敛为 Workspace `UDADefinition` 与 Task / TaskSeries value 两层模型。Project 不保存字段 allowlist、override 或可用范围，项目模板也不复制 Workspace definition。
+
+- 新增 Workspace 自定义字段管理页与 `GET/PUT/DELETE /api/v1/udas` typed HTTP resource，统一展示 runtime / database / database_override 来源和 Task / active Series usage。
+- definition 的 type、values、default 统一归一化；活动 Series 使用字段时，删除或不兼容修改被阻止，普通 Task 历史值继续保留。
+- Task / TaskSeries 表单改为“已选择字段 + 添加自定义字段”，Task 详情按 Workspace definition 使用 typed editor，definition-missing 历史值只读。
+- MCP `task_add` 补齐 `udas` 输入；已有 `task_get/query/modify` 已覆盖读写，因此不增加 `uda_list`、`uda_set` 等同义工具。
+- Project Template 保持严格 `xuanchu.project-template-snapshot/v1`：capture 只保存 Task / Series UDA blueprint，实例化按当前 Workspace definition 校验，缺失或不兼容时阻断且不产生半成品 Project。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-23-workspace-custom-fields-design.md
+docs/superpowers/plans/2026-07-23-workspace-custom-fields-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

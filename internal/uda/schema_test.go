@@ -109,3 +109,24 @@ func TestNormalizeStringValueRejectsNewlines(t *testing.T) {
 		t.Fatal("NormalizeValue(string with newline) error = nil, want error")
 	}
 }
+
+func TestNormalizeDefinitionCanonicalizesValuesAndDefault(t *testing.T) {
+	got, err := NormalizeDefinition(Definition{
+		Name: " estimate ", Type: TypeNumeric, Label: " 工作量 ",
+		Values: []string{"1.0", "2", "1"}, Default: "2.0",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeDefinition() error = %v", err)
+	}
+	wantValues := []string{"1", "2"}
+	if got.Name != "estimate" || got.Label != "工作量" || got.Default != "2" || !reflect.DeepEqual(got.Values, wantValues) {
+		t.Fatalf("NormalizeDefinition() = %#v, want values=%#v default=2", got, wantValues)
+	}
+}
+
+func TestNormalizeDefinitionRejectsDefaultOutsideCanonicalEnum(t *testing.T) {
+	_, err := NormalizeDefinition(Definition{Name: "estimate", Type: TypeNumeric, Values: []string{"1.0", "2"}, Default: "3"})
+	if err == nil {
+		t.Fatal("NormalizeDefinition() error = nil, want enum error")
+	}
+}

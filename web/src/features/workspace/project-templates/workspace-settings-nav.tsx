@@ -5,8 +5,10 @@ import { cn } from "@/lib/utils"
 
 export function WorkspaceSettingsNav({
   active,
+  workspaceSlug = "",
 }: {
-  active: "configDefinitions" | "projectTemplates"
+  active: "configDefinitions" | "customFields" | "projectTemplates"
+  workspaceSlug?: string
 }) {
   const { t } = useTranslation()
   const items = [
@@ -14,6 +16,13 @@ export function WorkspaceSettingsNav({
       key: "configDefinitions" as const,
       href: "/settings",
       label: t("workspaceSettingsNav.configDefinitions"),
+    },
+    {
+      key: "customFields" as const,
+      href: workspaceSlug
+        ? `/workspaces/${encodeURIComponent(workspaceSlug)}/settings/custom-fields`
+        : "/settings/custom-fields",
+      label: t("workspaceSettingsNav.customFields"),
     },
     {
       key: "projectTemplates" as const,

@@ -28,6 +28,7 @@ const (
 	PermissionConfigSchemaWrite  Permission = "config.schema.write"
 	PermissionContextUse         Permission = "context.use"
 	PermissionContextManage      Permission = "context.manage"
+	PermissionUDARead            Permission = "uda.read"
 	PermissionUDAManage          Permission = "uda.manage"
 	PermissionWorkspaceRead      Permission = "workspace.read"
 	PermissionWorkspaceModify    Permission = "workspace.modify"

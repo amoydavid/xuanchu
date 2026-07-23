@@ -18,7 +18,10 @@ export function ProjectTemplatesRoute() {
 
   return (
     <>
-      <WorkspaceSettingsNav active="projectTemplates" />
+      <WorkspaceSettingsNav
+        active="projectTemplates"
+        workspaceSlug={workspaceSlug}
+      />
       <ProjectTemplateLibraryPage
         canManage={canManage}
         onCreateTemplate={setCaptureSource}

@@ -42,6 +42,41 @@ type TaskSeriesCandidatePage struct {
 	Offset int
 }
 
+type taskSeriesUDAValueCount struct {
+	Name  string
+	Count int64
+}
+
+func (r *TaskSeriesRepository) ActiveUDAValues(workspaceID, name string) ([]string, error) {
+	var values []string
+	err := r.db.Table("task_series_uda_values AS u").
+		Select("u.value").
+		Joins("JOIN task_series AS s ON s.id = u.series_id").
+		Where("s.workspace_id = ? AND s.status = ? AND u.name = ?", workspaceID, taskseries.StatusActive, name).
+		Order("s.id ASC").Pluck("u.value", &values).Error
+	return values, err
+}
+
+func (r *TaskSeriesRepository) ActiveUDAValueCounts(workspaceID string, names []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(names))
+	if len(names) == 0 {
+		return out, nil
+	}
+	var rows []taskSeriesUDAValueCount
+	err := r.db.Table("task_series_uda_values AS u").
+		Select("u.name, COUNT(*) AS count").
+		Joins("JOIN task_series AS s ON s.id = u.series_id").
+		Where("s.workspace_id = ? AND s.status = ? AND u.name IN ?", workspaceID, taskseries.StatusActive, names).
+		Group("u.name").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.Name] = row.Count
+	}
+	return out, nil
+}
+
 // Create 在一个事务内创建 series 行、初始 rule version、关联字段。
 func (r *TaskSeriesRepository) Create(s taskseries.Series) (taskseries.Series, error) {
 	if s.ID == "" {

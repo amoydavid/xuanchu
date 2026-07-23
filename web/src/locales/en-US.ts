@@ -164,6 +164,10 @@ export const enUS = {
     customFieldName: "Field name",
     customFieldValue: "Value for {{name}}",
     addCustomField: "Add field",
+    searchCustomFields: "Search custom fields",
+    noCustomFieldsAvailable: "No fields available",
+    customFieldHistoryReadonly:
+      "The field definition is missing. This historical value is read-only.",
     removeCustomField: "Remove field {{name}}",
     titleRequired: "Task title is required",
     submit: "Create task",
@@ -982,7 +986,60 @@ export const enUS = {
   workspaceSettingsNav: {
     label: "Workspace settings",
     configDefinitions: "Config Definitions",
+    customFields: "Custom Fields",
     projectTemplates: "Project Templates",
+  },
+  customFields: {
+    title: "Custom Fields",
+    description:
+      "These fields are available to every task and recurring task in this workspace.",
+    create: "New Field",
+    createTitle: "New Custom Field",
+    editTitle: "Edit Custom Field",
+    edit: "Edit",
+    formDescription:
+      "The name is the stable key. Type, options, and default validate task input.",
+    runtimeOverrideDescription:
+      "This field is provided at runtime. Saving creates a database override for this workspace.",
+    name: "Name",
+    label: "Display Name",
+    type: "Type",
+    values: "Options",
+    valuesPlaceholder: "Comma separated; empty allows free input",
+    default: "Default",
+    defaultHint:
+      "The default is only a hint and is not written to tasks automatically.",
+    usage: "Usage",
+    usageText: "{{tasks}} tasks · {{series}} active series",
+    search: "Search custom fields",
+    empty: "No custom fields yet.",
+    loadError: "Failed to load custom fields",
+    createOverride: "Create Override",
+    deleteConfirm:
+      "Existing task values remain as read-only history after deleting this definition. Delete it?",
+    deleteOverrideConfirm:
+      "Deleting this workspace override restores the runtime field. Delete it?",
+    types: {
+      string: "Text",
+      numeric: "Number",
+      date: "Date",
+      duration: "Duration",
+    },
+    sources: {
+      runtime: "Runtime",
+      database_override: "Workspace override",
+      database: "Workspace definition",
+    },
+    errors: {
+      activeSeriesInUse:
+        "An active recurring task uses this field. Stop the series before deleting it.",
+      activeSeriesIncompatible:
+        "The new definition is incompatible with an active recurring task value.",
+      runtimeReadonly:
+        "Runtime fields cannot be deleted directly. Create a workspace override instead.",
+      invalidDefinition:
+        "The field definition is invalid. Check its type, options, and default.",
+    },
   },
   projectTemplates: {
     title: "Project Templates",

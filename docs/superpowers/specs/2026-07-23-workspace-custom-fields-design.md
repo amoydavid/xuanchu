@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-23
 
-**状态：** 待实现
+**状态：** 已实现（2026-07-23）
 
 **范围：** Workspace `UDADefinition`、Task / TaskSeries UDA value、Web Console 字段管理与填写体验，以及 HTTP / MCP 的缺口补齐。
 
@@ -615,7 +615,7 @@ tool handler 把它传入现有 `app.AddInput.UDAs`。`task_get` / `task_query` 
 
 | 操作 | App permission | 用户角色 | tenant capability |
 |---|---|---|---|
-| 读取 Workspace UDA | `PermissionWorkspaceRead` | owner/admin/member/viewer | `config:read` |
+| 读取 Workspace UDA | `PermissionUDARead` | owner/admin/member/viewer | `config:read` |
 | 修改 Workspace UDA | `PermissionUDAManage` | owner/admin | `config:write` |
 | Task / Series 写值 | `PermissionTaskWrite` | owner/admin/member | `task:write` |
 

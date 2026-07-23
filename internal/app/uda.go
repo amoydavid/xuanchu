@@ -10,6 +10,24 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/uda"
 )
 
+type WorkspaceUDAInput struct {
+	Type    string   `json:"type"`
+	Label   string   `json:"label"`
+	Values  []string `json:"values"`
+	Default string   `json:"default"`
+}
+
+type WorkspaceUDAFieldView struct {
+	Name                   string   `json:"name"`
+	Type                   string   `json:"type"`
+	Label                  string   `json:"label"`
+	Values                 []string `json:"values"`
+	Default                string   `json:"default"`
+	Source                 string   `json:"source"`
+	TaskValueCount         int64    `json:"task_value_count"`
+	ActiveSeriesValueCount int64    `json:"active_series_value_count"`
+}
+
 func (s *Service) DefineUDA(name, typ, label string, values []string, defaultValue string) error {
 	if err := s.Require(PermissionUDAManage); err != nil {
 		return err
@@ -28,15 +46,12 @@ func (s *Service) DefineUDA(name, typ, label string, values []string, defaultVal
 
 func (s *Service) defineUDALocked(name, typ, label string, values []string, defaultValue string) (string, error) {
 	def := uda.Definition{Name: strings.TrimSpace(name), Type: uda.Type(strings.TrimSpace(typ)), Label: label, Values: values, Default: defaultValue}
-	if def.Type == "" {
-		def.Type = uda.TypeString
+	def, err := uda.NormalizeDefinition(def)
+	if err != nil {
+		return "", RuntimeError{Code: "uda_definition_invalid", Message: err.Error()}
 	}
-	if def.Default != "" {
-		normalized, err := uda.NormalizeValue(def, def.Default)
-		if err != nil {
-			return "", err
-		}
-		def.Default = normalized
+	if err := s.validateActiveSeriesUDAUpdate(def); err != nil {
+		return "", err
 	}
 	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
 		return "", err
@@ -62,10 +77,148 @@ func (s *Service) DeleteUDA(name string) error {
 
 func (s *Service) deleteUDALocked(name string) (string, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
+	hasDB, err := s.udaRepo.HasDefinition(s.workspaceID, name)
+	if err != nil {
+		return "", err
+	}
+	if !hasDB {
+		if _, ok := s.runtimeUDAs[name]; ok {
+			return "", RuntimeError{Code: "uda_runtime_readonly", Message: fmt.Sprintf("UDA %q is provided by runtime config", name)}
+		}
+		return name, nil
+	}
+	values, err := s.taskSeriesRepo.ActiveUDAValues(s.workspaceID, name)
+	if err != nil {
+		return "", err
+	}
+	if len(values) > 0 {
+		if runtimeDef, ok := s.runtimeUDAs[name]; ok {
+			dbDef, getErr := s.udaRepo.GetDefinition(s.workspaceID, name)
+			if getErr != nil {
+				return "", getErr
+			}
+			if dbDef.Type != runtimeDef.Type {
+				return "", RuntimeError{Code: "uda_active_series_incompatible", Message: fmt.Sprintf("runtime UDA %q has a different type from the active task series definition", name)}
+			}
+			for _, raw := range values {
+				if _, err := uda.NormalizeValue(runtimeDef, raw); err != nil {
+					return "", RuntimeError{Code: "uda_active_series_incompatible", Message: fmt.Sprintf("runtime UDA %q is incompatible with an active task series value", name)}
+				}
+			}
+		} else {
+			return "", RuntimeError{Code: "uda_active_series_in_use", Message: fmt.Sprintf("UDA %q is used by active task series", name)}
+		}
+	}
 	if err := s.udaRepo.DeleteDefinition(s.workspaceID, name); err != nil {
 		return "", err
 	}
 	return name, nil
+}
+
+func (s *Service) validateActiveSeriesUDAUpdate(def uda.Definition) error {
+	values, err := s.taskSeriesRepo.ActiveUDAValues(s.workspaceID, def.Name)
+	if err != nil {
+		return err
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	current, err := s.udaDefinition(def.Name)
+	if err != nil && err != storage.ErrNotFound {
+		return err
+	}
+	if err == nil && current.Type != def.Type {
+		return RuntimeError{Code: "uda_active_series_incompatible", Message: fmt.Sprintf("UDA %q type cannot change while it is used by an active task series", def.Name)}
+	}
+	for _, raw := range values {
+		if _, err := uda.NormalizeValue(def, raw); err != nil {
+			return RuntimeError{Code: "uda_active_series_incompatible", Message: fmt.Sprintf("UDA %q is incompatible with an active task series value", def.Name)}
+		}
+	}
+	return nil
+}
+
+func (s *Service) WorkspaceListUDAs() ([]WorkspaceUDAFieldView, error) {
+	if err := s.Require(PermissionUDARead); err != nil {
+		return nil, err
+	}
+	return s.workspaceListUDAs()
+}
+
+func (s *Service) workspaceListUDAs() ([]WorkspaceUDAFieldView, error) {
+	defs, err := s.ListUDAs()
+	if err != nil {
+		return nil, err
+	}
+	dbDefs, err := s.udaRepo.ListDefinitions(s.workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	dbNames := make(map[string]struct{}, len(dbDefs))
+	for _, def := range dbDefs {
+		dbNames[def.Name] = struct{}{}
+	}
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	taskCounts, err := s.udaRepo.TaskValueCounts(s.workspaceID, names)
+	if err != nil {
+		return nil, err
+	}
+	seriesCounts, err := s.taskSeriesRepo.ActiveUDAValueCounts(s.workspaceID, names)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WorkspaceUDAFieldView, 0, len(defs))
+	for _, def := range defs {
+		_, hasDB := dbNames[def.Name]
+		_, hasRuntime := s.runtimeUDAs[def.Name]
+		source := "database"
+		switch {
+		case hasDB && hasRuntime:
+			source = "database_override"
+		case !hasDB && hasRuntime:
+			source = "runtime"
+		}
+		out = append(out, WorkspaceUDAFieldView{
+			Name: def.Name, Type: string(def.Type), Label: def.Label,
+			Values: append([]string{}, def.Values...), Default: def.Default, Source: source,
+			TaskValueCount: taskCounts[def.Name], ActiveSeriesValueCount: seriesCounts[def.Name],
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) WorkspaceSetUDA(name string, input WorkspaceUDAInput) (WorkspaceUDAFieldView, error) {
+	if err := s.Require(PermissionUDAManage); err != nil {
+		return WorkspaceUDAFieldView{}, err
+	}
+	name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
+	err := s.withAudit("uda.schema.set", func(tx *Service) (AuditEntry, error) {
+		name, err := tx.defineUDALocked(name, input.Type, input.Label, input.Values, input.Default)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{TargetType: "uda", TargetID: name}, nil
+	})
+	if err != nil {
+		return WorkspaceUDAFieldView{}, err
+	}
+	rows, err := s.workspaceListUDAs()
+	if err != nil {
+		return WorkspaceUDAFieldView{}, err
+	}
+	for _, row := range rows {
+		if row.Name == name {
+			return row, nil
+		}
+	}
+	return WorkspaceUDAFieldView{}, RuntimeError{Code: "uda_not_defined", Message: fmt.Sprintf("UDA %q is not defined", name)}
+}
+
+func (s *Service) WorkspaceDeleteUDA(name string) error {
+	return s.DeleteUDA(name)
 }
 
 func (s *Service) ListUDAs() ([]uda.Definition, error) {
@@ -409,7 +562,11 @@ func (s *Service) setUDAConfigLocked(key, value string) (string, error) {
 	}
 	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
 	if err == storage.ErrNotFound {
-		def = uda.Definition{Name: name, Type: uda.TypeString}
+		if runtimeDef, ok := s.runtimeUDAs[name]; ok {
+			def = runtimeDef
+		} else {
+			def = uda.Definition{Name: name, Type: uda.TypeString}
+		}
 	} else if err != nil {
 		return "", err
 	}
@@ -425,10 +582,7 @@ func (s *Service) setUDAConfigLocked(key, value string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown UDA config field %q", field)
 	}
-	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
-		return "", err
-	}
-	return name, nil
+	return s.defineUDALocked(def.Name, string(def.Type), def.Label, def.Values, def.Default)
 }
 
 func (s *Service) getUDAConfig(key string) (string, bool, error) {
@@ -491,10 +645,7 @@ func (s *Service) unsetUDAConfigLocked(key string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown UDA config field %q", field)
 	}
-	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
-		return "", err
-	}
-	return name, nil
+	return s.defineUDALocked(def.Name, string(def.Type), def.Label, def.Values, def.Default)
 }
 
 func splitUDAConfigKey(key string) (string, string, error) {
@@ -668,10 +819,11 @@ func udaDefinitionsFromConfig(values map[string]string) (map[string]uda.Definiti
 		if def.Type == "" {
 			def.Type = uda.TypeString
 		}
-		if err := uda.ValidateDefinition(def); err != nil {
+		normalized, err := uda.NormalizeDefinition(def)
+		if err != nil {
 			return nil, err
 		}
-		defs[name] = def
+		defs[name] = normalized
 	}
 	return defs, nil
 }

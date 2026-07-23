@@ -42,6 +42,8 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 	baseSvc, err := app.NewService(app.ServiceOptions{
 		Store:                 s.store,
 		Clock:                 s.effectiveClock(),
+		RuntimeConfig:         s.runtimeConfig,
+		RuntimeOverrides:      s.runtimeOverrides,
 		Runtime:               &app.RuntimeContext{},
 		DisableScopeBootstrap: true,
 	})
@@ -72,6 +74,8 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		Store:              s.store,
 		Clock:              s.effectiveClock(),
 		ResourceBaseURL:    s.resourceBaseURL,
+		RuntimeConfig:      s.runtimeConfig,
+		RuntimeOverrides:   s.runtimeOverrides,
 		Runtime:            &authorized.Runtime,
 		RequestScope:       &authorized.Decision.RequestScope,
 		SinkTestClient:     s.sinkTestClient,

@@ -1,5 +1,11 @@
-import { ChevronDownIcon, ChevronRightIcon, CircleHelpIcon } from "lucide-react"
-import { useMemo, useState } from "react"
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CircleHelpIcon,
+  PlusIcon,
+  XIcon,
+} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -11,7 +17,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Switch } from "@/components/ui/switch"
 import {
   extractUDAs,
   formatUDAValue,
@@ -25,6 +30,10 @@ import { InlineDatePicker } from "../shared/inline-date-picker"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { useEditFeedback } from "../shared/edit-feedback"
+import {
+  listWorkspaceTaskUDADefinitions,
+  type TaskUDADefinition,
+} from "../tasks/task-uda-definitions"
 import { AssigneePicker } from "./assignee-picker"
 import { TagPicker } from "./tag-picker"
 import { TaskDependencyPicker } from "./task-dependency-picker"
@@ -55,6 +64,28 @@ export function TaskPropertyPanel({
   const { t } = useTranslation()
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const udas = useMemo(() => extractUDAs(task), [task])
+  const [udaDefinitions, setUDADefinitions] = useState<TaskUDADefinition[]>([])
+  const [addedUDANames, setAddedUDANames] = useState<string[]>([])
+  useEffect(() => {
+    let active = true
+    void listWorkspaceTaskUDADefinitions(workspaceSlug)
+      .then((definitions) => {
+        if (active) setUDADefinitions(definitions)
+      })
+      .catch(() => {
+        if (active) setUDADefinitions([])
+      })
+    return () => {
+      active = false
+    }
+  }, [workspaceSlug])
+  const udaDefinitionByName = useMemo(
+    () =>
+      new Map(
+        udaDefinitions.map((definition) => [definition.name, definition])
+      ),
+    [udaDefinitions]
+  )
 
   // 分组是否「有内容」：用于空组隐身（spec §9.5）。
   // Schedule 全空时仍保留（可写用户需要入口新增计划字段），但不可写时全空则隐身。
@@ -67,7 +98,7 @@ export function TaskPropertyPanel({
     !!task.parent ||
     (task.depends && task.depends.length > 0) ||
     (task.blocked_by_info && task.blocked_by_info.length > 0)
-  const hasUDA = udas.length > 0
+  const hasUDA = udas.length > 0 || addedUDANames.length > 0
   // 不可写且计划字段全空时，Schedule 整组隐身（避免空壳噪音）。
   const showSchedule = canWrite || hasSchedule
   const projected = task.recurrence_info?.materialization === "projected"
@@ -262,21 +293,78 @@ export function TaskPropertyPanel({
         </PropertyGroup>
       ) : null}
 
-      {/* Custom fields：仅有 UDA 时展示 */}
-      {hasUDA ? (
+      {/* Custom fields：已有值或可写时提供 Workspace 字段入口。 */}
+      {hasUDA || (canWrite && udaDefinitions.length > 0) ? (
         <PropertyGroup title={t("taskDetail.groupCustom")}>
-          {udas.map(([key, value]) => (
-            <PropertyRow key={key} label={key}>
-              <UDAFieldEditor
-                name={key}
-                disabled={!canWrite}
-                onSave={async (nextValue) => {
-                  await modify.mutateAsync({ udas: { [key]: nextValue } })
-                }}
-                value={value}
-              />
-            </PropertyRow>
-          ))}
+          {[
+            ...udas,
+            ...addedUDANames
+              .filter((name) => !udas.some(([key]) => key === name))
+              .map((name) => [name, ""] as [string, unknown]),
+          ].map(([key, value]) => {
+            const definition = udaDefinitionByName.get(key)
+            const persisted = udas.some(([name]) => name === key)
+            return (
+              <PropertyRow key={key} label={definition?.label || key}>
+                <div className="flex items-start gap-1">
+                  <UDAFieldEditor
+                    definition={definition}
+                    name={key}
+                    disabled={!canWrite || !definition}
+                    onSave={async (nextValue) => {
+                      if (nextValue === "") {
+                        await modify.mutateAsync({ clear_udas: [key] })
+                      } else {
+                        await modify.mutateAsync({ udas: { [key]: nextValue } })
+                      }
+                      setAddedUDANames((current) =>
+                        current.filter((name) => name !== key)
+                      )
+                    }}
+                    value={value}
+                  />
+                  {canWrite && definition ? (
+                    <Button
+                      aria-label={t("taskCreate.removeCustomField", {
+                        name: definition.label,
+                      })}
+                      onClick={() => {
+                        if (persisted) {
+                          void modify.mutateAsync({ clear_udas: [key] })
+                        } else {
+                          setAddedUDANames((current) =>
+                            current.filter((name) => name !== key)
+                          )
+                        }
+                      }}
+                      size="icon-xs"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <XIcon />
+                    </Button>
+                  ) : null}
+                </div>
+                {!definition ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("taskCreate.customFieldHistoryReadonly")}
+                  </p>
+                ) : null}
+              </PropertyRow>
+            )
+          })}
+          {canWrite ? (
+            <UDAFieldAdder
+              definitions={udaDefinitions.filter(
+                (definition) =>
+                  !udas.some(([name]) => name === definition.name) &&
+                  !addedUDANames.includes(definition.name)
+              )}
+              onAdd={(name) =>
+                setAddedUDANames((current) => [...current, name])
+              }
+            />
+          ) : null}
         </PropertyGroup>
       ) : null}
     </aside>
@@ -290,6 +378,68 @@ function InheritanceHint({ show }: { show: boolean }) {
       {t("taskSeries.occurrence.inherited")}
     </div>
   ) : null
+}
+
+function UDAFieldAdder({
+  definitions,
+  onAdd,
+}: {
+  definitions: TaskUDADefinition[]
+  onAdd: (name: string) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const visible = definitions.filter((definition) => {
+    const needle = search.trim().toLocaleLowerCase()
+    return (
+      !needle ||
+      `${definition.name} ${definition.label}`
+        .toLocaleLowerCase()
+        .includes(needle)
+    )
+  })
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <PlusIcon />
+          {t("taskCreate.addCustomField")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 space-y-2">
+        <Input
+          aria-label={t("taskCreate.searchCustomFields")}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t("taskCreate.searchCustomFields")}
+          value={search}
+        />
+        <div className="max-h-52 space-y-1 overflow-auto">
+          {visible.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-muted-foreground">
+              {t("taskCreate.noCustomFieldsAvailable")}
+            </p>
+          ) : (
+            visible.map((definition) => (
+              <Button
+                className="w-full justify-start"
+                key={definition.name}
+                onClick={() => {
+                  onAdd(definition.name)
+                  setSearch("")
+                  setOpen(false)
+                }}
+                type="button"
+                variant="ghost"
+              >
+                {definition.label}
+              </Button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 // PropertyGroup 可折叠分组容器；hasContent=false 时整组不渲染（spec §9.5）。
@@ -323,36 +473,50 @@ function PropertyGroup({
 }
 
 function UDAFieldEditor({
+  definition,
   disabled,
   name,
   onSave,
   value,
 }: {
+  definition?: TaskUDADefinition
   disabled: boolean
   name: string
   onSave: (value: string) => Promise<void> | void
   value: unknown
 }) {
-  const kind = inferUDAKind(name, value)
   const normalizedValue = formatUDAValue(value)
-  if (kind === "boolean") {
+  if (!definition) {
+    return <span className="font-medium">{normalizedValue || "-"}</span>
+  }
+  if (definition.values.length > 0) {
     return (
-      <UDABooleanEditor
-        checked={toBoolean(value)}
+      <InlineSelectEditor
+        ariaLabel={`UDA ${name}`}
         disabled={disabled}
-        name={name}
         onSave={onSave}
+        options={definition.values.map((option) => ({
+          label: option,
+          value: option,
+        }))}
+        placeholder={definition.defaultValue ?? "-"}
+        triggerSize="sm"
+        value={normalizedValue}
       />
     )
   }
-  if (kind === "number" || kind === "date") {
+  if (definition.type === "numeric" || definition.type === "date") {
     return (
       <UDAInputEditor
         disabled={disabled}
         name={name}
         onSave={onSave}
-        type={kind === "number" ? "number" : "date"}
-        value={normalizedValue}
+        type={definition.type === "numeric" ? "number" : "date"}
+        value={
+          definition.type === "date"
+            ? normalizedValue.slice(0, 10)
+            : normalizedValue
+        }
       />
     )
   }
@@ -360,49 +524,11 @@ function UDAFieldEditor({
     <InlineTextEditor
       ariaLabel={`UDA ${name}`}
       disabled={disabled}
-      emptyLabel="-"
+      emptyLabel={definition.defaultValue || "-"}
       onSave={onSave}
+      placeholder={definition.defaultValue ?? undefined}
       value={normalizedValue}
     />
-  )
-}
-
-function UDABooleanEditor({
-  checked,
-  disabled,
-  name,
-  onSave,
-}: {
-  checked: boolean
-  disabled: boolean
-  name: string
-  onSave: (value: string) => Promise<void> | void
-}) {
-  const feedback = useEditFeedback()
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  return (
-    <span className="inline-flex flex-col gap-1">
-      <Switch
-        aria-label={`UDA ${name}`}
-        checked={checked}
-        disabled={disabled || saving}
-        onCheckedChange={async (next) => {
-          setSaving(true)
-          setError(null)
-          try {
-            await onSave(String(Boolean(next)))
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err)
-            setError(message)
-            feedback.failure(`UDA ${name}`, message)
-          } finally {
-            setSaving(false)
-          }
-        }}
-      />
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
-    </span>
   )
 }
 
@@ -477,36 +603,6 @@ function UDAInputEditor({
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </span>
   )
-}
-
-function inferUDAKind(
-  name: string,
-  value: unknown
-): "boolean" | "date" | "number" | "text" {
-  if (typeof value === "boolean") {
-    return "boolean"
-  }
-  if (typeof value === "number") {
-    return "number"
-  }
-  const raw = formatUDAValue(value)
-  if (/^(true|false)$/i.test(raw)) {
-    return "boolean"
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw) || /(^|_)(date|day)$/.test(name)) {
-    return "date"
-  }
-  if (/^-?\d+(\.\d+)?$/.test(raw)) {
-    return "number"
-  }
-  return "text"
-}
-
-function toBoolean(value: unknown): boolean {
-  if (typeof value === "boolean") {
-    return value
-  }
-  return /^true$/i.test(formatUDAValue(value))
 }
 
 function PropertyRow({

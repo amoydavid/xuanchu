@@ -106,6 +106,18 @@ func newServerCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer store.Close()
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			serverRuntime, err := config.LoadRuntime(config.RuntimeOptions{
+				ConfigDir:   config.ConfigDir(home, env),
+				Env:         env,
+				RCOverrides: currentOpts.RCOverrides,
+			})
+			if err != nil {
+				return err
+			}
 
 			logger, loggerClose, err := logging.Setup(cfg.Log, cmd.ErrOrStderr())
 			if err != nil {
@@ -134,6 +146,8 @@ func newServerCommand(opts Options) *cobra.Command {
 			handler := httpapi.NewServer(httpapi.Options{
 				Store:                store,
 				ResourceBaseURL:      cfg.ResourceBaseURL(),
+				RuntimeConfig:        serverRuntime.Values(),
+				RuntimeOverrides:     rcOverridesAsStrings(currentOpts.RCOverrides),
 				Stderr:               cmd.ErrOrStderr(),
 				Logger:               logger,
 				Admin:                cfg.ServerAdmin,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { CheckIcon, UserPlusIcon } from "lucide-react"
+import { CheckIcon, PlusIcon, UserPlusIcon, XIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { MarkdownEditor, type DeferredAttachment } from "@/components/markdown"
@@ -87,7 +87,12 @@ export function TaskCommonFields({
             workspaceSlug,
             taskRef: "",
             fetchSuggestions: async ({ kind, query, signal }) =>
-              (await suggestContentReferences({ type: kind, query, limit: 20 }, { signal }))
+              (
+                await suggestContentReferences(
+                  { type: kind, query, limit: 20 },
+                  { signal }
+                )
+              )
                 .map(resolutionToMenuItem)
                 .filter((item) => item !== null),
           }}
@@ -300,6 +305,11 @@ function CommonUDAFields({
 }) {
   const { t } = useTranslation()
   const [definitions, setDefinitions] = useState<TaskUDADefinition[]>([])
+  const [selectedNames, setSelectedNames] = useState<string[]>(() =>
+    Object.keys(value)
+  )
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
     let active = true
@@ -315,7 +325,12 @@ function CommonUDAFields({
     }
   }, [workspaceSlug])
 
-  if (definitions.length === 0) return null
+  const effectiveSelectedNames = Array.from(
+    new Set([...selectedNames, ...Object.keys(value)])
+  )
+
+  if (definitions.length === 0 && effectiveSelectedNames.length === 0)
+    return null
 
   const updateField = (name: string, raw: string) => {
     const next = { ...value }
@@ -324,19 +339,122 @@ function CommonUDAFields({
     onChange(next)
   }
 
+  const definitionsByName = new Map(
+    definitions.map((definition) => [definition.name, definition])
+  )
+  const available = definitions.filter((definition) => {
+    if (effectiveSelectedNames.includes(definition.name)) return false
+    const needle = search.trim().toLocaleLowerCase()
+    return (
+      !needle ||
+      `${definition.name} ${definition.label}`
+        .toLocaleLowerCase()
+        .includes(needle)
+    )
+  })
+
   return (
     <div className="space-y-3">
-      <Label>{t("taskCreate.customFields")}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label>{t("taskCreate.customFields")}</Label>
+        {definitions.length > 0 ? (
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                disabled={disabled}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <PlusIcon />
+                {t("taskCreate.addCustomField")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-2">
+              <Input
+                aria-label={t("taskCreate.searchCustomFields")}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("taskCreate.searchCustomFields")}
+                value={search}
+              />
+              <div className="max-h-56 space-y-1 overflow-auto">
+                {available.length === 0 ? (
+                  <p className="px-2 py-3 text-sm text-muted-foreground">
+                    {t("taskCreate.noCustomFieldsAvailable")}
+                  </p>
+                ) : (
+                  available.map((definition) => (
+                    <Button
+                      className="w-full justify-start"
+                      key={definition.name}
+                      onClick={() => {
+                        setSelectedNames((current) => [
+                          ...current,
+                          definition.name,
+                        ])
+                        setSearch("")
+                        setPickerOpen(false)
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <span>{definition.label}</span>
+                      {definition.label !== definition.name ? (
+                        <span className="text-xs text-muted-foreground">
+                          {definition.name}
+                        </span>
+                      ) : null}
+                    </Button>
+                  ))
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {definitions.map((definition) => (
-          <TaskUDAField
-            definition={definition}
-            disabled={disabled}
-            key={definition.name}
-            onChange={(raw) => updateField(definition.name, raw)}
-            value={value[definition.name] ?? ""}
-          />
-        ))}
+        {effectiveSelectedNames.map((name) => {
+          const definition = definitionsByName.get(name)
+          if (!definition) {
+            return (
+              <div className="grid gap-2" key={name}>
+                <Label>{name}</Label>
+                <Input aria-label={name} disabled value={value[name] ?? ""} />
+                <p className="text-xs text-muted-foreground">
+                  {t("taskCreate.customFieldHistoryReadonly")}
+                </p>
+              </div>
+            )
+          }
+          return (
+            <div className="relative" key={definition.name}>
+              <TaskUDAField
+                definition={definition}
+                disabled={disabled}
+                onChange={(raw) => updateField(definition.name, raw)}
+                value={value[definition.name] ?? ""}
+              />
+              <Button
+                aria-label={t("taskCreate.removeCustomField", {
+                  name: definition.label,
+                })}
+                className="absolute top-0 right-0"
+                disabled={disabled}
+                onClick={() => {
+                  updateField(definition.name, "")
+                  setSelectedNames((current) =>
+                    current.filter((item) => item !== definition.name)
+                  )
+                }}
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+              >
+                <XIcon />
+              </Button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

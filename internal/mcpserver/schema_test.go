@@ -81,6 +81,31 @@ func TestListToolsDefaultServerHasTools(t *testing.T) {
 	}
 }
 
+func TestDefaultToolListHasNoUDASynonymTools(t *testing.T) {
+	srv := NewServer(Options{Version: "test"})
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	go func() { _ = srv.Run(context.Background(), serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := map[string]bool{
+		"uda_list": true, "uda_set": true, "uda_get_usage": true,
+		"project_list_udas": true, "project_uda_set": true,
+	}
+	for _, tool := range result.Tools {
+		if forbidden[tool.Name] {
+			t.Fatalf("unexpected UDA synonym tool %q", tool.Name)
+		}
+	}
+}
+
 // mustSchema 生成 input schema 并应用 patchInputSchema，用于断言工具参数契约。
 func mustSchema[T any](t *testing.T) *jsonschema.Schema {
 	t.Helper()

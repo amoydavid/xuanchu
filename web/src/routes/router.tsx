@@ -110,9 +110,11 @@ const ProjectSettingsNotesRoute = lazy(() =>
   }))
 )
 const ProjectSettingsDefinitionsRoute = lazy(() =>
-  import("@/routes/workspace/ProjectSettingsDefinitionsRoute").then((module) => ({
-    default: module.ProjectSettingsDefinitionsRoute,
-  }))
+  import("@/routes/workspace/ProjectSettingsDefinitionsRoute").then(
+    (module) => ({
+      default: module.ProjectSettingsDefinitionsRoute,
+    })
+  )
 )
 const SettingsRoute = lazy(() =>
   import("@/routes/workspace/SettingsRoute").then((module) => ({
@@ -122,6 +124,11 @@ const SettingsRoute = lazy(() =>
 const ProjectTemplatesRoute = lazy(() =>
   import("@/routes/workspace/ProjectTemplatesRoute").then((module) => ({
     default: module.ProjectTemplatesRoute,
+  }))
+)
+const WorkspaceCustomFieldsRoute = lazy(() =>
+  import("@/routes/workspace/WorkspaceCustomFieldsRoute").then((module) => ({
+    default: module.WorkspaceCustomFieldsRoute,
   }))
 )
 const AdminLoginRoute = lazy(() =>
@@ -285,7 +292,14 @@ const myTasksRoute = createRoute({
   component: lazyRoute(MyTasksRoute),
   validateSearch: (search: Record<string, unknown>): Record<string, string> => {
     const out: Record<string, string> = {}
-    for (const key of ["tab", "project", "task_type", "priority", "q", "sort"]) {
+    for (const key of [
+      "tab",
+      "project",
+      "task_type",
+      "priority",
+      "q",
+      "sort",
+    ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") out[key] = value
     }
@@ -472,6 +486,18 @@ const projectTemplatesRoute = createRoute({
   component: lazyRoute(ProjectTemplatesRoute),
 })
 
+const workspaceCustomFieldsRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/workspaces/$workspaceSlug/settings/custom-fields",
+  component: lazyRoute(WorkspaceCustomFieldsRoute),
+})
+
+const workspaceCustomFieldsAliasRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/settings/custom-fields",
+  component: lazyRoute(WorkspaceCustomFieldsRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -497,6 +523,8 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("audit", "/audit"),
     settingsRoute,
     projectTemplatesRoute,
+    workspaceCustomFieldsRoute,
+    workspaceCustomFieldsAliasRoute,
     projectWorkbenchRoute,
     projectTasksRoute,
     projectSeriesRoute.addChildren([

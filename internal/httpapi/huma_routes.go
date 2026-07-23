@@ -259,6 +259,8 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 			stringParam("workspace", "Workspace slug or UUID."),
 			boolParam("delete_open_occurrences", "Also skip all open and entered projected occurrences."),
 		}
+	case strings.HasPrefix(route.Path, "/api/v1/udas"):
+		return []*huma.Param{stringParam("workspace", "Workspace slug or UUID.")}
 	case strings.HasPrefix(route.Path, "/api/v1/task-series") || strings.HasPrefix(route.Path, "/api/v1/tasks/{taskRef}"):
 		return []*huma.Param{stringParam("workspace", "Workspace slug or UUID.")}
 	default:
@@ -280,6 +282,14 @@ func contractRequestSchema(route humaRoute) *huma.Schema {
 	}
 	if schema := projectTemplateRequestOpenAPISchema(route); schema != nil {
 		return schema
+	}
+	if route.Path == "/api/v1/udas/{name}" && route.Method == http.MethodPut {
+		return &huma.Schema{Type: "object", AdditionalProperties: false, Properties: map[string]*huma.Schema{
+			"type":    {Type: "string", Enum: []any{"string", "numeric", "date", "duration"}},
+			"label":   {Type: "string"},
+			"values":  {Type: "array", Items: &huma.Schema{Type: "string"}},
+			"default": {Type: "string"},
+		}, Required: []string{"type"}}
 	}
 
 	if route.Path == "/api/v1/tasks" && route.Method == http.MethodPost {
@@ -380,6 +390,10 @@ func contractRequestSchema(route humaRoute) *huma.Schema {
 func contractSuccessResponse(route humaRoute) *huma.Response {
 	data := (*huma.Schema)(nil)
 	switch {
+	case route.Path == "/api/v1/udas" && route.Method == http.MethodGet:
+		data = &huma.Schema{Type: "array", Items: workspaceUDAOpenAPISchema()}
+	case route.Path == "/api/v1/udas/{name}" && route.Method == http.MethodPut:
+		data = workspaceUDAOpenAPISchema()
 	case projectTemplateRoute(route):
 		data = projectTemplateSuccessOpenAPISchema(route)
 	case route.Method == http.MethodGet && route.Path == "/api/v1/home":
@@ -406,6 +420,19 @@ func contractSuccessResponse(route humaRoute) *huma.Response {
 		return jsonResponse("Successful response.")
 	}
 	return jsonResponseWithSchema("Successful response.", successEnvelopeOpenAPISchema(data))
+}
+
+func workspaceUDAOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", AdditionalProperties: false, Properties: map[string]*huma.Schema{
+		"name":                      {Type: "string"},
+		"type":                      {Type: "string", Enum: []any{"string", "numeric", "date", "duration"}},
+		"label":                     {Type: "string"},
+		"values":                    {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"default":                   {Type: "string"},
+		"source":                    {Type: "string", Enum: []any{"database", "runtime", "database_override"}},
+		"task_value_count":          {Type: "integer", Format: "int64"},
+		"active_series_value_count": {Type: "integer", Format: "int64"},
+	}, Required: []string{"name", "type", "label", "values", "default", "source", "task_value_count", "active_series_value_count"}}
 }
 
 func homeOpenAPISchema() *huma.Schema {
@@ -1133,6 +1160,9 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/config-schema/{key}", Tag: "Config Schema", Summary: "Get a config schema definition.", Handler: s.handleConfigSchemaGet},
 		{Method: http.MethodPut, Path: "/api/v1/config-schema/{key}", Tag: "Config Schema", Summary: "Set a config schema definition.", Handler: s.handleConfigSchemaSet},
 		{Method: http.MethodDelete, Path: "/api/v1/config-schema/{key}", Tag: "Config Schema", Summary: "Delete a config schema definition.", Handler: s.handleConfigSchemaDelete},
+		{Method: http.MethodGet, Path: "/api/v1/udas", Tag: "Custom Fields", Summary: "List Workspace custom field definitions.", Handler: s.handleWorkspaceUDAList},
+		{Method: http.MethodPut, Path: "/api/v1/udas/{name}", Tag: "Custom Fields", Summary: "Create or replace a Workspace custom field definition.", Handler: s.handleWorkspaceUDASet},
+		{Method: http.MethodDelete, Path: "/api/v1/udas/{name}", Tag: "Custom Fields", Summary: "Delete a Workspace custom field definition.", Handler: s.handleWorkspaceUDADelete},
 		{Method: http.MethodGet, Path: "/api/v1/export", Tag: "Import Export", Summary: "Export tasks.", Handler: s.handleExport},
 		{Method: http.MethodPost, Path: "/api/v1/import", Tag: "Import Export", Summary: "Import tasks.", Handler: s.handleImport},
 		{Method: http.MethodPost, Path: "/api/v1/task-imports", Tag: "Import Export", Summary: "Import ordinary tasks for Web Console.", Handler: s.handleOrdinaryTaskImport},

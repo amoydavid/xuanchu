@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import net from "node:net"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -9,10 +9,16 @@ import { chromium } from "playwright"
 
 const webRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)))
 const projectRoot = path.resolve(webRoot, "..")
-const runtimeDir = mkdtempSync(path.join(tmpdir(), "xuanchu-project-template-smoke-"))
-const screenshotDir = path.join(tmpdir(), "xuanchu-project-template-smoke-screenshots")
+const runtimeDir = mkdtempSync(
+  path.join(tmpdir(), "xuanchu-project-template-smoke-")
+)
+const screenshotDir = path.join(
+  tmpdir(),
+  "xuanchu-project-template-smoke-screenshots"
+)
 const binary = path.join(runtimeDir, "xuanchu")
 const database = path.join(runtimeDir, "xuanchu.db")
+const configRoot = path.join(runtimeDir, "config")
 const apiPort = await getFreePort()
 const apiBaseURL = `http://127.0.0.1:${apiPort}`
 const webBaseURL = apiBaseURL
@@ -28,7 +34,8 @@ try {
     binary,
     ["server", "--listen", `127.0.0.1:${apiPort}`, "--db", database],
     projectRoot,
-    "xuanchu server"
+    "xuanchu server",
+    { XDG_CONFIG_HOME: configRoot }
   )
   await waitForHTTP(`${apiBaseURL}/healthz`, apiServer)
   await waitForHTTP(webBaseURL, apiServer)
@@ -56,19 +63,51 @@ async function prepareRuntime() {
   // 这样同时验证前端产物可嵌入，且不受 React StrictMode 的 dev-only 双 effect 影响。
   await runCommand("pnpm", ["exec", "vite", "build"], webRoot)
   await runCommand("go", ["build", "-o", binary, "./cmd/xuanchu"], projectRoot)
+  const configDir = path.join(configRoot, "xuanchu")
+  mkdirSync(configDir, { recursive: true })
+  writeFileSync(
+    path.join(configDir, "xuanchu.toml"),
+    '[security]\nconfig_secret_key = "uH/SPe+6vEbjsJ7OljBz3SNy6BlKDInYsquKTz0MV/Q="\n',
+    { mode: 0o600 }
+  )
   await runCommand(
     binary,
-    ["--db", database, "--workspace", "local", "project", "add", "source", "name:模板来源项目"],
+    [
+      "--db",
+      database,
+      "--workspace",
+      "local",
+      "project",
+      "add",
+      "source",
+      "name:模板来源项目",
+    ],
     projectRoot
   )
   await runCommand(
     binary,
-    ["--db", database, "user", "add", "bob-smoke", "email:bob-smoke@example.test"],
+    [
+      "--db",
+      database,
+      "user",
+      "add",
+      "bob-smoke",
+      "email:bob-smoke@example.test",
+    ],
     projectRoot
   )
   await runCommand(
     binary,
-    ["--db", database, "--workspace", "local", "member", "add", "bob-smoke", "role:member"],
+    [
+      "--db",
+      database,
+      "--workspace",
+      "local",
+      "member",
+      "add",
+      "bob-smoke",
+      "role:member",
+    ],
     projectRoot
   )
   for (const [key, value] of [
@@ -79,7 +118,18 @@ async function prepareRuntime() {
   ]) {
     await runCommand(
       binary,
-      ["--db", database, "--workspace", "local", "project", "config", "set", "source", key, value],
+      [
+        "--db",
+        database,
+        "--workspace",
+        "local",
+        "project",
+        "config",
+        "set",
+        "source",
+        key,
+        value,
+      ],
       projectRoot
     )
   }
@@ -117,7 +167,10 @@ async function seedFixture() {
     assignees: ["bob-smoke"],
     depends: [blocker.uuid],
   })
-  await apiJSON("POST", `/api/v1/tasks/${encodeURIComponent(blocker.uuid)}/done?workspace=local`)
+  await apiJSON(
+    "POST",
+    `/api/v1/tasks/${encodeURIComponent(blocker.uuid)}/done?workspace=local`
+  )
 
   for (let index = 1; index <= 50; index += 1) {
     await apiJSON("POST", "/api/v1/tasks?workspace=local", {
@@ -167,7 +220,9 @@ async function seedFixture() {
     "/api/v1/projects/source/template-candidates/tasks?workspace=local&limit=50&offset=50"
   )
   if (secondTaskPage.items.length !== 1) {
-    throw new Error(`fixture does not span two task pages: ${JSON.stringify(secondTaskPage)}`)
+    throw new Error(
+      `fixture does not span two task pages: ${JSON.stringify(secondTaskPage)}`
+    )
   }
 
   return {
@@ -202,35 +257,53 @@ async function runDesktopSmoke(browser, fixture) {
     await crossPageTask.waitFor()
     await ensureChecked(crossPageTask)
     await dialog.getByRole("textbox", { name: "搜索任务" }).fill("依赖阻断任务")
-    await dialog.getByRole("checkbox", { name: "依赖阻断任务" }).waitFor()
+    const dependentTask = dialog.getByRole("checkbox", { name: "依赖阻断任务" })
+    await dependentTask.waitFor()
+    await ensureChecked(dependentTask)
+    await dialog.getByRole("textbox", { name: "搜索任务" }).fill("历史阻断任务")
+    const blockerTask = dialog.getByRole("checkbox", { name: "历史阻断任务" })
+    await blockerTask.waitFor()
+    await ensureUnchecked(blockerTask)
 
     const selectedDrawer = dialog.locator('aside[aria-label="已选内容"]')
-    await selectedDrawer.getByRole("textbox", { name: "搜索已选内容" }).fill(
-      fixture.firstPageTaskTitle
-    )
+    await selectedDrawer
+      .getByRole("textbox", { name: "搜索已选内容" })
+      .fill(fixture.firstPageTaskTitle)
     await expectVisibleText(selectedDrawer, fixture.firstPageTaskTitle)
     await selectedDrawer.getByRole("textbox", { name: "搜索已选内容" }).fill("")
 
     await activateWithPointer(dialog.getByRole("tab", { name: /循环任务/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "每日模板巡检" }))
     await activateWithPointer(dialog.getByRole("tab", { name: /配置/ }))
-    const configPageCheckbox = dialog.getByRole("checkbox", { name: /选择本页 4 项/ })
+    const configPageCheckbox = dialog.getByRole("checkbox", {
+      name: /选择本页 4 项/,
+    })
     await configPageCheckbox.waitFor()
     await ensureChecked(configPageCheckbox)
     await activateWithPointer(dialog.getByRole("tab", { name: /自动化/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "模板自动化" }))
     await dialog.getByRole("button", { name: /^已选 / }).click()
     const selectedSheet = page.getByRole("dialog", { name: "已选内容" })
-    await selectedSheet.getByRole("textbox", { name: "搜索已选内容" }).fill("跨页任务 50")
+    await selectedSheet
+      .getByRole("textbox", { name: "搜索已选内容" })
+      .fill("跨页任务 50")
     await expectVisibleText(selectedSheet, "跨页任务 50")
     await page.keyboard.press("Escape")
 
     await dialog.getByRole("button", { name: /下一步/ }).click()
     await dialog.getByRole("button", { name: "生成预览" }).click()
-    await dialog.getByRole("button", { name: "补选引用任务" }).click()
-    await dialog
-      .getByRole("button", { name: /^(生成|重新)预览$/ })
-      .click()
+    const addReferencedTask = dialog.getByRole("button", {
+      name: "补选引用任务",
+    })
+    try {
+      await addReferencedTask.waitFor({ timeout: 10_000 })
+    } catch {
+      throw new Error(
+        `preview did not expose dependency resolution:\n${await dialog.innerText()}`
+      )
+    }
+    await addReferencedTask.click()
+    await dialog.getByRole("button", { name: /^(生成|重新)预览$/ }).click()
     await expectVisibleText(dialog, "没有阻断问题")
     await dialog.getByRole("button", { name: /下一步/ }).click()
     await dialog.getByRole("button", { name: "保存模板" }).click()
@@ -245,12 +318,22 @@ async function runDesktopSmoke(browser, fixture) {
       path: path.join(screenshotDir, "desktop-template-library.png"),
     })
 
-    const templates = await apiJSON("GET", "/api/v1/project-templates?workspace=local&status=all")
-    if (templates.total !== 1 || templates.items[0]?.current_snapshot?.version !== 1) {
-      throw new Error(`template version was not persisted: ${JSON.stringify(templates)}`)
+    const templates = await apiJSON(
+      "GET",
+      "/api/v1/project-templates?workspace=local&status=all"
+    )
+    if (
+      templates.total !== 1 ||
+      templates.items[0]?.current_snapshot?.version !== 1
+    ) {
+      throw new Error(
+        `template version was not persisted: ${JSON.stringify(templates)}`
+      )
     }
     if (templates.items[0].current_snapshot.counts.tasks !== 52) {
-      throw new Error(`dependency resolution did not capture 52 tasks: ${JSON.stringify(templates.items[0])}`)
+      throw new Error(
+        `dependency resolution did not capture 52 tasks: ${JSON.stringify(templates.items[0])}`
+      )
     }
     if (fixture.blocker.uuid === fixture.dependent.uuid) {
       throw new Error("fixture dependency uses the same task identity")
@@ -275,16 +358,15 @@ async function runMobileSmoke(browser, fixture) {
     const selectedSheet = page.getByRole("dialog", { name: "已选内容" })
     await selectedSheet.waitFor()
     const sheetElement = await selectedSheet.elementHandle()
-    await page.waitForFunction(
-      (element) => {
-        const box = element.getBoundingClientRect()
-        return box.left <= 2 && box.right >= window.innerWidth - 2
-      },
-      sheetElement
-    )
+    await page.waitForFunction((element) => {
+      const box = element.getBoundingClientRect()
+      return box.left <= 2 && box.right >= window.innerWidth - 2
+    }, sheetElement)
     const box = await selectedSheet.boundingBox()
     if (!box || box.width < 370 || box.x > 2) {
-      throw new Error(`mobile selected-items sheet is not full width: ${JSON.stringify(box)}`)
+      throw new Error(
+        `mobile selected-items sheet is not full width: ${JSON.stringify(box)}`
+      )
     }
     await selectedSheet
       .getByRole("textbox", { name: "搜索已选内容" })
@@ -292,9 +374,13 @@ async function runMobileSmoke(browser, fixture) {
     await expectVisibleText(selectedSheet, fixture.firstPageTaskTitle)
     await page.keyboard.press("Escape")
     await selectedSheet.waitFor({ state: "detached" })
-    const focusText = await page.evaluate(() => document.activeElement?.textContent ?? "")
+    const focusText = await page.evaluate(
+      () => document.activeElement?.textContent ?? ""
+    )
     if (!focusText.includes("已选")) {
-      throw new Error(`mobile selected-items focus was not restored: ${JSON.stringify(focusText)}`)
+      throw new Error(
+        `mobile selected-items focus was not restored: ${JSON.stringify(focusText)}`
+      )
     }
     await page.screenshot({
       fullPage: true,
@@ -326,8 +412,9 @@ async function runInstantiationSmoke(browser) {
     await sheet.getByLabel("开始日期").fill("2026-08-01")
     await sheet.getByRole("button", { name: "生成预览" }).click()
 
-    await sheet.getByLabel("agent.provider.api_key").fill("new-project-secret")
-    const memberResolution = sheet.getByRole("combobox", { name: /处理bob-smoke/i })
+    const memberResolution = sheet.getByRole("combobox", {
+      name: /处理bob-smoke/i,
+    })
     await memberResolution.selectOption({ index: 2 })
     await sheet.getByRole("button", { name: "重新预览" }).click()
     await sheet.getByRole("button", { name: /下一步：确认/ }).click()
@@ -340,12 +427,16 @@ async function runInstantiationSmoke(browser) {
       "/api/v1/tasks?workspace=local&project=newlaunch&limit=200&occurrence_mode=materialized"
     )
     if (tasks.total !== 52 || tasks.items.length !== 52) {
-      throw new Error(`instantiated task counts are wrong: ${JSON.stringify(tasks)}`)
+      throw new Error(
+        `instantiated task counts are wrong: ${JSON.stringify(tasks)}`
+      )
     }
     const dependent = tasks.items.find((item) => item.title === "依赖阻断任务")
     const blocker = tasks.items.find((item) => item.title === "历史阻断任务")
     if (!dependent || !blocker || !dependent.depends.includes(blocker.uuid)) {
-      throw new Error(`instantiated task dependency was not remapped: ${JSON.stringify(dependent)}`)
+      throw new Error(
+        `instantiated task dependency was not remapped: ${JSON.stringify(dependent)}`
+      )
     }
     if (
       dependent.assignees.length !== 1 ||
@@ -356,7 +447,10 @@ async function runInstantiationSmoke(browser) {
       )
     }
 
-    const series = await apiJSON("GET", "/api/v1/task-series?workspace=local&project=newlaunch")
+    const series = await apiJSON(
+      "GET",
+      "/api/v1/task-series?workspace=local&project=newlaunch"
+    )
     if (series.total !== 1 || series.items[0]?.status !== "active") {
       throw new Error(`instantiated series is wrong: ${JSON.stringify(series)}`)
     }
@@ -365,7 +459,9 @@ async function runInstantiationSmoke(browser) {
       "/api/v1/tasks?workspace=local&project=newlaunch&task_type=occurrence&occurrence_mode=materialized"
     )
     if (materializedOccurrences.total !== 0) {
-      throw new Error(`series occurrence/history was copied: ${JSON.stringify(materializedOccurrences)}`)
+      throw new Error(
+        `series occurrence/history was copied: ${JSON.stringify(materializedOccurrences)}`
+      )
     }
 
     const automations = await apiJSON(
@@ -373,14 +469,18 @@ async function runInstantiationSmoke(browser) {
       "/api/v1/projects/newlaunch/automations?workspace=local&all=true"
     )
     if (automations.length !== 1 || automations[0].enabled !== false) {
-      throw new Error(`instantiated automation is not disabled: ${JSON.stringify(automations)}`)
+      throw new Error(
+        `instantiated automation is not disabled: ${JSON.stringify(automations)}`
+      )
     }
     const deliveries = await apiJSON(
       "GET",
       "/api/v1/projects/newlaunch/automation-deliveries?workspace=local"
     )
     if (deliveries.length !== 0) {
-      throw new Error(`automation delivery/history was copied: ${JSON.stringify(deliveries)}`)
+      throw new Error(
+        `automation delivery/history was copied: ${JSON.stringify(deliveries)}`
+      )
     }
     await page.screenshot({
       fullPage: true,
@@ -425,7 +525,9 @@ async function apiJSON(method, pathname, body) {
   try {
     payload = raw ? JSON.parse(raw) : {}
   } catch {
-    throw new Error(`${method} ${pathname} returned non-JSON ${response.status}: ${raw}`)
+    throw new Error(
+      `${method} ${pathname} returned non-JSON ${response.status}: ${raw}`
+    )
   }
   if (!response.ok) {
     throw new Error(`${method} ${pathname} returned ${response.status}: ${raw}`)
@@ -443,9 +545,10 @@ async function expectVisibleText(root, text) {
     }
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  const body = await root.locator("body").innerText().catch(async () =>
-    root.innerText().catch(() => "")
-  )
+  const body = await root
+    .locator("body")
+    .innerText()
+    .catch(async () => root.innerText().catch(() => ""))
   throw new Error(
     `cannot find visible text ${JSON.stringify(text)}\nvisible text:\n${body.slice(0, 5000)}`
   )
@@ -455,7 +558,19 @@ async function ensureChecked(locator) {
   await locator.waitFor()
   if (!(await locator.isChecked())) await locator.click()
   if (!(await locator.isChecked())) {
-    throw new Error(`checkbox did not become checked: ${await locator.getAttribute("aria-label")}`)
+    throw new Error(
+      `checkbox did not become checked: ${await locator.getAttribute("aria-label")}`
+    )
+  }
+}
+
+async function ensureUnchecked(locator) {
+  await locator.waitFor()
+  if (await locator.isChecked()) await locator.click()
+  if (await locator.isChecked()) {
+    throw new Error(
+      `checkbox did not become unchecked: ${await locator.getAttribute("aria-label")}`
+    )
   }
 }
 
@@ -503,7 +618,9 @@ async function runCommand(command, args, cwd) {
     child.once("exit", resolve)
   })
   if (code !== 0) {
-    throw new Error(`${command} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`)
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`
+    )
   }
   return stdout.trim()
 }
@@ -512,7 +629,9 @@ async function waitForHTTP(url, child) {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(`${child.label} exited before ${url} was ready\n${child.log}`)
+      throw new Error(
+        `${child.label} exited before ${url} was ready\n${child.log}`
+      )
     }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(500) })

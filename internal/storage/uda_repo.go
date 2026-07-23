@@ -15,6 +15,11 @@ type UDARepository struct {
 	db *gorm.DB
 }
 
+type UDAValueCount struct {
+	Name  string
+	Count int64
+}
+
 func NewUDARepository(db *gorm.DB) *UDARepository {
 	return &UDARepository{db: db}
 }
@@ -42,6 +47,12 @@ func (r *UDARepository) ListDefinitions(workspaceID string) ([]uda.Definition, e
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func (r *UDARepository) HasDefinition(workspaceID, name string) (bool, error) {
+	var count int64
+	err := r.db.Model(&UDADefinition{}).Where("workspace_id = ? AND name = ?", workspaceID, name).Count(&count).Error
+	return count > 0, err
 }
 
 func (r *UDARepository) UpsertDefinition(workspaceID string, def uda.Definition, now int64) error {
@@ -141,6 +152,25 @@ func (r *UDARepository) UniqueUDAValues(workspaceID, name string) ([]string, err
 		Order("value ASC").
 		Pluck("value", &values).Error
 	return values, err
+}
+
+func (r *UDARepository) TaskValueCounts(workspaceID string, names []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(names))
+	if len(names) == 0 {
+		return out, nil
+	}
+	var rows []UDAValueCount
+	err := r.db.Model(&TaskUDAValue{}).
+		Select("name, COUNT(*) AS count").
+		Where("workspace_id = ? AND name IN ?", workspaceID, names).
+		Group("name").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.Name] = row.Count
+	}
+	return out, nil
 }
 
 func fromUDADefinitionModel(model UDADefinition) uda.Definition {

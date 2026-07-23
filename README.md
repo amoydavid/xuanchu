@@ -566,6 +566,24 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 
 UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA 写入为 RFC3339 UTC 字符串；查询 `estimate:3`、`reviewed:2026-05-28` 会结合当前 schema 编译。未定义的 JSON top-level 字段会作为 orphan UDA 保留并导出，普通 `modify` 不能修改 orphan UDA。
 
+自定义字段采用严格的两层模型：Workspace `UDADefinition` 保存 `name/type/label/values/default`，Task / TaskSeries 只保存具体 value。Project 只负责任务归属，不维护字段 allowlist、override 或可用范围；同一 Workspace 内所有 Project 共用 effective definitions。Web Console 在 `/workspaces/{workspaceSlug}/settings/custom-fields` 提供独立字段管理页，Task 与循环任务表单通过“添加自定义字段”按需选择，不会一次铺开全部未填写字段。`default` 只作为输入提示，不自动写入 Task / TaskSeries。
+
+HTTP API 提供结构化 Workspace 字段资源：
+
+```http
+GET    /api/v1/udas?workspace=dajee
+PUT    /api/v1/udas/estimate?workspace=dajee
+DELETE /api/v1/udas/estimate?workspace=dajee
+```
+
+`uda.*` 仍是同一 Workspace definition 的 Config 兼容视图，不是 `configs` row 或另一套 schema。MCP 不增加 `uda_list` / `uda_set` 同义工具：Agent 继续用 `config_list/get/set/unset` 管理 definition；`task_add`、`task_modify`、`task_get`、`task_query` 直接读写任务 UDA。创建任务时可传：
+
+```json
+{"title":"评审方案","project":"demo","udas":{"estimate":"3"}}
+```
+
+Project Template 继续使用 `xuanchu.project-template-snapshot/v1`，只保存所选 Task / TaskSeries 的 UDA blueprint。模板不会复制 Workspace definition；实例化 Preview 会按目标 Workspace 当前 definition 校验，缺失、type 不匹配或 value 不兼容都会阻止创建。
+
 `.taskrc` 的作用是**迁移和兼容性导入**：Xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。Xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
 
 当前 `.taskrc` 支持范围：

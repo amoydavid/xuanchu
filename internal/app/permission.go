@@ -19,6 +19,7 @@ const (
 	PermissionConfigSchemaWrite  = authz.PermissionConfigSchemaWrite
 	PermissionContextUse         = authz.PermissionContextUse
 	PermissionContextManage      = authz.PermissionContextManage
+	PermissionUDARead            = authz.PermissionUDARead
 	PermissionUDAManage          = authz.PermissionUDAManage
 	PermissionWorkspaceRead      = authz.PermissionWorkspaceRead
 	PermissionWorkspaceModify    = authz.PermissionWorkspaceModify
@@ -64,7 +65,9 @@ func tenantCapabilityForPermission(p Permission) (string, bool) {
 		return auth.ScopeProjectWrite, true
 	case PermissionProjectConfigRead, PermissionConfigSchemaRead:
 		return auth.ScopeConfigRead, true
-	case PermissionProjectConfigWrite, PermissionConfigSchemaWrite:
+	case PermissionUDARead:
+		return auth.ScopeConfigRead, true
+	case PermissionProjectConfigWrite, PermissionConfigSchemaWrite, PermissionUDAManage:
 		return auth.ScopeConfigWrite, true
 	case PermissionContextUse:
 		return auth.ScopeContextRead, true

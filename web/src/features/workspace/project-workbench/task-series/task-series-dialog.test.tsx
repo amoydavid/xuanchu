@@ -94,12 +94,28 @@ describe("TaskSeriesDialog", () => {
 
   it("编辑时可以清除说明、负责人和单个自定义字段", async () => {
     mockedModifyTaskSeries.mockResolvedValue({} as never)
-    vi.mocked(workspaceApiGet).mockResolvedValue({
-      "uda.channel.type": "string",
-      "uda.channel.label": "渠道",
-      "uda.region.type": "string",
-      "uda.region.label": "区域",
-    })
+    vi.mocked(workspaceApiGet).mockResolvedValue([
+      {
+        name: "channel",
+        type: "string",
+        label: "渠道",
+        values: [],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 1,
+      },
+      {
+        name: "region",
+        type: "string",
+        label: "区域",
+        values: [],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 1,
+      },
+    ])
     render(
       <TaskSeriesDialog
         mode="edit"
@@ -204,7 +220,9 @@ describe("TaskSeriesDialog", () => {
     )
 
     expect(
-      screen.getByText(/未来实例使用新设置；负责人只影响未来实例，不会改动已生成实例/)
+      screen.getByText(
+        /未来实例使用新设置；负责人只影响未来实例，不会改动已生成实例/
+      )
     ).toBeTruthy()
     expect(
       screen.getByText(/其它未完成且未单独修改的字段也会同步/)

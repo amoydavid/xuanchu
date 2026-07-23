@@ -18,16 +18,18 @@ const defaultBodyLimitBytes int64 = 10 << 20
 const defaultAdminSetupTTL = 30 * time.Minute
 
 type Options struct {
-	Store           *storage.Store
-	Clock           app.Clock
-	ResourceBaseURL string
-	Stderr          io.Writer
-	BodyLimitBytes  int64
-	TestPanicRoute  bool
-	Logger          *logging.Logger
-	Admin           config.AdminConfig
-	AdminSetup      AdminSetupOptions
-	Console         config.ConsoleConfig
+	Store            *storage.Store
+	Clock            app.Clock
+	ResourceBaseURL  string
+	RuntimeConfig    map[string]string
+	RuntimeOverrides map[string]string
+	Stderr           io.Writer
+	BodyLimitBytes   int64
+	TestPanicRoute   bool
+	Logger           *logging.Logger
+	Admin            config.AdminConfig
+	AdminSetup       AdminSetupOptions
+	Console          config.ConsoleConfig
 	// TestConsoleHandler 仅供测试注入最小 Console，避免普通 Go 测试依赖前端 dist。
 	TestConsoleHandler   http.Handler
 	Shutdown             *runtimeutil.ShutdownCoordinator
@@ -50,6 +52,8 @@ type Server struct {
 	store                *storage.Store
 	clock                app.Clock
 	resourceBaseURL      string
+	runtimeConfig        map[string]string
+	runtimeOverrides     map[string]string
 	stderr               io.Writer
 	bodyLimitBytes       int64
 	testPanicRoute       bool
@@ -79,6 +83,8 @@ func NewServer(opts Options) *Server {
 		store:                opts.Store,
 		clock:                opts.Clock,
 		resourceBaseURL:      opts.ResourceBaseURL,
+		runtimeConfig:        cloneHTTPStringMap(opts.RuntimeConfig),
+		runtimeOverrides:     cloneHTTPStringMap(opts.RuntimeOverrides),
 		stderr:               opts.Stderr,
 		bodyLimitBytes:       opts.BodyLimitBytes,
 		testPanicRoute:       opts.TestPanicRoute,
@@ -96,6 +102,17 @@ func NewServer(opts Options) *Server {
 	}
 	srv.router = srv.newRouter()
 	return srv
+}
+
+func cloneHTTPStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }
 
 func (s *Server) Router() http.Handler {

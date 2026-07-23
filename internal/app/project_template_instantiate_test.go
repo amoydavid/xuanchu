@@ -514,6 +514,112 @@ func TestProjectTemplateInstantiatePreviewValidatesConfigUDAAutomationAndDates(t
 	}
 }
 
+func TestProjectTemplateInstantiateKeepsTaskAndSeriesWorkspaceUDA(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	if err := f.owner.DefineUDA("estimate", "numeric", "工作量", []string{"1", "2", "3"}, "2"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = nil
+	snapshot.Tasks[0].UDAs = map[string]projecttemplate.UDABlueprintV1{
+		"estimate": {Raw: "3", Type: "numeric"},
+	}
+	snapshot.Series = []projecttemplate.SeriesBlueprintV1{{
+		Ref: "series-1", Title: "每日检查", RecurrenceRule: "daily",
+		UDAs:     map[string]projecttemplate.UDABlueprintV1{"estimate": {Raw: "2", Type: "numeric"}},
+		FirstDue: projecttemplate.RelativeLocalTimeV1{DayOffset: 0, LocalTime: "09:00:00"},
+	}}
+	seedProjectTemplate(t, f.owner, "uda-round-trip", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "uda-round-trip", "udaproj")
+	created, err := f.owner.InstantiateCurrentProjectTemplate("uda-round-trip", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var taskRow storage.Task
+	if err := f.store.DB().Where("workspace_id = ? AND project_id = ? AND series_id IS NULL", f.owner.workspaceID, created.Project.ID).First(&taskRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	createdTask, err := f.owner.repo.GetByUUID(f.owner.workspaceID, taskRow.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := createdTask.UDAs["estimate"]; got.Raw != "3" || got.Type != "numeric" {
+		t.Fatalf("task UDA=%#v", got)
+	}
+
+	var seriesRows []storage.TaskSeries
+	if err := f.store.DB().Where("workspace_id = ? AND project_id = ?", f.owner.workspaceID, created.Project.ID).Find(&seriesRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(seriesRows) != 1 {
+		t.Fatalf("series=%#v", seriesRows)
+	}
+	series, err := f.owner.taskSeriesRepo.Get(f.owner.workspaceID, seriesRows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := series.UDAs["estimate"]; got != "2" {
+		t.Fatalf("series UDA=%q", got)
+	}
+}
+
+func TestProjectTemplateInstantiateBlocksUnavailableOrIncompatibleWorkspaceUDA(t *testing.T) {
+	cases := []struct {
+		name      string
+		blueprint projecttemplate.UDABlueprintV1
+		define    func(*testing.T, *Service)
+	}{
+		{name: "definition missing", blueprint: projecttemplate.UDABlueprintV1{Raw: "3", Type: "numeric"}},
+		{
+			name: "type incompatible", blueprint: projecttemplate.UDABlueprintV1{Raw: "3", Type: "numeric"},
+			define: func(t *testing.T, svc *Service) {
+				t.Helper()
+				if err := svc.DefineUDA("estimate", "string", "工作量", nil, ""); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "value incompatible", blueprint: projecttemplate.UDABlueprintV1{Raw: "3", Type: "numeric"},
+			define: func(t *testing.T, svc *Service) {
+				t.Helper()
+				if err := svc.DefineUDA("estimate", "numeric", "工作量", []string{"1", "2"}, ""); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			if tc.define != nil {
+				tc.define(t, f.owner)
+			}
+			snapshot := instantiateSnapshot()
+			snapshot.Configs = nil
+			snapshot.Tasks[0].UDAs = map[string]projecttemplate.UDABlueprintV1{"estimate": tc.blueprint}
+			seedProjectTemplate(t, f.owner, "invalid-uda", snapshot)
+			input := instantiateTemplateInput(t, f.owner, "invalid-uda", "nodata")
+			preview, err := f.owner.PreviewProjectTemplateInstantiation("invalid-uda", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasTemplateIssue(preview.Issues, "project_template_uda_invalid") {
+				t.Fatalf("issues=%#v", preview.Issues)
+			}
+			_, err = f.owner.InstantiateCurrentProjectTemplate("invalid-uda", input)
+			var validationErr ProjectTemplateValidationError
+			if !errors.As(err, &validationErr) || validationErr.PrimaryCode() != "project_template_uda_invalid" {
+				t.Fatalf("instantiate error=%v", err)
+			}
+			if _, err := f.owner.projectRepo.GetByRef(f.owner.workspaceID, "nodata"); !errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("partial project exists: %v", err)
+			}
+		})
+	}
+}
+
 func TestProjectTemplateInstantiatePermissionAndValidationError(t *testing.T) {
 	f := newProjectTemplateFixture(t)
 	seeded := seedProjectTemplate(t, f.owner, "permission", instantiateSnapshot())

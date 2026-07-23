@@ -78,6 +78,13 @@
         "description": "task title",
         "type": "string"
       },
+      "udas": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "user-defined attributes",
+        "type": "object"
+      },
       "until": {
         "description": "effective-until time, unix seconds",
         "type": [

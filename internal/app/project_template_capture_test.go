@@ -133,6 +133,57 @@ func TestCapturePreviewUsesCanonicalSnapshotView(t *testing.T) {
 	}
 }
 
+func TestCaptureKeepsWorkspaceUDAInStrictSnapshotV1(t *testing.T) {
+	svc, project := captureFixture(t)
+	if err := svc.DefineUDA("estimate", "numeric", "工作量", []string{"1", "2", "3"}, "2"); err != nil {
+		t.Fatal(err)
+	}
+	row, err := svc.Add(AddInput{
+		Title: "带工作量的任务", Project: &project.Slug,
+		UDAs: map[string]string{"estimate": "3.0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{TaskRefs: []string{row.UUID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blueprint := preview.Snapshot.Tasks[0].UDAs["estimate"]
+	if blueprint.Raw != "3" || blueprint.Type != "numeric" {
+		t.Fatalf("UDA blueprint=%#v", blueprint)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "uda-v1", Name: "UDA v1", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	template, err := svc.resolveProjectTemplate(created.Template.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotRow, err := svc.projectTemplateSnapshot(template, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := projecttemplate.Decode([]byte(snapshotRow.SnapshotJSON), projecttemplate.DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Schema != projecttemplate.SnapshotSchemaV1 {
+		t.Fatalf("schema=%q, want %q", snapshot.Schema, projecttemplate.SnapshotSchemaV1)
+	}
+	blueprint = snapshot.Tasks[0].UDAs["estimate"]
+	if blueprint.Raw != "3" || blueprint.Type != "numeric" {
+		t.Fatalf("persisted UDA blueprint=%#v", blueprint)
+	}
+	raw := snapshotRow.SnapshotJSON
+	if strings.Contains(raw, "uda_settings") || strings.Contains(raw, "project_uda") {
+		t.Fatalf("snapshot unexpectedly contains project UDA settings: %s", raw)
+	}
+}
+
 func TestCaptureBlockingPreviewUsesCanonicalSnapshotView(t *testing.T) {
 	svc, project := captureFixture(t)
 	parent := seedCaptureTask(t, svc, project, "未选择父任务", 1)

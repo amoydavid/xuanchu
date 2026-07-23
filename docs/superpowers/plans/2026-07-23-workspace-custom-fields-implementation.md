@@ -1,5 +1,7 @@
 # Workspace 自定义字段 Implementation Plan
 
+**状态：** 已完成（2026-07-23）
+
 > **对应 spec：** [2026-07-23-workspace-custom-fields-design.md](../specs/2026-07-23-workspace-custom-fields-design.md)
 >
 > 本计划按依赖顺序拆成 7 个可独立验证、可独立提交的任务。Project 不保存 UDA 可用范围；如果实现需要 Project UDA 表、Project UDA API 或 Template Snapshot v2，必须停止并重新审阅 spec。
@@ -95,31 +97,31 @@ DELETE /api/v1/udas/{name}
 
 **先写测试：**
 
-- [ ] `DefineUDA` 与 `SetConfig(uda.*)` 对 type/values/default 得到相同归一化和错误。
-- [ ] string/numeric/date/duration enum values 按 type canonicalize，按首次出现顺序去重。
-- [ ] default 使用最终 canonical values 校验，不能保存“已归一化但不属于 enum”的状态。
-- [ ] type/values 修改会重新校验 existing default。
-- [ ] active Series value 与新 type/values 不兼容时返回 `uda_active_series_incompatible`。
-- [ ] active Series 使用字段时删除返回 `uda_active_series_in_use`。
-- [ ] ended / stopped Series 不阻止删除或 schema 修改。
-- [ ] 删除 definition 不删除普通 Task 或 ended / stopped Series value。
-- [ ] `config unset uda.<name>.type` 不能绕过同一保护。
-- [ ] runtime-only definition 删除返回 `uda_runtime_readonly`。
-- [ ] PUT runtime-only 同名 definition 创建 DB override；删除 override 后 runtime definition 重新成为 effective。
-- [ ] usage 一次聚合返回 Task value count 与 active Series value count，Workspace 隔离正确。
-- [ ] tenant actor 持有 `config:write` 时 `PermissionUDAManage` 通过，缺 capability 时拒绝。
+- [x] `DefineUDA` 与 `SetConfig(uda.*)` 对 type/values/default 得到相同归一化和错误。
+- [x] string/numeric/date/duration enum values 按 type canonicalize，按首次出现顺序去重。
+- [x] default 使用最终 canonical values 校验，不能保存“已归一化但不属于 enum”的状态。
+- [x] type/values 修改会重新校验 existing default。
+- [x] active Series value 与新 type/values 不兼容时返回 `uda_active_series_incompatible`。
+- [x] active Series 使用字段时删除返回 `uda_active_series_in_use`。
+- [x] ended / stopped Series 不阻止删除或 schema 修改。
+- [x] 删除 definition 不删除普通 Task 或 ended / stopped Series value。
+- [x] `config unset uda.<name>.type` 不能绕过同一保护。
+- [x] runtime-only definition 删除返回 `uda_runtime_readonly`。
+- [x] PUT runtime-only 同名 definition 创建 DB override；删除 override 后 runtime definition 重新成为 effective。
+- [x] usage 一次聚合返回 Task value count 与 active Series value count，Workspace 隔离正确。
+- [x] tenant actor 持有 `config:write` 时 `PermissionUDAManage` 通过，缺 capability 时拒绝。
 
 **实现步骤：**
 
-- [ ] 提取 `normalizeAndValidateUDADefinition(def)`：校验 name/reserved/type，canonicalize+stable-dedupe values，最后校验 default。
-- [ ] `DefineUDA`、`setUDAConfigLocked`、`unsetUDAConfigLocked` 和后续 typed HTTP 写用例进入同一 App 路径。
-- [ ] UDA repo 增加区分 DB row 是否存在的方法，不能从 effective definition 推断可删除性。
-- [ ] TaskSeries repo 增加按 Workspace/name 查询 active Series values 的 bounded query。
-- [ ] type/values 更新只扫描 active Series；不批量改写普通 Task 历史值。
-- [ ] 删除检查、definition 写入/删除和 audit 放在同一 transaction。
-- [ ] 增加 definition usage aggregate；禁止逐 definition 逐 Task 查询。
-- [ ] `WorkspaceListUDAs` 合并 DB/runtime，计算 `database/runtime/database_override` source，并填充零值 usage。
-- [ ] `tenantCapabilityForPermission(PermissionUDAManage)` 映射 `auth.ScopeConfigWrite`。
+- [x] 提取 `normalizeAndValidateUDADefinition(def)`：校验 name/reserved/type，canonicalize+stable-dedupe values，最后校验 default。
+- [x] `DefineUDA`、`setUDAConfigLocked`、`unsetUDAConfigLocked` 和后续 typed HTTP 写用例进入同一 App 路径。
+- [x] UDA repo 增加区分 DB row 是否存在的方法，不能从 effective definition 推断可删除性。
+- [x] TaskSeries repo 增加按 Workspace/name 查询 active Series values 的 bounded query。
+- [x] type/values 更新只扫描 active Series；不批量改写普通 Task 历史值。
+- [x] 删除检查、definition 写入/删除和 audit 放在同一 transaction。
+- [x] 增加 definition usage aggregate；禁止逐 definition 逐 Task 查询。
+- [x] `WorkspaceListUDAs` 合并 DB/runtime，计算 `database/runtime/database_override` source，并填充零值 usage。
+- [x] `tenantCapabilityForPermission(PermissionUDAManage)` 映射 `auth.ScopeConfigWrite`。
 
 **明确不做：**
 
@@ -163,23 +165,23 @@ DELETE /api/v1/udas/{name}
 
 **先写测试：**
 
-- [ ] GET 返回 DB + runtime effective definitions、source、usage，空 `values` 稳定为 `[]`。
-- [ ] typed PUT 与 `config_get/list` 观察到同一 DB definition。
-- [ ] `config set uda.*` 后 typed GET 观察到相同 type/label/values/default。
-- [ ] URL name 是权威 key，body name 不能覆盖。
-- [ ] runtime-only DELETE 映射 409 `uda_runtime_readonly`。
-- [ ] active Series 的 in-use/incompatible 错误映射 409，definition/value 错误映射 422。
-- [ ] member/viewer 可读；owner/admin 可写；tenant token 分别要求 `config:read` / `config:write`。
-- [ ] OpenAPI request/response/error schema 与真实 handler 一致。
-- [ ] 路由表中不存在 `/api/v1/projects/{projectRef}/udas`。
+- [x] GET 返回 DB + runtime effective definitions、source、usage，空 `values` 稳定为 `[]`。
+- [x] typed PUT 与 `config_get/list` 观察到同一 DB definition。
+- [x] `config set uda.*` 后 typed GET 观察到相同 type/label/values/default。
+- [x] URL name 是权威 key，body name 不能覆盖。
+- [x] runtime-only DELETE 映射 409 `uda_runtime_readonly`。
+- [x] active Series 的 in-use/incompatible 错误映射 409，definition/value 错误映射 422。
+- [x] member/viewer 可读；owner/admin 可写；tenant token 分别要求 `config:read` / `config:write`。
+- [x] OpenAPI request/response/error schema 与真实 handler 一致。
+- [x] 路由表中不存在 `/api/v1/projects/{projectRef}/udas`。
 
 **实现步骤：**
 
-- [ ] handler 只解析 request、调用任务 1 App 用例、序列化 view，不直接查询 storage。
-- [ ] Workspace GET 走 `config:read + PermissionWorkspaceRead` 请求授权；App view 不再额外错误要求 tenant actor 具备 `workspace:read`。
-- [ ] PUT/DELETE 统一进入 `PermissionUDAManage`，不复制 Config compatibility 的字段拼装逻辑。
-- [ ] route tag 使用 `Custom Fields`，不混入 `Config Schema`。
-- [ ] 注册 `uda_active_series_in_use`、`uda_active_series_incompatible`、`uda_runtime_readonly`。
+- [x] handler 只解析 request、调用任务 1 App 用例、序列化 view，不直接查询 storage。
+- [x] Workspace GET 走 `config:read + PermissionUDARead` 请求授权；App view 不再额外错误要求 tenant actor 具备 `workspace:read`。
+- [x] PUT/DELETE 统一进入 `PermissionUDAManage`，不复制 Config compatibility 的字段拼装逻辑。
+- [x] route tag 使用 `Custom Fields`，不混入 `Config Schema`。
+- [x] 注册 `uda_active_series_in_use`、`uda_active_series_incompatible`、`uda_runtime_readonly`。
 
 **验收标准：** Web 可以只依赖 typed resource 完成 Workspace definition 管理，兼容 config 入口仍观察到同一数据。
 
@@ -209,19 +211,19 @@ CGO_ENABLED=0 go test ./internal/httpapi
 
 **先写测试：**
 
-- [ ] `TaskAddInput` schema 包含 `udas: object<string,string>`。
-- [ ] `task_add` 把 UDA 写入现有 `app.AddInput.UDAs`。
-- [ ] `task_get` / `task_query` 能读回；`task_modify` / clear 既有语义不回归。
-- [ ] undefined name 返回现有 `uda_not_defined`；invalid value 返回 `uda_value_invalid`。
-- [ ] Project allowlist 仍限制 Task 访问，但不改变 UDA definition 集合。
-- [ ] 默认工具列表明确不存在 `uda_list`、`uda_set`、`uda_get_usage`、`project_list_udas`、`project_uda_set`。
+- [x] `TaskAddInput` schema 包含 `udas: object<string,string>`。
+- [x] `task_add` 把 UDA 写入现有 `app.AddInput.UDAs`。
+- [x] `task_get` / `task_query` 能读回；`task_modify` / clear 既有语义不回归。
+- [x] undefined name 返回现有 `uda_not_defined`；invalid value 返回 `uda_value_invalid`。
+- [x] Task 的 Project 归属不限制 UDA 访问，所有 Project 共用 Workspace effective definitions。
+- [x] 默认工具列表明确不存在 `uda_list`、`uda_set`、`uda_get_usage`、`project_list_udas`、`project_uda_set`。
 
 **实现步骤：**
 
-- [ ] 在 `TaskAddInput` 增加 `UDAs map[string]string`。
-- [ ] handler 构造 `app.AddInput` 时原样传入 UDAs，由 App 做 normalization/validation。
-- [ ] 更新 task_add schema golden 和 default tool list。
-- [ ] 不增加 Workspace UDA Remote/CLI/MCP client；config tools 已覆盖 definition 管理。
+- [x] 在 `TaskAddInput` 增加 `UDAs map[string]string`。
+- [x] handler 构造 `app.AddInput` 时原样传入 UDAs，由 App 做 normalization/validation。
+- [x] 更新 task_add schema golden 和 default tool list。
+- [x] 不增加 Workspace UDA Remote/CLI/MCP client；config tools 已覆盖 definition 管理。
 
 **测试命令：**
 
@@ -258,23 +260,23 @@ CGO_ENABLED=0 go test ./internal/mcpserver
 
 **先写测试：**
 
-- [ ] typed API URL 携带 effective workspace，解析四种 type、values/default/source/usage。
-- [ ] Workspace settings nav 可发现“自定义字段”，active state 正确。
-- [ ] `/settings` 仍是 ConfigDefinition 页面；新页面不复用 `ConfigDefinitionsPage`。
-- [ ] owner/admin 可新建编辑删除 DB definition；member/viewer 只读。
-- [ ] name/type/values/default validation 错误保留 dialog draft。
-- [ ] runtime-only row 标注“运行时提供”，不显示删除；编辑说明创建 Workspace override。
-- [ ] DB override 删除确认说明恢复 runtime definition。
-- [ ] active Series in-use/incompatible typed error 显示明确中文。
-- [ ] 删除普通 DB definition 的确认说明 Task 历史值不会被级联删除。
+- [x] typed API URL 携带 effective workspace，解析四种 type、values/default/source/usage。
+- [x] Workspace settings nav 可发现“自定义字段”，active state 正确。
+- [x] `/settings` 仍是 ConfigDefinition 页面；新页面不复用 `ConfigDefinitionsPage`。
+- [x] owner/admin 可新建编辑删除 DB definition；member/viewer 只读。
+- [x] name/type/values/default validation 错误保留 dialog draft。
+- [x] runtime-only row 标注“运行时提供”，不显示删除；编辑说明创建 Workspace override。
+- [x] DB override 删除确认说明恢复 runtime definition。
+- [x] active Series in-use/incompatible typed error 显示明确中文。
+- [x] 删除普通 DB definition 的确认说明 Task 历史值不会被级联删除。
 
 **实现步骤：**
 
-- [ ] 建 TanStack Query keys/hooks，mutation 成功后失效 Workspace definitions 及 Task/Series form/detail queries。
-- [ ] route 挂在现有 `workspaceRootRoute`，链接保留 `/workspaces/$workspaceSlug`。
-- [ ] `WorkspaceSettingsNav` 增加 `customFields`，不改 Project settings tabs。
-- [ ] source/usage 只用于解释动作；允许与否以服务端错误为准。
-- [ ] 普通用户文案使用“自定义字段”，不显示 UDA。
+- [x] 建 TanStack Query keys/hooks，mutation 成功后失效 Workspace definitions 及 Task/Series form/detail queries。
+- [x] route 挂在现有 `workspaceRootRoute`，链接保留 `/workspaces/$workspaceSlug`。
+- [x] `WorkspaceSettingsNav` 增加 `customFields`，不改 Project settings tabs。
+- [x] source/usage 只用于解释动作；允许与否以服务端错误为准。
+- [x] 普通用户文案使用“自定义字段”，不显示 UDA。
 
 **明确不改：**
 
@@ -313,28 +315,28 @@ pnpm --dir web lint
 
 **先写测试：**
 
-- [ ] Task / Series 候选始终来自 Workspace typed definitions，与当前 Project 无关。
-- [ ] 初始只显示已有值或当前 draft 已选字段，不铺开所有未填写 definitions。
-- [ ] “添加自定义字段”支持搜索、键盘选择、排除已选字段。
-- [ ] 移除未保存字段不发送 clear；移除已有且 definition 仍存在的值使用现有 clear payload；definition-missing 历史值保持只读。
-- [ ] string/numeric/date/duration 四种 type 使用正确控件。
-- [ ] 任一 type 的 `values` 非空时使用 select；`enum` 不作为 type。
-- [ ] default 只显示 placeholder/hint，不进入 payload。
-- [ ] 选择字段但保持空值不写入 UDA。
-- [ ] Task 详情合并 Workspace definitions 与 saved values。
-- [ ] saved value 无 definition 时，无论持久化 orphan flag 为何都进入“历史字段”并只读。
-- [ ] 当前 Task HTTP DTO 不暴露 orphan flag；Web 不根据 raw value 伪造标志，`uda_orphan_readonly` 返回时保留 draft 并显示明确错误。
-- [ ] Task 移动 Project 后 UDA UI 和可写性不改变。
-- [ ] Workspace definition mutation 后表单/详情 cache 刷新。
+- [x] Task / Series 候选始终来自 Workspace typed definitions，与当前 Project 无关。
+- [x] 初始只显示已有值或当前 draft 已选字段，不铺开所有未填写 definitions。
+- [x] “添加自定义字段”支持搜索、键盘选择、排除已选字段。
+- [x] 移除未保存字段不发送 clear；移除已有且 definition 仍存在的值使用现有 clear payload；definition-missing 历史值保持只读。
+- [x] string/numeric/date/duration 四种 type 使用正确控件。
+- [x] 任一 type 的 `values` 非空时使用 select；`enum` 不作为 type。
+- [x] default 只显示 placeholder/hint，不进入 payload。
+- [x] 选择字段但保持空值不写入 UDA。
+- [x] Task 详情合并 Workspace definitions 与 saved values。
+- [x] saved value 无 definition 时，无论持久化 orphan flag 为何都进入“历史字段”并只读。
+- [x] 当前 Task HTTP DTO 不暴露 orphan flag；Web 不根据 raw value 伪造标志，`uda_orphan_readonly` 返回时保留 draft 并显示明确错误。
+- [x] Task 移动 Project 后 UDA UI 和可写性不改变。
+- [x] Workspace definition mutation 后表单/详情 cache 刷新。
 
 **实现步骤：**
 
-- [ ] `TaskUDADefinition` 改由 typed HTTP DTO 构造；删除页面对 `uda.*` Config 的业务解析依赖。
-- [ ] `parseTaskUDADefinitions(config)` 仅在仍有兼容消费者时保留；删除前先用 `rg` 确认。
-- [ ] `CommonUDAFields` 不接受 Project UDA query/ref；只接受 Workspace、saved values、draft 和 clear callback。
-- [ ] 字段选择器复用 Task 与 TaskSeries，同一处实现 filter/keyboard/empty/default 语义。
-- [ ] date/duration 提交继续匹配当前 HTTP/App 格式，不在前端发明第二种 wire value。
-- [ ] detail 用 name 作为提交 key，label 只做展示；definition-missing raw 不猜 boolean/type。
+- [x] `TaskUDADefinition` 改由 typed HTTP DTO 构造；删除页面对 `uda.*` Config 的业务解析依赖。
+- [x] `parseTaskUDADefinitions(config)` 仅在仍有兼容消费者时保留；删除前先用 `rg` 确认。
+- [x] `CommonUDAFields` 不接受 Project UDA query/ref；只接受 Workspace、saved values、draft 和 clear callback。
+- [x] 字段选择器复用 Task 与 TaskSeries，同一处实现 filter/keyboard/empty/default 语义。
+- [x] date/duration 提交继续匹配当前 HTTP/App 格式，不在前端发明第二种 wire value。
+- [x] detail 用 name 作为提交 key，label 只做展示；definition-missing raw 不猜 boolean/type。
 
 **验收标准：** 表单噪声明显降低，但任意 Project 仍可选择全部 Workspace definitions；没有 Project UDA state 或 cache key。
 
@@ -366,23 +368,23 @@ pnpm --dir web lint
 
 **先写/补充测试：**
 
-- [ ] 新 capture 仍输出 `xuanchu.project-template-snapshot/v1`。
-- [ ] `ProjectBlueprintV1` 不含 `uda_settings`，canonical JSON/hash golden 不变。
-- [ ] 带 UDA 的 selected Task / Series capture 保存 raw/type blueprint。
-- [ ] orphan、definition 缺失或 value 不兼容阻止 capture，沿用 `project_template_uda_invalid`。
-- [ ] instantiate Preview 在 definition 缺失、type/value 不兼容时阻断且不写数据。
-- [ ] 成功实例化后 Series / Task UDA 与 Snapshot 一致。
-- [ ] 实例化顺序保持 Project → Config → Series → Task，不存在 UDA settings 阶段或 failure hook。
-- [ ] 普通 import 仍可恢复 orphan；不返回 Project unavailable warning。
-- [ ] `xuanchu.task-bundle/v1` round trip 不增加 definition/settings。
-- [ ] Task move Project 保留 UDA，query/urgency/export 结果不因 Project 改变。
+- [x] 新 capture 仍输出 `xuanchu.project-template-snapshot/v1`。
+- [x] `ProjectBlueprintV1` 不含 `uda_settings`，canonical JSON/hash golden 不变。
+- [x] 带 UDA 的 selected Task / Series capture 保存 raw/type blueprint。
+- [x] orphan、definition 缺失或 value 不兼容阻止 capture，沿用 `project_template_uda_invalid`。
+- [x] instantiate Preview 在 definition 缺失、type/value 不兼容时阻断且不写数据。
+- [x] 成功实例化后 Series / Task UDA 与 Snapshot 一致。
+- [x] 实例化顺序保持 Project → Config → Series → Task，不存在 UDA settings 阶段或 failure hook。
+- [x] 普通 import 仍可恢复 orphan；不返回 Project unavailable warning。
+- [x] `xuanchu.task-bundle/v1` round trip 不增加 definition/settings。
+- [x] Task move Project 保留 UDA，query/urgency/export 结果不因 Project 改变。
 
 **实现纪律：**
 
-- [ ] 不修改 `SnapshotSchemaV1`、`SnapshotV1`、`ProjectBlueprintV1`、`EncodeV1`。
-- [ ] 不新增 `SnapshotV2`、`EncodeV2`、normalized UDA settings 或 v2 fixture。
-- [ ] 不改 Capture/Instantiate Web DTO 或 Wizard；现有 UDA summary 来自 selected Task/Series 即可。
-- [ ] 如果现有测试已经完整覆盖某项，只记录证据，不为了“有代码改动”重写生产代码。
+- [x] 不修改 `SnapshotSchemaV1`、`SnapshotV1`、`ProjectBlueprintV1`、`EncodeV1`。
+- [x] 不新增 `SnapshotV2`、`EncodeV2`、normalized UDA settings 或 v2 fixture。
+- [x] 不改 Capture/Instantiate Web DTO 或 Wizard；现有 UDA summary 来自 selected Task/Series 即可。
+- [x] 如果现有测试已经完整覆盖某项，只记录证据，不为了“有代码改动”重写生产代码。
 
 **测试命令：**
 
@@ -413,18 +415,18 @@ CGO_ENABLED=0 go test ./internal/projecttemplate ./internal/app
 
 **必须覆盖的端到端场景：**
 
-- [ ] owner 在 Workspace 设置新建 `channel` / `estimate`。
-- [ ] 两个不同 Project 的 Task 表单都能选择相同 Workspace definitions。
-- [ ] 表单默认不铺开所有未填写字段；选择并填写后 Task 详情可编辑。
-- [ ] default 只显示提示，不自动落库。
-- [ ] Task move Project 后 UDA 不变。
-- [ ] active Series 阻止 definition 删除；清除/停止 Series 后可删除。
-- [ ] runtime-only definition 只读，DB override 创建/删除行为清楚。
-- [ ] MCP `task_add` 写 UDA，query/get/modify/clear round trip。
-- [ ] MCP 工具列表无 UDA/Project UDA 同义工具。
-- [ ] Template capture/instantiate 仍使用 v1 并保留 Task/Series UDA。
-- [ ] definition 缺失时 Instantiate Preview 阻断，数据库无半成品。
-- [ ] Project Header/Settings 没有 UDA 可用范围入口。
+- [x] owner 在 Workspace 设置新建 `channel` / `estimate`。
+- [x] 两个不同 Project 的 Task 表单都能选择相同 Workspace definitions。
+- [x] 表单默认不铺开所有未填写字段；选择并填写后 Task 详情可编辑。
+- [x] default 只显示提示，不自动落库。
+- [x] Task move Project 后 UDA 不变。
+- [x] active Series 阻止 definition 删除；清除/停止 Series 后可删除。
+- [x] runtime-only definition 只读，DB override 创建/删除行为清楚。
+- [x] MCP `task_add` 写 UDA，query/get/modify/clear round trip。
+- [x] MCP 工具列表无 UDA/Project UDA 同义工具。
+- [x] Template capture/instantiate 仍使用 v1 并保留 Task/Series UDA。
+- [x] definition 缺失时 Instantiate Preview 阻断，数据库无半成品。
+- [x] Project Header/Settings 没有 UDA 可用范围入口。
 
 **结构性反向检查：**
 
@@ -436,12 +438,12 @@ rg -n 'ProjectUDASettings|ProjectUDAField|project_list_udas|project_uda_set|Snap
 
 **文档同步：**
 
-- [ ] README 解释 definition/value 两层模型和 `uda.*` compatibility view。
-- [ ] README 增加 Workspace typed HTTP 示例与 MCP `task_add.udas` 示例。
-- [ ] README 明确 Project 不限制 UDA，Template 仍为 Snapshot v1。
-- [ ] ROADMAP 只在实现与全量验证通过后标记完成。
-- [ ] OpenAPI、MCP schema、Web 帮助与错误文案一致。
-- [ ] spec/plan 不残留 inherit_all/custom、Project UDA version 或 Template v2。
+- [x] README 解释 definition/value 两层模型和 `uda.*` compatibility view。
+- [x] README 增加 Workspace typed HTTP 示例与 MCP `task_add.udas` 示例。
+- [x] README 明确 Project 不限制 UDA，Template 仍为 Snapshot v1。
+- [x] ROADMAP 只在实现与全量验证通过后标记完成。
+- [x] OpenAPI、MCP schema、Web 帮助与错误文案一致。
+- [x] spec/plan 不残留 inherit_all/custom、Project UDA version 或 Template v2。
 
 **最终验证命令：**
 
@@ -465,13 +467,13 @@ pnpm --dir web run smoke:project-template
 
 **最终验收：**
 
-- [ ] 所有命令通过并记录实际输出。
-- [ ] 当前分支只包含本功能相关文件。
-- [ ] worktree 无临时 DB、Playwright trace、auth cache 或构建二进制。
-- [ ] SQLite/PostgreSQL 抽象和 `CGO_ENABLED=0` 有验证证据。
-- [ ] 所有协议层复用 App definition/value 规则。
-- [ ] runtime UDA、orphan、import、bundle、Template v1 均有回归证据。
-- [ ] 代码和文档中没有 Project UDA settings 或 Template v2 半成品。
+- [x] 所有命令通过并记录实际输出。
+- [x] 当前分支只包含本功能相关文件。
+- [x] worktree 无临时 DB、Playwright trace、auth cache 或构建二进制。
+- [x] SQLite/PostgreSQL 抽象和 `CGO_ENABLED=0` 有验证证据。
+- [x] 所有协议层复用 App definition/value 规则。
+- [x] runtime UDA、orphan、import、bundle、Template v1 均有回归证据。
+- [x] 代码和文档中没有 Project UDA settings 或 Template v2 半成品。
 
 **建议提交：** `docs: 完成 Workspace 自定义字段文档与验证`
 

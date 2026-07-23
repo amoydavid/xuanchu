@@ -8,6 +8,7 @@ import { i18n } from "@/i18n"
 import { getProjectTasks } from "../api/project-api"
 import { modifyTask } from "../api/task-api"
 import { getWorkspaceMembers } from "../api/users-api"
+import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { TaskPropertyPanel } from "./task-property-panel"
 
 vi.mock("../api/task-api", async () => {
@@ -33,6 +34,12 @@ vi.mock("../api/project-api", async () => {
 vi.mock("../api/users-api", () => ({
   getWorkspaceMembers: vi.fn(),
 }))
+
+vi.mock("@/features/workspace/session/workspace-api", () => ({
+  workspaceApiGet: vi.fn(),
+}))
+
+let udaDefinitions: Record<string, unknown>[] = []
 
 function makeWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -79,6 +86,23 @@ describe("TaskPropertyPanel", () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
     vi.mocked(modifyTask).mockResolvedValue(task())
+    udaDefinitions = [
+      {
+        name: "effort",
+        type: "duration",
+        label: "工作量",
+        values: [],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 0,
+      },
+    ]
+    vi.mocked(workspaceApiGet).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/udas")) return udaDefinitions
+      if (path.includes("/urgency")) return { total: 0, items: [] }
+      return undefined
+    })
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
         id: "u1",
@@ -365,7 +389,9 @@ describe("TaskPropertyPanel", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
-    await userEvent.click(screen.getByRole("button", { name: "UDA effort" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "UDA effort" })
+    )
     await userEvent.clear(screen.getByLabelText("UDA effort"))
     await userEvent.type(screen.getByLabelText("UDA effort"), "3h{Enter}")
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
@@ -394,7 +420,39 @@ describe("TaskPropertyPanel", () => {
     })
   })
 
-  it("uses typed editors for boolean, numeric, and date UDA values", async () => {
+  it("uses Workspace definitions for numeric, date, and enum UDA values", async () => {
+    udaDefinitions = [
+      {
+        name: "budget",
+        type: "numeric",
+        label: "预算",
+        values: [],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 0,
+      },
+      {
+        name: "launch_date",
+        type: "date",
+        label: "发布日期",
+        values: [],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 0,
+      },
+      {
+        name: "reviewed",
+        type: "string",
+        label: "复核",
+        values: ["yes", "no"],
+        default: "",
+        source: "database",
+        task_value_count: 1,
+        active_series_value_count: 0,
+      },
+    ]
     render(
       <TaskPropertyPanel
         canWrite={true}
@@ -402,7 +460,7 @@ describe("TaskPropertyPanel", () => {
         task={task({
           budget: 1200,
           launch_date: "2026-07-03",
-          reviewed: true,
+          reviewed: "yes",
         })}
         taskRef="ads-1"
         workspaceSlug="acme"
@@ -410,7 +468,7 @@ describe("TaskPropertyPanel", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
-    await userEvent.clear(screen.getByLabelText("UDA budget"))
+    await userEvent.clear(await screen.findByLabelText("UDA budget"))
     await userEvent.type(screen.getByLabelText("UDA budget"), "1300{Enter}")
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
       udas: { budget: "1300" },
@@ -423,11 +481,16 @@ describe("TaskPropertyPanel", () => {
       udas: { launch_date: "2026-07-04" },
     })
 
-    const reviewed = screen.getByRole("switch", { name: "UDA reviewed" })
-    expect(reviewed.getAttribute("data-slot")).toBe("switch")
+    const reviewed = screen.getByRole("combobox", { name: "UDA reviewed" })
     await userEvent.click(reviewed)
+    await userEvent.click(screen.getByRole("option", { name: "no" }))
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-      udas: { reviewed: "false" },
+      udas: { reviewed: "no" },
+    })
+
+    await userEvent.click(screen.getByRole("button", { name: "移除字段 复核" }))
+    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+      clear_udas: ["reviewed"],
     })
   })
 

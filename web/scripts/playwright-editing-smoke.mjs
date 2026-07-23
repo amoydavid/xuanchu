@@ -12,22 +12,19 @@ const baseURL = `http://127.0.0.1:${port}`
 const screenshotDir = path.join(tmpdir(), "xuanchu-editing-smoke")
 mkdirSync(screenshotDir, { recursive: true })
 
-const server = spawn("pnpm", [
-  "exec",
-  "vite",
-  "--host",
-  "127.0.0.1",
-  "--port",
-  String(port),
-], {
-  cwd: webRoot,
-  env: {
-    ...process.env,
-    BROWSER: "none",
-    VITE_XUANCHU_API_TARGET: "http://127.0.0.1:9",
-  },
-  stdio: ["ignore", "pipe", "pipe"],
-})
+const server = spawn(
+  "pnpm",
+  ["exec", "vite", "--host", "127.0.0.1", "--port", String(port)],
+  {
+    cwd: webRoot,
+    env: {
+      ...process.env,
+      BROWSER: "none",
+      VITE_XUANCHU_API_TARGET: "http://127.0.0.1:9",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  }
+)
 
 let serverLog = ""
 server.stdout.on("data", (chunk) => {
@@ -54,6 +51,18 @@ async function main() {
 async function runDesktopSmoke(browser) {
   const page = await newMockedPage(browser, { height: 900, width: 1280 })
   try {
+    // Workspace 字段库：从项目上下文外的固定设置页创建 definition。
+    await page.goto(`${baseURL}/workspaces/acme/settings/custom-fields`)
+    await expectText(page, "这些字段可用于当前工作区内的所有任务和循环任务。")
+    await page.getByRole("button", { name: "新建字段" }).click()
+    await assertDialogVisible(page, "新建自定义字段")
+    await page.locator("#custom-field-name").fill("source_channel")
+    await page.locator("#custom-field-label").fill("渠道来源")
+    await page.locator("#custom-field-values").fill("search, social")
+    await page.getByRole("button", { name: "保存" }).click()
+    await expectText(page, "渠道来源")
+    await assertNoHorizontalOverflow(page, "desktop workspace custom fields")
+
     // 项目根路由显示概览；任务内容在 /tasks 子页面。
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops`)
     await expectText(page, "项目信息")
@@ -69,6 +78,14 @@ async function runDesktopSmoke(browser) {
     await expectText(page, "整理素材表现")
     await expectMarkdownSmoke(page)
     await assertNoHorizontalOverflow(page, "desktop task detail")
+
+    // Project 只提供任务上下文；Task 详情可选择全部 Workspace definitions。
+    await page.getByRole("button", { name: "添加字段" }).click()
+    await page.getByRole("textbox", { name: "搜索自定义字段" }).fill("渠道")
+    await page.getByRole("button", { name: "渠道来源" }).click()
+    await page.getByRole("combobox", { name: "UDA source_channel" }).click()
+    await page.getByRole("option", { name: "search" }).click()
+    await expectStatus(page, "已保存")
 
     // 桌面端：子任务 composer 与右侧属性栏都包含「编辑标签」按钮，限定到属性栏 aside。
     await page
@@ -102,9 +119,13 @@ async function runDesktopSmoke(browser) {
 
     await page.getByRole("button", { name: "编辑注解" }).click()
     await assertDialogVisible(page, "编辑注解")
-    await page.getByLabel("编辑注解内容").fill("## 补充复盘结论\n\n`CPA` 已确认")
+    await page
+      .getByLabel("编辑注解内容")
+      .fill("## 补充复盘结论\n\n`CPA` 已确认")
     await page.getByRole("button", { name: "保存注解" }).click()
-    await page.locator(".markdown-prose h2", { hasText: "补充复盘结论" }).waitFor()
+    await page
+      .locator(".markdown-prose h2", { hasText: "补充复盘结论" })
+      .waitFor()
 
     await page.getByRole("button", { name: "编辑描述" }).click()
     await assertDialogVisible(page, "编辑任务描述")
@@ -112,7 +133,9 @@ async function runDesktopSmoke(browser) {
       .getByRole("textbox", { name: "任务描述" })
       .fill("# 调整后描述\n\n- 保留预算\n- 检查素材\n\n`channel` 字段已同步")
     await page.getByRole("button", { name: "保存" }).click()
-    await page.locator(".markdown-prose h1", { hasText: "调整后描述" }).waitFor()
+    await page
+      .locator(".markdown-prose h1", { hasText: "调整后描述" })
+      .waitFor()
 
     await assertNoHorizontalOverflow(page, "desktop interactions")
     await screenshot(page, "desktop-task-detail")
@@ -141,7 +164,9 @@ async function runAttachmentSmoke(page) {
   // 列表已包含一个预置附件。
   await expectText(page, "diagram.png")
   // 重命名。
-  const renameBtn = page.locator('[data-testid="attachment-row-att-smoke-1"]').getByRole("button", { name: "下载" })
+  const renameBtn = page
+    .locator('[data-testid="attachment-row-att-smoke-1"]')
+    .getByRole("button", { name: "下载" })
   // 先确认附件行存在。
   const row = page.locator('[data-testid="attachment-row-att-smoke-1"]')
   await row.waitFor({ state: "visible", timeout: 5_000 })
@@ -163,14 +188,17 @@ async function runAttachmentSmoke(page) {
   const removeBtn = row.getByRole("button", { name: "移除" })
   await removeBtn.click()
   // 删除后附件行消失。
-  await page.locator('[data-testid="attachment-row-att-smoke-1"]').waitFor({ state: "detached", timeout: 5_000 })
+  await page
+    .locator('[data-testid="attachment-row-att-smoke-1"]')
+    .waitFor({ state: "detached", timeout: 5_000 })
 }
 
 // runReferenceMarkdownSmoke 验证 description 含 ref:// 引用时保存后仍是 Markdown（计划 4 Task 12）。
 async function runReferenceMarkdownSmoke(page) {
   await page.getByRole("button", { name: "编辑描述" }).click()
   await assertDialogVisible(page, "编辑任务描述")
-  const markdownWithRef = "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) 看 [#准备素材包](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)"
+  const markdownWithRef =
+    "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) 看 [#准备素材包](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)"
   await page.getByRole("textbox", { name: "任务描述" }).fill(markdownWithRef)
   await page.getByRole("button", { name: "保存" }).click()
   // 保存后 description 仍包含 ref:// URI（不退化为 HTML/JSON/blob）。
@@ -185,7 +213,13 @@ async function runReferenceMarkdownSmoke(page) {
     })
     if (taskResponse.includes("ref://user/8c8b1bed")) {
       // 确认不含 ProseMirror JSON / HTML / blob / 预签名 URL。
-      for (const forbidden of ['"type":"doc"', "<img", "blob:", "X-Amz-Signature", "data:image"]) {
+      for (const forbidden of [
+        '"type":"doc"',
+        "<img",
+        "blob:",
+        "X-Amz-Signature",
+        "data:image",
+      ]) {
         if (taskResponse.includes(forbidden)) {
           throw new Error(`description leaked ${forbidden}: ${taskResponse}`)
         }
@@ -254,7 +288,9 @@ async function runAttachmentUploadSmoke(page) {
   // 1) 截图粘贴：模拟 clipboard File 候选，通过 sanitizeRichPaste 验证 file 优先级。
   const fileResult = await page.evaluate(async () => {
     const mod = await import("/src/components/markdown/paste-sanitizer.ts")
-    const fakeFile = new File([new Uint8Array([1])], "screenshot.png", { type: "image/png" })
+    const fakeFile = new File([new Uint8Array([1])], "screenshot.png", {
+      type: "image/png",
+    })
     const sanitized = mod.sanitizeRichPaste({
       html: '<img src="https://cdn.example.com/screenshot.png" alt="截图">',
       files: [fakeFile],
@@ -266,7 +302,9 @@ async function runAttachmentUploadSmoke(page) {
     }
   })
   if (fileResult.kind !== "file") {
-    throw new Error(`clipboard file should take priority over remote URL, got kind=${fileResult.kind}`)
+    throw new Error(
+      `clipboard file should take priority over remote URL, got kind=${fileResult.kind}`
+    )
   }
   if (fileResult.fileName !== "screenshot.png") {
     throw new Error(`expected screenshot.png, got ${fileResult.fileName}`)
@@ -286,20 +324,28 @@ async function runAttachmentUploadSmoke(page) {
     }
   })
   if (dedupResult.count !== 2) {
-    throw new Error(`expected 2 candidates from 2 <img> tags, got ${dedupResult.count}`)
+    throw new Error(
+      `expected 2 candidates from 2 <img> tags, got ${dedupResult.count}`
+    )
   }
   // 两个候选都应该存在（DOM 顺序提取），但它们的 sourceURL 相同——去重在 upload queue 层做。
   if (dedupResult.firstURL !== dedupResult.secondURL) {
-    throw new Error(`duplicate URL mismatch: ${dedupResult.firstURL} vs ${dedupResult.secondURL}`)
+    throw new Error(
+      `duplicate URL mismatch: ${dedupResult.firstURL} vs ${dedupResult.secondURL}`
+    )
   }
 
   // 3) upload queue 远程去重验证：同一 URL 入队两次只产生一次 import 调用。
   const queueResult = await page.evaluate(async () => {
-    const mod = await import("/src/components/markdown/attachment-upload-queue.ts")
+    const mod =
+      await import("/src/components/markdown/attachment-upload-queue.ts")
     let importCalls = 0
     const api = {
       uploadFile: async () => ({ id: "f1" }),
-      importRemoteURL: async () => { importCalls++; return { id: "r1" } },
+      importRemoteURL: async () => {
+        importCalls++
+        return { id: "r1" }
+      },
       removeDraft: async () => {},
     }
     const queue = new mod.AttachmentUploadQueue(api, { remoteConcurrency: 3 })
@@ -312,7 +358,9 @@ async function runAttachmentUploadSmoke(page) {
     return { importCalls, sameAttachment: a.id === b.id }
   })
   if (queueResult.importCalls !== 1) {
-    throw new Error(`duplicate URL should only import once, got ${queueResult.importCalls} calls`)
+    throw new Error(
+      `duplicate URL should only import once, got ${queueResult.importCalls} calls`
+    )
   }
   if (!queueResult.sameAttachment) {
     throw new Error("duplicate URL should return same attachment")
@@ -320,16 +368,25 @@ async function runAttachmentUploadSmoke(page) {
 
   // 4) 远程失败占位三种动作验证：通过 upload queue 的 failed 状态确认错误码传播。
   const failResult = await page.evaluate(async () => {
-    const mod = await import("/src/components/markdown/attachment-upload-queue.ts")
+    const mod =
+      await import("/src/components/markdown/attachment-upload-queue.ts")
     const api = {
-      uploadFile: async () => { throw { code: "attachment_remote_fetch_failed", message: "timeout" } },
-      importRemoteURL: async () => { throw { code: "attachment_remote_fetch_failed", message: "timeout" } },
+      uploadFile: async () => {
+        throw { code: "attachment_remote_fetch_failed", message: "timeout" }
+      },
+      importRemoteURL: async () => {
+        throw { code: "attachment_remote_fetch_failed", message: "timeout" }
+      },
       removeDraft: async () => {},
     }
     const queue = new mod.AttachmentUploadQueue(api, {})
     queue.setTaskRef("t1")
     try {
-      await queue.enqueue({ kind: "remote", sourceURL: "https://cdn.example.com/fail.png", alt: "失败" })
+      await queue.enqueue({
+        kind: "remote",
+        sourceURL: "https://cdn.example.com/fail.png",
+        alt: "失败",
+      })
     } catch (e) {
       // expected
     }
@@ -344,26 +401,37 @@ async function runAttachmentUploadSmoke(page) {
     throw new Error("remote failure should produce a failed queue item")
   }
   if (failResult.errorCode !== "attachment_remote_fetch_failed") {
-    throw new Error(`expected attachment_remote_fetch_failed, got ${failResult.errorCode}`)
+    throw new Error(
+      `expected attachment_remote_fetch_failed, got ${failResult.errorCode}`
+    )
   }
 
   // 5) 取消后 draft 清理：upload queue cleanupDrafts 对 resolved 项调用 removeDraft。
   const cleanupResult = await page.evaluate(async () => {
-    const mod = await import("/src/components/markdown/attachment-upload-queue.ts")
+    const mod =
+      await import("/src/components/markdown/attachment-upload-queue.ts")
     let removedDrafts = []
     const api = {
       uploadFile: async () => ({ id: "draft-1", state: "draft" }),
       importRemoteURL: async () => ({ id: "draft-1", state: "draft" }),
-      removeDraft: async (id) => { removedDrafts.push(id) },
+      removeDraft: async (id) => {
+        removedDrafts.push(id)
+      },
     }
     const queue = new mod.AttachmentUploadQueue(api, {})
     queue.setTaskRef("t1")
-    await queue.enqueue({ kind: "file", file: new File([new Uint8Array([1])], "a.png"), alt: "a" })
+    await queue.enqueue({
+      kind: "file",
+      file: new File([new Uint8Array([1])], "a.png"),
+      alt: "a",
+    })
     await queue.cleanupDrafts()
     return { removedCount: removedDrafts.length, removedID: removedDrafts[0] }
   })
   if (cleanupResult.removedCount !== 1) {
-    throw new Error(`cleanupDrafts should remove 1 draft, got ${cleanupResult.removedCount}`)
+    throw new Error(
+      `cleanupDrafts should remove 1 draft, got ${cleanupResult.removedCount}`
+    )
   }
   if (cleanupResult.removedID !== "draft-1") {
     throw new Error(`expected draft-1 removed, got ${cleanupResult.removedID}`)
@@ -393,16 +461,22 @@ async function runAuthAndFilePickerSmoke(page) {
     return imgs.length
   })
   if (rawImgCount > 0) {
-    throw new Error(`found ${rawImgCount} raw <img src="/api/v1/attachments/..."> — should use authenticated fetch`)
+    throw new Error(
+      `found ${rawImgCount} raw <img src="/api/v1/attachments/..."> — should use authenticated fetch`
+    )
   }
 
   // 2) 验证 acquireAttachmentBlob 发起鉴权 fetch 并返回 blob: URL。
   const blobResult = await page.evaluate(async () => {
     try {
-      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      const mod =
+        await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
       mod.resetAttachmentBlobCache()
       // 这个调用会 fetch /api/v1/attachments/att-smoke-1/content，mock 路由返回 PNG。
-      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      const result = await mod.acquireAttachmentBlob("acme", {
+        id: "att-smoke-1",
+        sha256: "sha-smoke-1",
+      })
       const isBlob = result.url.startsWith("blob:")
       result.release()
       return { success: true, isBlob }
@@ -424,15 +498,20 @@ async function runAuthAndFilePickerSmoke(page) {
     const savedToken = sessionStorage.getItem("xuanchu.console.token")
     sessionStorage.removeItem("xuanchu.console.token")
     try {
-      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      const mod =
+        await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
       mod.resetAttachmentBlobCache()
-      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      const result = await mod.acquireAttachmentBlob("acme", {
+        id: "att-smoke-1",
+        sha256: "sha-smoke-1",
+      })
       result.release()
       return { success: true }
     } catch (e) {
       return { success: false, error: e.message }
     } finally {
-      if (savedToken) sessionStorage.setItem("xuanchu.console.token", savedToken)
+      if (savedToken)
+        sessionStorage.setItem("xuanchu.console.token", savedToken)
     }
   })
   if (!oidcResult.success) {
@@ -441,11 +520,18 @@ async function runAuthAndFilePickerSmoke(page) {
 
   // 4) Acting token 身份：设置 acting token 后验证 Bearer header 包含 acting token。
   const actingResult = await page.evaluate(async () => {
-    sessionStorage.setItem("xuanchu.console.admin_acting_token", "xuanchu_act_smoke")
+    sessionStorage.setItem(
+      "xuanchu.console.admin_acting_token",
+      "xuanchu_act_smoke"
+    )
     try {
-      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      const mod =
+        await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
       mod.resetAttachmentBlobCache()
-      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      const result = await mod.acquireAttachmentBlob("acme", {
+        id: "att-smoke-1",
+        sha256: "sha-smoke-1",
+      })
       result.release()
       return { success: true }
     } catch (e) {
@@ -537,6 +623,28 @@ async function newMockedPage(browser, viewport) {
       return
     }
 
+    if (method === "GET" && pathName === "/api/v1/udas") {
+      await fulfill(route, customFields)
+      return
+    }
+
+    if (method === "PUT" && pathName.startsWith("/api/v1/udas/")) {
+      const name = decodeURIComponent(pathName.slice("/api/v1/udas/".length))
+      const input = await request.postDataJSON()
+      const field = {
+        name,
+        ...input,
+        source: "database",
+        task_value_count: 0,
+        active_series_value_count: 0,
+      }
+      const existing = customFields.findIndex((item) => item.name === name)
+      if (existing >= 0) customFields[existing] = field
+      else customFields.push(field)
+      await fulfill(route, field)
+      return
+    }
+
     if (method === "GET" && pathName === "/api/v1/projects/adsops") {
       await fulfill(route, project)
       return
@@ -582,7 +690,13 @@ async function newMockedPage(browser, viewport) {
 
     if (method === "GET" && pathName === "/api/v1/tasks") {
       // TaskViewPage 格式（spec §17.3）：{items, total, limit, offset, occurrence_mode}
-      await fulfill(route, { items: tasks, total: tasks.length, limit: 200, offset: 0, occurrence_mode: "materialized" })
+      await fulfill(route, {
+        items: tasks,
+        total: tasks.length,
+        limit: 200,
+        offset: 0,
+        occurrence_mode: "materialized",
+      })
       return
     }
 
@@ -592,10 +706,7 @@ async function newMockedPage(browser, viewport) {
     }
 
     // 子任务列表端点（任务详情页子任务区会请求）：mock 为空数组。
-    if (
-      method === "GET" &&
-      pathName === "/api/v1/tasks/ads-1/children"
-    ) {
+    if (method === "GET" && pathName === "/api/v1/tasks/ads-1/children") {
       await fulfill(route, [])
       return
     }
@@ -612,10 +723,7 @@ async function newMockedPage(browser, viewport) {
       return
     }
 
-    if (
-      method === "PATCH" &&
-      pathName === "/api/v1/tasks/ads-1/links/link-1"
-    ) {
+    if (method === "PATCH" && pathName === "/api/v1/tasks/ads-1/links/link-1") {
       const patch = await request.postDataJSON()
       Object.assign(task.links[0], patch)
       await fulfill(route, task.links[0])
@@ -714,31 +822,51 @@ async function newMockedPage(browser, viewport) {
       const type = url.searchParams.get("type") ?? "user"
       if (type === "user") {
         const filtered = members.filter(
-          (m) => m.name.toLowerCase().includes(q.toLowerCase()) || m.email.includes(q)
+          (m) =>
+            m.name.toLowerCase().includes(q.toLowerCase()) ||
+            m.email.includes(q)
         )
-        await fulfill(route, filtered.map((m) => ({
-          type: "user",
-          user: {
-            id: m.user_id,
-            name: m.name,
-            display_name: m.name,
-            email: m.email,
-            external_ids: [],
-          },
-        })))
+        await fulfill(
+          route,
+          filtered.map((m) => ({
+            type: "user",
+            user: {
+              id: m.user_id,
+              name: m.name,
+              display_name: m.name,
+              email: m.email,
+              external_ids: [],
+            },
+          }))
+        )
       } else {
-        await fulfill(route, [{
-          type: "task",
-          task: { id: "task-ads-2", title: "准备素材包", task_slug: "ads-2", status: "pending" },
-        }])
+        await fulfill(route, [
+          {
+            type: "task",
+            task: {
+              id: "task-ads-2",
+              title: "准备素材包",
+              task_slug: "ads-2",
+              status: "pending",
+            },
+          },
+        ])
       }
       return
     }
 
     // content-references resolve
-    if (method === "POST" && pathName === "/api/v1/content-references/resolve") {
+    if (
+      method === "POST" &&
+      pathName === "/api/v1/content-references/resolve"
+    ) {
       await fulfill(route, [
-        { type: "user", id: "user-alice", status: "resolved", user: { id: "user-alice", name: "Alice", display_name: "Alice" } },
+        {
+          type: "user",
+          id: "user-alice",
+          status: "resolved",
+          user: { id: "user-alice", name: "Alice", display_name: "Alice" },
+        },
       ])
       return
     }
@@ -779,7 +907,9 @@ async function assertNoHorizontalOverflow(page, label) {
   }))
   const maxWidth = Math.max(overflow.body, overflow.document)
   if (maxWidth > overflow.viewport + 2) {
-    throw new Error(`${label} overflows horizontally: ${JSON.stringify(overflow)}`)
+    throw new Error(
+      `${label} overflows horizontally: ${JSON.stringify(overflow)}`
+    )
   }
 }
 
@@ -800,7 +930,10 @@ async function expectText(page, text) {
     }
     await page.waitForTimeout(100)
   }
-  const bodyText = await page.locator("body").innerText().catch(() => "")
+  const bodyText = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "")
   throw new Error(
     `cannot find visible text "${text}". Page text: ${bodyText.slice(0, 800)}`,
     { cause: lastError }
@@ -813,14 +946,18 @@ async function expectStatus(page, text) {
   await assertWithinViewport(status, `status ${text}`)
   const box = await status.boundingBox()
   if (box && box.y < 48) {
-    throw new Error(`status ${text} overlaps sticky header: ${JSON.stringify(box)}`)
+    throw new Error(
+      `status ${text} overlaps sticky header: ${JSON.stringify(box)}`
+    )
   }
 }
 
 async function expectMarkdownSmoke(page) {
   await page.locator(".markdown-prose h2", { hasText: "素材复盘" }).waitFor()
   await page.locator(".markdown-prose code", { hasText: "channel" }).waitFor()
-  const safeLink = page.locator('.markdown-prose a[href="https://example.com/spec"]')
+  const safeLink = page.locator(
+    '.markdown-prose a[href="https://example.com/spec"]'
+  )
   await safeLink.waitFor()
   const scriptCount = await page.locator(".markdown-prose script").count()
   if (scriptCount !== 0) {
@@ -830,7 +967,9 @@ async function expectMarkdownSmoke(page) {
     .locator('.markdown-prose a[href^="javascript:"]')
     .count()
   if (unsafeLinkCount !== 0) {
-    throw new Error(`markdown rendered unsafe javascript links: ${unsafeLinkCount}`)
+    throw new Error(
+      `markdown rendered unsafe javascript links: ${unsafeLinkCount}`
+    )
   }
 }
 
@@ -875,6 +1014,13 @@ function patchToTask(patch) {
   }
   if (patch.clear_tags) {
     next.tags = []
+  }
+  if (patch.udas) {
+    Object.assign(next, patch.udas)
+    delete next.udas
+  }
+  for (const name of patch.clear_udas ?? []) {
+    delete task[name]
   }
   return next
 }
@@ -999,6 +1145,49 @@ const task = {
   launch_date: "2026-07-03",
   reviewed: "true",
 }
+
+const customFields = [
+  {
+    name: "budget",
+    type: "numeric",
+    label: "预算",
+    values: [],
+    default: "",
+    source: "database",
+    task_value_count: 1,
+    active_series_value_count: 0,
+  },
+  {
+    name: "channel",
+    type: "string",
+    label: "渠道",
+    values: ["meta", "search"],
+    default: "",
+    source: "database",
+    task_value_count: 1,
+    active_series_value_count: 0,
+  },
+  {
+    name: "launch_date",
+    type: "date",
+    label: "发布日期",
+    values: [],
+    default: "",
+    source: "database",
+    task_value_count: 1,
+    active_series_value_count: 0,
+  },
+  {
+    name: "reviewed",
+    type: "string",
+    label: "已复核",
+    values: ["true", "false"],
+    default: "",
+    source: "database",
+    task_value_count: 1,
+    active_series_value_count: 0,
+  },
+]
 
 const tasks = [
   task,

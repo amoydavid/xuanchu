@@ -452,6 +452,34 @@ func TestTaskAddBasic(t *testing.T) {
 	}
 }
 
+func TestTaskAddWithUDAsCanBeReadBack(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	for _, input := range []ConfigSetInput{
+		{Key: "uda.estimate.type", Value: "numeric", Scope: "workspace"},
+		{Key: "uda.estimate.values", Value: "1,2,3", Scope: "workspace"},
+	} {
+		if result := callTool(t, session, "config_set", input); result.IsError {
+			t.Fatalf("config_set: %v", parseError(t, result))
+		}
+	}
+
+	result := callTool(t, session, "task_add", TaskAddInput{Title: "带工作量的任务", UDAs: map[string]string{"estimate": "2.0"}})
+	if result.IsError {
+		t.Fatalf("task_add: %v", parseError(t, result))
+	}
+	uuid := extractUUID(t, parseEnvelope(t, result))
+	got := callTool(t, session, "task_get", TaskGetInput{ID: uuid})
+	if got.IsError {
+		t.Fatalf("task_get: %v", parseError(t, got))
+	}
+	task := extractTask(t, parseEnvelope(t, got))
+	udas, ok := task["udas"].(map[string]any)
+	if !ok || udas["estimate"] != "2" {
+		t.Fatalf("udas=%#v, want estimate=2", task["udas"])
+	}
+}
+
 func TestTaskAddAndGetAssignees(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)

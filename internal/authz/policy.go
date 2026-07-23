@@ -16,7 +16,7 @@ func AllowedForRole(role Role, p Permission) bool {
 		case PermissionTaskRead, PermissionTaskWrite,
 			PermissionProjectRead, PermissionProjectManage, PermissionProjectConfigRead, PermissionProjectConfigWrite,
 			PermissionConfigSchemaRead, PermissionConfigSchemaWrite,
-			PermissionContextUse, PermissionContextManage, PermissionUDAManage, PermissionWorkspaceRead, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead,
+			PermissionContextUse, PermissionContextManage, PermissionUDARead, PermissionUDAManage, PermissionWorkspaceRead, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead,
 			PermissionTokenRead, PermissionTokenWrite,
 			PermissionHookRead, PermissionHookWrite,
 			PermissionNotificationRead, PermissionNotificationWrite, PermissionReminderRead, PermissionReminderWrite:
@@ -26,13 +26,13 @@ func AllowedForRole(role Role, p Permission) bool {
 		switch p {
 		case PermissionTaskRead, PermissionTaskWrite,
 			PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead,
-			PermissionContextUse, PermissionContextManage, PermissionWorkspaceRead,
+			PermissionContextUse, PermissionContextManage, PermissionUDARead, PermissionWorkspaceRead,
 			PermissionReminderRead, PermissionAuditRead:
 			return true
 		}
 	case RoleViewer:
 		switch p {
-		case PermissionTaskRead, PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead, PermissionContextUse, PermissionWorkspaceRead, PermissionAuditRead:
+		case PermissionTaskRead, PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead, PermissionContextUse, PermissionUDARead, PermissionWorkspaceRead, PermissionAuditRead:
 			return true
 		}
 	}

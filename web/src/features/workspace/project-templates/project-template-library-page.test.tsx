@@ -439,9 +439,13 @@ describe("ProjectTemplateLibraryPage", () => {
           return response(detailData(updatedTemplate))
         }
         if (url.includes("/launch?")) {
-          return response(detailData(modified ? updatedTemplate : archivedTemplate))
+          return response(
+            detailData(modified ? updatedTemplate : archivedTemplate)
+          )
         }
-        return response(listData([modified ? updatedTemplate : archivedTemplate]))
+        return response(
+          listData([modified ? updatedTemplate : archivedTemplate])
+        )
       })
     renderLibrary()
 
@@ -661,6 +665,9 @@ describe("ProjectTemplateLibraryPage", () => {
     const templates = screen.getByRole("link", { name: "项目模板" })
     expect(templates.getAttribute("href")).toBe("/settings/project-templates")
     expect(templates.getAttribute("aria-current")).toBe("page")
+    expect(
+      screen.getByRole("link", { name: "自定义字段" }).getAttribute("href")
+    ).toBe("/settings/custom-fields")
 
     expect(Object.keys(zhCN.projectTemplates).sort()).toEqual(
       Object.keys(enUS.projectTemplates).sort()
@@ -675,6 +682,7 @@ describe("ProjectTemplateLibraryPage", () => {
       screen.getByRole("link", { name: "Config Definitions" })
     ).toBeTruthy()
     expect(screen.getByRole("link", { name: "Project Templates" })).toBeTruthy()
+    expect(screen.getByRole("link", { name: "Custom Fields" })).toBeTruthy()
   })
 })
 
