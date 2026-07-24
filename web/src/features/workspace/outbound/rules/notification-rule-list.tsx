@@ -124,19 +124,18 @@ export function NotificationRuleList({ canWrite }: { canWrite: boolean }) {
       </AlertDialog>
 
       {query.isLoading ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.loading")}
         </div>
       ) : query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {query.error instanceof ApiError ? query.error.message : t("common.error")}
         </div>
       ) : (query.data ?? []).length === 0 ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.empty")}
         </div>
       ) : (
-        <div className="border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -196,7 +195,6 @@ export function NotificationRuleList({ canWrite }: { canWrite: boolean }) {
               ))}
             </TableBody>
           </Table>
-        </div>
       )}
     </div>
   )

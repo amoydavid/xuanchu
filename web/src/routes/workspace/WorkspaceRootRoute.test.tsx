@@ -97,9 +97,9 @@ describe("WorkspaceRootRoute acting mode", () => {
 
     renderRoute()
 
-    // 不应该出现登录页文案；应该渲染出 AppShell 的 actor 信息。
+    // 不应该出现登录页文案；应该渲染出 AppShell（账户切换器触发器常驻显示工作空间名）。
     await waitFor(() => {
-      expect(screen.getByText(/alice/)).toBeTruthy()
+      expect(screen.getByRole("button", { name: /Dajee/ })).toBeTruthy()
     })
     expect(screen.queryByText(/登录凭证仅保存在/)).toBeNull()
     expect(fetchMock).toHaveBeenCalledWith(
@@ -127,7 +127,7 @@ describe("WorkspaceRootRoute acting mode", () => {
     renderRoute()
 
     await waitFor(() => {
-      expect(screen.getByText(/Alice/)).toBeTruthy()
+      expect(screen.getByRole("button", { name: /Dajee/ })).toBeTruthy()
     })
 
     fetchMock.mockRestore()
@@ -155,6 +155,9 @@ describe("WorkspaceRootRoute acting mode", () => {
 
     renderRoute()
 
+    // AppShell 已渲染（signedIn）；系统身份在账户切换浮层内，展开后校验。
+    const trigger = await screen.findByRole("button", { name: /Dajee/ })
+    await userEvent.click(trigger)
     await waitFor(() => {
       expect(screen.getByText(/系统身份 \/ runtime-prod/)).toBeTruthy()
     })
@@ -195,15 +198,15 @@ describe("WorkspaceRootRoute SSO logout", () => {
 
     renderRoute()
 
-    // 等 AppShell 渲染出用户信息（说明已判定 signedIn=true）
+    // 等 AppShell 渲染出账户切换器（说明已判定 signedIn=true）
     await waitFor(() => {
-      expect(screen.getByText(/Alice/)).toBeTruthy()
+      expect(screen.getByRole("button", { name: /Dajee/ })).toBeTruthy()
     })
 
-    // 点击左下角退出
-    const logoutButtons = screen.getAllByRole("button", { name: "退出" })
-    expect(logoutButtons.length).toBeGreaterThan(0)
-    await userEvent.click(logoutButtons[0])
+    // 打开账户切换浮层，点击退出
+    await userEvent.click(screen.getByRole("button", { name: /Dajee/ }))
+    const logoutItem = await screen.findByRole("menuitem", { name: "退出" })
+    await userEvent.click(logoutItem)
 
     // 等待 async onLogout 完成
     await waitFor(() => {

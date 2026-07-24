@@ -52,7 +52,7 @@ export function MyTasksTable({
   const { t } = useTranslation()
   if (tasks.length === 0) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         {t("myTasks.empty")}
       </section>
     )
@@ -89,8 +89,7 @@ export function MyTasksTable({
         selectedTasks={selectedTasks}
         workspaceSlug={workspaceSlug}
       />
-      <div className="hidden border bg-card md:block">
-        <Table>
+        <Table containerClassName="hidden md:block">
           <TableHeader>
             <TableRow>
               {canWrite ? (
@@ -135,7 +134,6 @@ export function MyTasksTable({
             ))}
           </TableBody>
         </Table>
-      </div>
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
           <MyTasksTaskCard
@@ -319,7 +317,7 @@ function MyTasksTaskCard({
     })
   return (
     <article
-      className="border bg-card p-3"
+      className="rounded-lg border bg-card p-3"
       data-state={selected ? "selected" : undefined}
     >
       <div className="flex items-center justify-between gap-2 text-xs">

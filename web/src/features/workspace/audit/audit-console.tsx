@@ -75,7 +75,7 @@ export function AuditConsole({ workspaceSlug }: { workspaceSlug?: string }) {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border bg-card p-2">
+      <div className="rounded-lg flex flex-wrap items-center gap-2 border bg-card p-2">
         <Input
           aria-label={t("audit.searchPlaceholder")}
           className="h-8 max-w-xs"
@@ -110,19 +110,18 @@ export function AuditConsole({ workspaceSlug }: { workspaceSlug?: string }) {
       </div>
 
       {query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {query.error instanceof ApiError ? query.error.message : t("common.error")}
         </div>
       ) : query.isLoading ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.loading")}
         </div>
       ) : rows.length === 0 ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.empty")}
         </div>
       ) : (
-        <div className="border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -149,7 +148,6 @@ export function AuditConsole({ workspaceSlug }: { workspaceSlug?: string }) {
               ))}
             </TableBody>
           </Table>
-        </div>
       )}
     </div>
   )

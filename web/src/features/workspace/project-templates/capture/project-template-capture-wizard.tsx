@@ -745,7 +745,7 @@ function MetadataStep({
 }) {
   return (
     <div className="mx-auto grid max-w-3xl gap-5 p-5 sm:grid-cols-2 sm:p-8">
-      <div className="border bg-muted/20 p-4 sm:col-span-2">
+      <div className="rounded-lg border bg-muted/20 p-4 sm:col-span-2">
         <div className="text-xs text-muted-foreground">来源项目</div>
         <div className="mt-1 text-sm font-medium">{sourceProject.name}</div>
         <div className="font-mono text-xs text-muted-foreground">

@@ -465,7 +465,7 @@ function ProjectTemplateInstantiateWizardSession({
                     "border-t-2 pt-2 text-[11px] text-muted-foreground",
                     step === index &&
                       "border-foreground font-medium text-foreground",
-                    step > index && "border-emerald-600 text-foreground"
+                    step > index && "border-primary text-foreground"
                   )}
                   key={label}
                 >
@@ -1130,14 +1130,14 @@ function AssigneeResolution({
           影响 {issue.affected_refs.join("、")}
         </div>
         {issue.resolution === "removed" ? (
-          <div className="mt-1 text-xs text-emerald-700">已移除指派</div>
+          <div className="mt-1 text-xs text-primary">已移除指派</div>
         ) : issue.resolution === "replaced" ? (
-          <div className="mt-1 text-xs text-emerald-700">已替换成员</div>
+          <div className="mt-1 text-xs text-primary">已替换成员</div>
         ) : null}
       </div>
       <select
         aria-label={`处理${label}`}
-        className="h-9 border bg-background px-3 text-sm"
+        className="rounded-lg h-9 border bg-background px-3 text-sm"
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         value={value}

@@ -75,7 +75,7 @@ export function AdminWorkspaceDetailPage({
   }
   if (query.isError) {
     return (
-      <div className="border bg-card p-4 text-sm text-destructive">
+      <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
         {errorMessage(query.error, t("common.error"))}
       </div>
     )
@@ -130,14 +130,13 @@ export function AdminWorkspaceDetailPage({
       </div>
 
       {!hasCandidates ? (
-        <div className="border bg-card p-4 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           {t("admin.workspace.noActingCandidates")}
         </div>
       ) : null}
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">{t("admin.workspace.members")}</h2>
-        <div className="rounded-none border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -193,7 +192,6 @@ export function AdminWorkspaceDetailPage({
               ))}
             </TableBody>
           </Table>
-        </div>
         <div className="text-xs text-muted-foreground">
           {t("admin.workspace.tokenSummary", {
             active: detail.token_counts.active,

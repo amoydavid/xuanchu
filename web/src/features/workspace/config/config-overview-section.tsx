@@ -43,11 +43,11 @@ export function ConfigOverviewSection({
       {isPending ? (
         <OverviewSkeleton />
       ) : isError ? (
-        <div className="border bg-card p-3 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-3 text-sm text-destructive">
           {t("common.error")}
         </div>
       ) : rows.length === 0 ? (
-        <div className="border bg-card p-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-3 text-sm text-muted-foreground">
           {t("configDefinitions.overviewEmpty")}
         </div>
       ) : (

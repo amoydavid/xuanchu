@@ -4,11 +4,35 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  /**
+   * 是否渲染为独立卡片表格容器（带圆角边框 + 卡片底）。
+   * 默认 true：表格自带 `overflow-x-auto rounded-lg border bg-card` 外壳，
+   * 页面无需再手写包裹 div；横向可滚动以容纳宽表。设为 false 时退化为纯滚动容器，
+   * 用于嵌入既有卡片内部。
+   */
+  card = true,
+  /**
+   * 透传给容器 div 的额外 class（如响应式可见性 `hidden md:block`）。
+   * 卡片样式由 card 控制，这里只放布局/可见性修饰，避免再手写包裹 div。
+   */
+  containerClassName,
+  ...props
+}: React.ComponentProps<"table"> & {
+  card?: boolean
+  containerClassName?: string
+}) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className={cn(
+        "relative w-full",
+        card
+          ? "overflow-x-auto rounded-lg border bg-card"
+          : "overflow-x-auto",
+        containerClassName
+      )}
     >
       <table
         data-slot="table"
@@ -70,7 +94,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-3 text-left align-middle text-xs font-semibold tracking-wide text-muted-foreground uppercase whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -83,7 +107,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "h-10 px-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

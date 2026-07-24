@@ -62,7 +62,7 @@ export function CronScheduleInput({
             placeholder="0 9 * * 1-5（分 时 日 月 周）"
             className="font-mono"
           />
-          {valid === true && <span className="text-xs text-emerald-600">✓</span>}
+          {valid === true && <span className="text-xs text-primary">✓</span>}
           {valid === false && <span className="text-xs text-destructive">✗</span>}
         </div>
       </div>

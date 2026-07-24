@@ -181,7 +181,7 @@ export function ProjectsListPage({
       {view === "closed" ? (
         <div
           aria-label={t("projectWorkbench.projects.closed.tabsLabel")}
-          className="flex w-fit border bg-muted/40 p-0.5"
+          className="rounded-lg flex w-fit border bg-muted/40 p-0.5"
           role="tablist"
         >
           {(["archived", "cancelled"] as const).map((status) => (

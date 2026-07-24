@@ -128,7 +128,6 @@ export function WorkspaceCustomFieldsPage({
         </p>
       ) : null}
       {visible.length > 0 ? (
-        <div className="rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -201,7 +200,6 @@ export function WorkspaceCustomFieldsPage({
               ))}
             </TableBody>
           </Table>
-        </div>
       ) : null}
       <CustomFieldDialog
         error={error}

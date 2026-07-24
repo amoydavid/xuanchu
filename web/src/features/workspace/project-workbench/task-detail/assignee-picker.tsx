@@ -118,7 +118,7 @@ export function AssigneePicker({
             placeholder="输入姓名、邮箱或用户 ID"
             value={query}
           />
-          <div className="max-h-72 space-y-1 overflow-auto border bg-background p-1">
+          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1">
             {members.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
                 正在加载成员...

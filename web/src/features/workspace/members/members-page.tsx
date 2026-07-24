@@ -193,11 +193,10 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
           <Skeleton className="h-8 w-1/2" />
         </div>
       ) : query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {errorMessage(query.error, t("common.error"))}
         </div>
       ) : (
-        <div className="rounded-none border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -286,7 +285,6 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
               )}
             </TableBody>
           </Table>
-        </div>
       )}
 
       <AddMemberDialog
@@ -468,7 +466,7 @@ export function MembersDetailPage({
           <Skeleton className="h-8 w-1/2" />
         </div>
       ) : membersQuery.isError || userQuery.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {t("common.error")}
         </div>
       ) : !member || !user ? (

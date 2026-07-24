@@ -96,7 +96,7 @@ export function AdminLoginPage({ onSignedIn }: AdminLoginPageProps) {
             </p>
           </div>
         </section>
-        <section className="border bg-card p-5 shadow-sm">
+        <section className="rounded-lg border bg-card p-5 shadow-sm">
           {setupRequired ? (
             <div className="space-y-4">
               <Alert>

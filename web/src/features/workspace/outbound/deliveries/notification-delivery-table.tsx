@@ -50,14 +50,14 @@ export function NotificationDeliveryTable({
 
   if (listQuery.isLoading) {
     return (
-      <div className="border bg-card p-6 text-sm text-muted-foreground">
+      <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         {t("common.loading")}
       </div>
     )
   }
   if (listQuery.isError) {
     return (
-      <div className="border bg-card p-4 text-sm text-destructive">
+      <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
         {t("common.error")}
       </div>
     )
@@ -65,7 +65,7 @@ export function NotificationDeliveryTable({
   const deliveries = listQuery.data ?? []
   if (deliveries.length === 0) {
     return (
-      <div className="border bg-card p-6 text-sm text-muted-foreground">
+      <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         {t("common.empty")}
       </div>
     )
@@ -73,7 +73,6 @@ export function NotificationDeliveryTable({
 
   return (
     <>
-      <div className="border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -145,7 +144,6 @@ export function NotificationDeliveryTable({
             })}
           </TableBody>
         </Table>
-      </div>
       <DeliveryDetailDialog
         deliveryId={detailId}
         kind="notification"

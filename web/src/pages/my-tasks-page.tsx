@@ -287,17 +287,17 @@ export function MyTasksPage({
       </div>
 
       {!enabled ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("myTasks.systemActorEmpty")}
         </div>
       ) : query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {query.error instanceof ApiError
             ? query.error.message
             : t("common.error")}
         </div>
       ) : query.isLoading ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("myTasks.loading")}
         </div>
       ) : (

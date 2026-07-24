@@ -21,9 +21,9 @@ type AdminShellProps = {
 }
 
 const navLinkBase =
-  "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs font-medium transition-colors hover:bg-muted hover:text-foreground border-l-transparent text-muted-foreground"
+  "relative flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[13px] font-medium transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground text-sidebar-muted-foreground"
 const navLinkActive =
-  "border-l-foreground bg-muted text-foreground"
+  "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
 
 export function AdminShell({
   children,
@@ -39,35 +39,35 @@ export function AdminShell({
       <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
         <Link
           activeOptions={{ exact: true }}
-          activeProps={{ className: navLinkActive }}
+          activeProps={{ className: navLinkActive, "data-active": "true" }}
           className={navLinkBase}
           onClick={() => setMobileNavOpen(false)}
           to="/admin"
         >
-          <ShieldAlert className="size-3.5" />
+          <ShieldAlert className="size-4 shrink-0" />
           {t("admin.nav.bootstrap")}
         </Link>
         <Link
-          activeProps={{ className: navLinkActive }}
+          activeProps={{ className: navLinkActive, "data-active": "true" }}
           className={navLinkBase}
           onClick={() => setMobileNavOpen(false)}
           to="/admin/workspaces"
         >
-          <Building2 className="size-3.5" />
+          <Building2 className="size-4 shrink-0" />
           {t("admin.nav.workspaces")}
         </Link>
         <Link
-          activeProps={{ className: navLinkActive }}
+          activeProps={{ className: navLinkActive, "data-active": "true" }}
           className={navLinkBase}
           onClick={() => setMobileNavOpen(false)}
           to="/admin/tokens"
         >
-          <KeyRound className="size-3.5" />
+          <KeyRound className="size-4 shrink-0" />
           {t("admin.nav.tokens")}
         </Link>
       </nav>
-      <div className="mt-auto border-t p-3">
-        <div className="mb-2 text-[11px] text-muted-foreground uppercase">
+      <div className="mt-auto border-t border-sidebar-border p-3">
+        <div className="mb-2 text-[11px] text-sidebar-muted-foreground uppercase">
           {t("admin.riskLabel")}
         </div>
         <AdminRiskBadge />
@@ -77,15 +77,15 @@ export function AdminShell({
 
   return (
     <div className="min-h-svh bg-background text-foreground">
-      {/* 桌面端固定侧栏（>=md 显示） */}
-      <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r bg-background md:flex">
-        <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
+      {/* 桌面端固定侧栏（>=md 显示）。深色骨架，恒深色。 */}
+      <aside className="fixed inset-y-0 left-0 hidden w-[248px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+        <div className="flex h-14 items-center border-b border-sidebar-border px-4 text-sm font-medium">
           <ProductLogo />
         </div>
         <div className="flex flex-1 flex-col">{sidebarInner}</div>
       </aside>
-      <div className="md:pl-56">
-        <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur">
+      <div className="md:pl-[248px]">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2">
             {/* 移动端汉堡按钮（<md 显示） */}
             <Sheet
@@ -136,7 +136,7 @@ export function AdminShell({
             </Button>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-5">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 py-5 md:px-6">{children}</main>
       </div>
     </div>
   )

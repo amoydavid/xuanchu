@@ -102,7 +102,7 @@ export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, di
     <section className="space-y-3 rounded-md border p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Agent Provider 配置</h3>
-        <span className={complete ? "text-xs text-emerald-600" : "text-xs text-amber-600"}>
+        <span className={complete ? "text-xs text-primary" : "text-xs text-warn"}>
           {complete ? "已配置" : `缺少 ${missing.join("、")}`}
         </span>
       </div>

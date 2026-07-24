@@ -2,18 +2,25 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Inter Variable', sans-serif;
+    /* 字体族：display（标题/品牌/按钮）+ body（正文/表格）+ mono（数字/ID/时间） */
+    --font-heading: 'Space Grotesk Variable', 'Inter Variable', system-ui, sans-serif;
+    --font-sans: 'Inter Variable', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, Menlo, "SF Mono", monospace;
+
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-surface: var(--sidebar-surface);
     --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
     --color-chart-5: var(--chart-5);
@@ -21,6 +28,10 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    --color-success: var(--success);
+    --color-warn: var(--warn);
+    --color-info: var(--info);
+    --color-accent-soft: var(--accent-soft);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -48,73 +59,110 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * 设计语言：冷静的工程绿（emerald operations console）
+ * Token 值对齐 .skills/Project-As-Complete-Open-Design-Design 设计系统。
+ * 全部颜色为 oklch()，组件内只引用 token，禁止裸 hex。
+ * 默认：深色侧栏 + 浅色画布；.dark 提供可选暗色画布态。
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.527 0.154 150.069);
-  --primary-foreground: oklch(0.982 0.018 155.826);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* ---- 画布 / 表面（浅色，带极淡绿冷） ---- */
+  --background: oklch(0.99 0.002 150);
+  --foreground: oklch(0.24 0.01 155);
+  --card: oklch(0.985 0.003 150);
+  --card-foreground: oklch(0.24 0.01 155);
+  --popover: oklch(0.99 0.002 150);
+  --popover-foreground: oklch(0.24 0.01 155);
+
+  /* ---- 品牌：翡翠绿（Geo Green #00863b）唯一品牌色 ---- */
+  --primary: oklch(0.54 0.15 150);
+  --primary-foreground: oklch(0.99 0 0);
+
+  /* ---- 次级 / 静音（surface-2：表头/hover/隔行） ---- */
+  --secondary: oklch(0.965 0.004 150);
+  --secondary-foreground: oklch(0.24 0.01 155);
+  --muted: oklch(0.965 0.004 150);
+  --muted-foreground: oklch(0.52 0.012 155);
+  --accent: oklch(0.96 0.03 150);
+  --accent-foreground: oklch(0.48 0.15 150);
+  --accent-soft: oklch(0.96 0.03 150);
+
+  /* ---- 语义 / 状态色（仅作 dot/chip，绝不大面积铺色） ---- */
+  --destructive: oklch(0.58 0.2 25);
+  --success: var(--primary);
+  --warn: oklch(0.78 0.14 70);
+  --info: oklch(0.54 0.12 240);
+
+  /* ---- 边框 / 输入 / 焦点 ---- */
+  --border: oklch(0.92 0.004 150);
+  --input: oklch(0.86 0.006 150);
+  --ring: oklch(0.54 0.15 150);
+
+  /* ---- 图表（绿系单色梯度） ---- */
   --chart-1: oklch(0.871 0.15 154.449);
   --chart-2: oklch(0.723 0.219 149.579);
   --chart-3: oklch(0.627 0.194 149.214);
   --chart-4: oklch(0.527 0.154 150.069);
   --chart-5: oklch(0.448 0.119 151.328);
-  --radius: 0.45rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.627 0.194 149.214);
-  --sidebar-primary-foreground: oklch(0.982 0.018 155.826);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  --radius: 0.625rem;
+
+  /* ---- 侧栏：深色骨架（恒深色，不随画布明暗切换） ---- */
+  --sidebar: oklch(0.22 0.012 160);
+  --sidebar-surface: oklch(0.27 0.012 160);
+  --sidebar-foreground: oklch(0.93 0.008 150);
+  --sidebar-muted-foreground: oklch(0.62 0.014 155);
+  --sidebar-primary: oklch(0.54 0.15 150);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.3 0.05 155);
+  --sidebar-accent-foreground: oklch(0.54 0.15 150);
+  --sidebar-border: oklch(0.3 0.01 160);
+  --sidebar-ring: oklch(0.54 0.15 150);
 }
 
+/*
+ * 可选暗色画布态（侧栏保持深色）。
+ * 用户保留 light/dark/system 切换；默认仍是浅色画布。
+ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.448 0.119 151.328);
-  --primary-foreground: oklch(0.982 0.018 155.826);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: oklch(0.18 0.01 155);
+  --foreground: oklch(0.93 0.008 150);
+  --card: oklch(0.22 0.012 155);
+  --card-foreground: oklch(0.93 0.008 150);
+  --popover: oklch(0.22 0.012 155);
+  --popover-foreground: oklch(0.93 0.008 150);
+  --primary: oklch(0.54 0.15 150);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.27 0.012 155);
+  --secondary-foreground: oklch(0.93 0.008 150);
+  --muted: oklch(0.27 0.012 155);
+  --muted-foreground: oklch(0.68 0.012 155);
+  --accent: oklch(0.3 0.05 155);
+  --accent-foreground: oklch(0.54 0.15 150);
+  --accent-soft: oklch(0.3 0.05 155);
+  --destructive: oklch(0.62 0.2 25);
+  --success: var(--primary);
+  --warn: oklch(0.78 0.14 70);
+  --info: oklch(0.6 0.13 240);
+  --border: oklch(0.34 0.01 155);
+  --input: oklch(0.42 0.012 155);
+  --ring: oklch(0.54 0.15 150);
   --chart-1: oklch(0.871 0.15 154.449);
   --chart-2: oklch(0.723 0.219 149.579);
   --chart-3: oklch(0.627 0.194 149.214);
   --chart-4: oklch(0.527 0.154 150.069);
   --chart-5: oklch(0.448 0.119 151.328);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.723 0.219 149.579);
-  --sidebar-primary-foreground: oklch(0.982 0.018 155.826);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* 侧栏在暗色画布下仍为深色骨架（略加深以与画布区分） */
+  --sidebar: oklch(0.19 0.012 160);
+  --sidebar-surface: oklch(0.24 0.012 160);
+  --sidebar-foreground: oklch(0.93 0.008 150);
+  --sidebar-muted-foreground: oklch(0.58 0.014 155);
+  --sidebar-primary: oklch(0.54 0.15 150);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.3 0.05 155);
+  --sidebar-accent-foreground: oklch(0.54 0.15 150);
+  --sidebar-border: oklch(0.3 0.01 160);
+  --sidebar-ring: oklch(0.54 0.15 150);
 }
 
 @layer base {
@@ -130,4 +178,22 @@
   html {
     @apply font-sans;
     }
+  /* mono 数字辅助类：用于数字 / ID / 时间列与 KPI 数值 */
+  .font-mono, .tabular-nums {
+    font-feature-settings: "tnum" 1;
+  }
+  /*
+   * 侧栏激活项的决定性笔触：3px 品牌绿左边条（深色侧栏骨架上的唯一绿色强调）。
+   * 通过 data-active 标记触发，不依赖具体颜色类名，便于响应式与测试。
+   */
+  nav a.is-nav-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--sidebar-primary);
+  }
 }

@@ -64,7 +64,7 @@ describe("AppShell", () => {
     vi.restoreAllMocks()
   })
 
-  it("renders sidebar identity block with name, handle, role, token type and workspace", () => {
+  it("renders sidebar identity block with name, handle, role, token type and workspace", async () => {
     render(
       <ThemeProvider>
         <TooltipProvider>
@@ -75,10 +75,15 @@ describe("AppShell", () => {
       </ThemeProvider>
     )
 
-    // 显示姓名 + handle + 角色 + token type + workspace
+    // 触发器常驻显示工作空间名；用户详情（姓名/handle/角色/token/workspace）在浮层内
+    expect(screen.getByText("Dajee")).toBeTruthy()
+    // 打开账户切换浮层，校验详情
+    await userEvent.click(screen.getByRole("button", { name: /Dajee/ }))
+    // 显示姓名 + 邮箱 + 角色 + token type + workspace
     expect(screen.getByText("Alice Chen")).toBeTruthy()
-    expect(screen.getByText(/alice/)).toBeTruthy()
-    expect(screen.getByText(/admin/)).toBeTruthy()
+    expect(screen.getByText(/alice@acme\.com/)).toBeTruthy()
+    // 角色经 memberRoleLabel 本地化为「管理员」
+    expect(screen.getByText("管理员")).toBeTruthy()
     expect(screen.getByText(/pat/)).toBeTruthy()
     expect(screen.getByText(/dajee/)).toBeTruthy()
   })
@@ -97,7 +102,7 @@ describe("AppShell", () => {
 
     const myTasks = screen.getByRole("link", { name: "我的任务" })
     expect(myTasks).toBeTruthy()
-    expect(myTasks.className).toContain("border-l-foreground")
+    expect(myTasks.className).toContain("is-nav-active")
   })
 
   it("keeps 设置 active for the project template child route", () => {
@@ -112,31 +117,31 @@ describe("AppShell", () => {
       </ThemeProvider>
     )
 
-    expect(screen.getByRole("link", { name: "设置" }).className).toContain(
-      "border-l-foreground"
-    )
+    expect(
+      screen.getByRole("link", { name: "设置" }).className
+    ).toContain("is-nav-active")
   })
 
   it("provides logout action in sidebar identity block", async () => {
+    const onLogout = vi.fn()
     render(
       <ThemeProvider>
         <TooltipProvider>
-          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+          <AppShell onLogout={onLogout} onRefresh={vi.fn()}>
             <div>content</div>
           </AppShell>
         </TooltipProvider>
       </ThemeProvider>
     )
 
-    // 侧栏身份块中的退出按钮
-    const logoutButtons = screen.getAllByRole("button", { name: "退出" })
-    expect(logoutButtons.length).toBeGreaterThan(0)
-    await userEvent.click(logoutButtons[0])
-    // onLogout 由 WorkspaceRootRoute 接管；AppShell 直接调用 props.onLogout
-    // 这里不验证 props 调用，因为顶部还有一个退出按钮（保留为兼容）
+    // 打开账户切换浮层，点击登出
+    await userEvent.click(screen.getByRole("button", { name: /Dajee/ }))
+    const logoutItem = await screen.findByRole("menuitem", { name: "退出" })
+    await userEvent.click(logoutItem)
+    expect(onLogout).toHaveBeenCalled()
   })
 
-  it("shows return-to-admin in acting mode inside sidebar identity block", () => {
+  it("shows return-to-admin in acting mode inside sidebar identity block", async () => {
     setAdminActingToken("xuanchu_act_test")
     setAdminActingContext({
       workspaceSlug: "dajee",
@@ -156,7 +161,8 @@ describe("AppShell", () => {
       </ThemeProvider>
     )
 
-    expect(screen.getByText("返回超管")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: /Dajee/ }))
+    expect(await screen.findByText("返回超管")).toBeTruthy()
   })
 
   it("hides SSO nav for non-owner regular members", () => {
@@ -220,11 +226,11 @@ describe("AppShell", () => {
     )
 
     expect(screen.getByRole("link", { name: "项目" }).className).toContain(
-      "border-l-foreground"
+      "is-nav-active"
     )
     expect(
       screen.getByRole("link", { name: "工作区" }).className
-    ).not.toContain("border-l-foreground")
+    ).not.toContain("is-nav-active")
   })
 
   it("keeps 项目 active on the closed-project route", () => {
@@ -240,7 +246,7 @@ describe("AppShell", () => {
     )
 
     expect(screen.getByRole("link", { name: "项目" }).className).toContain(
-      "border-l-foreground"
+      "is-nav-active"
     )
   })
 

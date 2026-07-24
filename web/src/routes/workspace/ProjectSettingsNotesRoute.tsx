@@ -11,7 +11,7 @@ export function ProjectSettingsNotesRoute() {
   const workspaceSlug = me.data?.effective_workspace.slug
   if (!workspaceSlug || !me.data) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         Loading…
       </section>
     )

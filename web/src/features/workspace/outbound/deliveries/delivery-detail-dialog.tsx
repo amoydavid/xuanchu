@@ -116,7 +116,7 @@ function DeliveryDetailBody({ data }: { data: unknown }) {
       {typeof row.rendered_body === "string" && row.rendered_body ? (
         <div className="space-y-1">
           <div className="font-medium">rendered_body</div>
-          <pre className="overflow-x-auto border bg-muted/30 p-2 text-xs">
+          <pre className="rounded-lg overflow-x-auto border bg-muted/30 p-2 text-xs">
             {row.rendered_body}
           </pre>
         </div>
@@ -153,7 +153,7 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="space-y-1">
       <div className="font-medium">{label}</div>
-      <pre className="max-h-80 overflow-auto border bg-muted/30 p-2 text-xs">
+      <pre className="rounded-lg max-h-80 overflow-auto border bg-muted/30 p-2 text-xs">
         {JSON.stringify(value, null, 2)}
       </pre>
     </div>

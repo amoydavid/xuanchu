@@ -11,7 +11,7 @@ export function TaskDetailRoute() {
   // workspace 来自当前 effective workspace（全局任务入口不绑定具体 workspace 路径）。
   if (me.isError) {
     return (
-      <section className="border bg-card p-6 text-sm text-destructive">
+      <section className="rounded-lg border bg-card p-6 text-sm text-destructive">
         {me.error instanceof ApiError ? me.error.code : "unknown"}
       </section>
     )
@@ -20,7 +20,7 @@ export function TaskDetailRoute() {
   const workspaceSlug = me.data?.effective_workspace.slug
   if (!workspaceSlug || !me.data) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         Loading…
       </section>
     )

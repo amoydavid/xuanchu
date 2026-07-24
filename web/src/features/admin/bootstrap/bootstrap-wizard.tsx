@@ -129,7 +129,7 @@ export function BootstrapWizard() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 border bg-card p-4 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-lg flex flex-col gap-3 border bg-card p-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <ShieldAlert className="size-4 text-destructive" />
@@ -144,7 +144,7 @@ export function BootstrapWizard() {
         <Badge variant="outline">{t("admin.highRisk")}</Badge>
       </section>
 
-      <section className="space-y-5 border bg-card p-4">
+      <section className="rounded-lg space-y-5 border bg-card p-4">
         <Step index={1} title={t("admin.workspaceStep")} />
         <WorkspaceForm onChange={setWorkspace} value={workspace} />
         <Step index={2} title={t("admin.adminStep")} />
@@ -171,9 +171,9 @@ export function BootstrapWizard() {
       </section>
 
       {result ? (
-        <section className="space-y-4 border bg-card p-4">
+        <section className="rounded-lg space-y-4 border bg-card p-4">
           <div className="flex items-center gap-2">
-            <Check className="size-4 text-emerald-600" />
+            <Check className="size-4 text-primary" />
             <h2 className="text-sm font-medium">{t("admin.resultTitle")}</h2>
           </div>
           <dl className="grid gap-3 text-sm md:grid-cols-3">
@@ -192,7 +192,7 @@ export function BootstrapWizard() {
           </dl>
           {result.token ? (
             <div className="space-y-2">
-              <div className="border bg-muted p-3 font-mono text-xs break-all">
+              <div className="rounded-lg border bg-muted p-3 font-mono text-xs break-all">
                 {result.token}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -223,7 +223,7 @@ export function BootstrapWizard() {
 function Step({ index, title }: { index: number; title: string }) {
   return (
     <div className="flex items-center gap-2 border-t pt-4 first:border-t-0 first:pt-0">
-      <span className="flex size-6 items-center justify-center border bg-muted text-xs font-medium">
+      <span className="rounded-lg flex size-6 items-center justify-center border bg-muted text-xs font-medium">
         {index}
       </span>
       <h2 className="text-sm font-medium">{title}</h2>

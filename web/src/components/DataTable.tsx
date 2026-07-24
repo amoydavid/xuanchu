@@ -27,16 +27,13 @@ export function DataTable<T>({
   onRowClick?: (row: T) => void
 }) {
   return (
-    <div className="rounded-none border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((column) => (
-              <TableHead key={column.key} className="text-muted-foreground">
-                {column.header}
-              </TableHead>
-            ))}
-          </TableRow>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {columns.map((column) => (
+            <TableHead key={column.key}>{column.header}</TableHead>
+          ))}
+        </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
@@ -63,6 +60,5 @@ export function DataTable<T>({
           )}
         </TableBody>
       </Table>
-    </div>
   )
 }

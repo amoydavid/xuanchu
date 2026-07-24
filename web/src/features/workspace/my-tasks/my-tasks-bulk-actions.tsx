@@ -134,7 +134,7 @@ export function MyTasksBulkActions({
     <>
       <div
         aria-label={t("myTasks.bulk.toolbarLabel")}
-        className="flex flex-wrap items-center gap-2 border bg-muted/30 p-2"
+        className="rounded-lg flex flex-wrap items-center gap-2 border bg-muted/30 p-2"
         role="toolbar"
       >
         <span className="min-w-24 text-sm font-medium">

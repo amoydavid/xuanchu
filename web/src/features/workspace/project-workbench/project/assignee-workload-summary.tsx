@@ -104,7 +104,7 @@ export function AssigneeWorkloadSummary({
                 </span>
                 <span className="block h-1.5 overflow-hidden bg-muted">
                   <span
-                    className="block h-full bg-emerald-600"
+                    className="block h-full bg-primary"
                     style={{ width: `${ratio}%` }}
                   />
                 </span>

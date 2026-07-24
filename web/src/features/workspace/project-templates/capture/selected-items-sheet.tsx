@@ -85,7 +85,7 @@ export function SelectedItemsDrawer({
   return (
     <aside
       aria-label="已选内容"
-      className="sticky top-4 hidden max-h-[calc(100vh-8rem)] min-h-0 flex-col border bg-background lg:flex"
+      className="rounded-lg sticky top-4 hidden max-h-[calc(100vh-8rem)] min-h-0 flex-col border bg-background lg:flex"
     >
       <div className="border-b px-3 py-2">
         <div className="text-sm font-medium">已选内容</div>

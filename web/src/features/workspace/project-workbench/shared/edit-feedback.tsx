@@ -91,7 +91,7 @@ export function EditFeedbackProvider({
           )}
           role="status"
         >
-          <CheckCircle2Icon className="size-4 text-emerald-600" />
+          <CheckCircle2Icon className="size-4 text-primary" />
           <span className="truncate">{message.message}</span>
         </div>
       ) : null}

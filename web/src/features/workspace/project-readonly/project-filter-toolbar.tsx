@@ -83,7 +83,7 @@ export function ProjectFilterToolbar({
   const active = activeFilterEntries(filter)
 
   return (
-    <section className="space-y-2 border bg-card p-3">
+    <section className="rounded-lg space-y-2 border bg-card p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={filter.status ?? ""}

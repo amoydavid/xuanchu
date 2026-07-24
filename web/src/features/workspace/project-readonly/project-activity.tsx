@@ -15,7 +15,7 @@ export function ProjectActivity({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">{title}</h2>
-      <div className="border bg-card px-3 py-2">
+      <div className="rounded-lg border bg-card px-3 py-2">
         <ol aria-label={title} className="text-xs text-muted-foreground">
           {visibleEntries.map((entry, index) => {
             const time = entryTime(entry)

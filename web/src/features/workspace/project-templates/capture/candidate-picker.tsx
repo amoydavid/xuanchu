@@ -304,7 +304,7 @@ export function CandidatePicker({
 
   return (
     <div className="space-y-3">
-      <div className="space-y-2 border bg-muted/20 p-2">
+      <div className="rounded-lg space-y-2 border bg-muted/20 p-2">
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative">
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
@@ -615,7 +615,7 @@ function CandidateSelect({
   return (
     <select
       aria-label={label}
-      className="h-8 min-w-0 border bg-background px-2 text-xs"
+      className="rounded-lg h-8 min-w-0 border bg-background px-2 text-xs"
       onChange={(event) => onChange(event.target.value)}
       value={value}
     >

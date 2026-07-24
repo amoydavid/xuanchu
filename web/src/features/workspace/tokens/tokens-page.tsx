@@ -137,11 +137,10 @@ export function TokensPage() {
           <Skeleton className="h-8 w-1/2" />
         </div>
       ) : activeQuery.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {errorMessage(activeQuery.error, t("common.error"))}
         </div>
       ) : (
-        <div className="rounded-none border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -277,7 +276,6 @@ export function TokensPage() {
               )}
             </TableBody>
           </Table>
-        </div>
       )}
 
       <TokenCreateDialog

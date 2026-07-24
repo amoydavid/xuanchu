@@ -3,6 +3,7 @@ import {
   Bell,
   Boxes,
   CheckSquare,
+  ChevronDown,
   FileClock,
   House,
   KeyRound,
@@ -23,9 +24,15 @@ import { useTranslation } from "react-i18next"
 import { useBrandName } from "@/brand/BrandContext"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
-import { RiskBadge } from "@/components/RiskBadge"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -37,6 +44,7 @@ import {
   type TenantSwitchContext,
 } from "@/features/workspace/session/workspace-token"
 import { useMe } from "@/features/workspace/session/useMe"
+import { memberRoleLabel } from "@/features/workspace/members/role-label"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import { cn } from "@/lib/utils"
 
@@ -136,8 +144,8 @@ export function AppShell({
 
   return (
     <div className="min-h-svh bg-background text-foreground">
-      {/* 桌面端固定侧栏（>=md 显示） */}
-      <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r bg-background md:flex">
+      {/* 桌面端固定侧栏（>=md 显示）。深色骨架，恒深色。 */}
+      <aside className="fixed inset-y-0 left-0 hidden w-[248px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <SidebarNav
           showSso={showSso}
           pathname={location.pathname}
@@ -145,11 +153,11 @@ export function AppShell({
         />
         {identityBlock}
       </aside>
-      <div className="md:pl-56">
+      <div className="md:pl-[248px]">
         <header
           className={cn(
-            "sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur",
-            (acting || tenantSwitch) && "bg-amber-50/95 dark:bg-amber-950/40"
+            "sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur",
+            (acting || tenantSwitch) && "bg-warn/10"
           )}
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -168,8 +176,12 @@ export function AppShell({
                   <Menu className="size-4" />
                 </Button>
               </SheetTrigger>
-              <SheetContent aria-label={t("shell.navLabel")} role="dialog">
-                <SheetHeader>
+              <SheetContent
+                aria-label={t("shell.navLabel")}
+                className="border-sidebar-border bg-sidebar text-sidebar-foreground"
+                role="dialog"
+              >
+                <SheetHeader className="border-sidebar-border">
                   <ProductLogo />
                 </SheetHeader>
                 <SidebarNav
@@ -181,7 +193,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
             {(acting || systemActor) && !tenantSwitch ? (
-              <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <ShieldAlert className="size-4 shrink-0 text-warn" />
             ) : null}
             <div className="min-w-0 truncate text-sm font-medium">
               {breadcrumbs ?? headerTitle ?? t("app.title", { brand: brandName })}
@@ -202,7 +214,7 @@ export function AppShell({
             <ThemeToggle />
           </div>
         </header>
-        <main className="px-4 py-5">{children}</main>
+        <main className="px-4 py-5 md:px-6">{children}</main>
       </div>
     </div>
   )
@@ -225,7 +237,7 @@ function SidebarNav({
   return (
     <>
       {logoHeader ? (
-        <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
+        <div className="flex h-14 items-center border-b border-sidebar-border px-4 text-sm font-medium">
           <ProductLogo />
         </div>
       ) : null}
@@ -240,7 +252,7 @@ function SidebarNav({
           if (items.length === 0) return null
           return (
             <div className="mb-3" key={group.labelKey}>
-              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
                 {t(group.labelKey)}
               </div>
               {items.map((item) => {
@@ -249,16 +261,16 @@ function SidebarNav({
                 return (
                   <Link
                     className={cn(
-                      "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                      "relative flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[13px] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                       active
-                        ? "border-l-foreground bg-muted font-medium text-foreground"
-                        : "border-l-transparent"
+                        ? "is-nav-active bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                        : "text-sidebar-muted-foreground"
                     )}
                     key={item.key}
                     onClick={onNavigate}
                     to={item.to}
                   >
-                    <Icon className="size-3.5" />
+                    <Icon className="size-4 shrink-0" />
                     {t(`nav.${item.key}`)}
                   </Link>
                 )
@@ -308,76 +320,150 @@ function IdentityBlock({
     (tenantSwitch && tenantContext
       ? t("shell.systemIdentity")
       : t("shell.identity"))
-  const handle =
-    me?.actor.name && me?.actor.display_name ? me.actor.name : undefined
   const workspaceSlug = me?.effective_workspace.slug ?? ""
+  const workspaceName =
+    me?.effective_workspace.name || workspaceSlug || t("shell.workspace")
   const tokenType = me?.token.type ?? ""
+  const roleLabel = me?.effective_role
+    ? memberRoleLabel(t, me.effective_role)
+    : ""
 
   return (
-    <div className="border-t p-3">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {t("shell.identity")}
-      </div>
-      <div className="truncate text-sm font-medium">{displayName}</div>
-      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-        {[handle, me?.effective_role, tokenType, workspaceSlug]
-          .filter(Boolean)
-          .join(" · ")}
-      </div>
-      {showRisk ? (
-        <div className="mt-2">
-          <RiskBadge risk="high" />
-        </div>
-      ) : null}
-      <div className="mt-2 flex items-center gap-1">
-        {tenantSwitch && tenantContext ? (
-          <ReturnButton
-            label={t("shell.returnToAdmin")}
-            onClick={() => {
-              clearTenantSwitchSession()
-              navigateToDocument(tenantContext.returnTo)
-            }}
-          />
-        ) : acting && actingContext ? (
-          <ReturnButton
-            label={t("shell.returnToAdmin")}
-            onClick={() => {
-              clearAdminActingSession()
-              navigateToDocument(
-                `/admin/workspaces/${encodeURIComponent(
-                  actingContext.workspaceSlug
-                )}`
-              )
-            }}
-          />
-        ) : (
-          <Button onClick={onLogout} size="sm" variant="outline">
-            <LogOut className="size-4" />
+    <div className="border-t border-sidebar-border p-2.5">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent/50"
+            type="button"
+          >
+            <WorkspaceTile name={workspaceName} />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-[13px] font-semibold text-sidebar-foreground">
+                {workspaceName}
+              </span>
+              <span className="flex items-center gap-1 truncate text-[11px] text-sidebar-muted-foreground">
+                {showRisk ? (
+                  <ShieldAlert className="size-3 shrink-0 text-warn" />
+                ) : null}
+                <span className="truncate">{roleLabel}</span>
+              </span>
+            </span>
+            <UserAvatar displayName={displayName} />
+            <ChevronDown className="size-3.5 shrink-0 text-sidebar-muted-foreground transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="w-[248px] border-sidebar-border bg-sidebar-surface p-1.5 text-sidebar-foreground ring-0"
+          side="top"
+          sideOffset={8}
+        >
+          {/* 当前用户信息块 */}
+          <div className="flex items-center gap-2.5 px-2 py-1.5">
+            <UserAvatar displayName={displayName} size="lg" />
+            <span className="flex min-w-0 flex-col gap-0">
+              <span className="truncate text-[13px] font-semibold text-sidebar-foreground">
+                {displayName}
+              </span>
+              {me?.actor.email ? (
+                <span className="truncate font-mono text-[10.5px] text-sidebar-muted-foreground">
+                  {me.actor.email}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 pb-1.5 text-[10.5px] text-sidebar-muted-foreground">
+            {tokenType ? <span>{tokenType}</span> : null}
+            {workspaceSlug ? (
+              <span className="truncate font-mono">{workspaceSlug}</span>
+            ) : null}
+          </div>
+          <DropdownMenuSeparator className="bg-sidebar-border" />
+          {/* acting / tenantSwitch：返回超管（危险态） */}
+          {tenantSwitch && tenantContext ? (
+            <ReturnItem
+              label={t("shell.returnToAdmin")}
+              onClick={() => {
+                clearTenantSwitchSession()
+                navigateToDocument(tenantContext.returnTo)
+              }}
+            />
+          ) : acting && actingContext ? (
+            <ReturnItem
+              label={t("shell.returnToAdmin")}
+              onClick={() => {
+                clearAdminActingSession()
+                navigateToDocument(
+                  `/admin/workspaces/${encodeURIComponent(
+                    actingContext.workspaceSlug
+                  )}`
+                )
+              }}
+            />
+          ) : null}
+          {/* 登出：危险操作，用 destructive 变体（文字/图标红、hover 红调暗底，对齐参考 ws-action.danger） */}
+          <DropdownMenuItem
+            className="gap-2 rounded-md px-2 py-1.5 text-[13px]"
+            onClick={onLogout}
+            variant="destructive"
+          >
+            <LogOut className="size-4 shrink-0" />
             {t("auth.logout")}
-          </Button>
-        )}
-      </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
 
-function ReturnButton({
+// 工作空间首字母色块（深色侧栏上的中性标识 tile，参考 ws-tile 的中性深灰渐变）。
+function WorkspaceTile({ name }: { name: string }) {
+  const glyph = (name || "?").trim().charAt(0).toUpperCase()
+  return (
+    <span className="grid size-7 shrink-0 place-items-center rounded-md bg-sidebar-foreground/15 font-heading text-[13px] font-bold text-sidebar-foreground">
+      {glyph}
+    </span>
+  )
+}
+
+// 用户头像：取 displayName 首字，绿渐变底（品牌绿强调，深色侧栏上的唯一绿色点缀之一）。
+function UserAvatar({
+  displayName,
+  size = "md",
+}: {
+  displayName: string
+  size?: "md" | "lg"
+}) {
+  const glyph = (displayName || "?").trim().charAt(0).toUpperCase()
+  return (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full border-2 border-sidebar bg-gradient-to-br from-primary to-primary/80 font-heading font-bold text-primary-foreground",
+        size === "lg" ? "size-8 text-xs" : "size-6 text-[10px]"
+      )}
+    >
+      {glyph}
+    </span>
+  )
+}
+
+// 浮层内的「返回超管」项（acting / tenantSwitch 态用，克制红字）。
+function ReturnItem({
   label,
   onClick,
 }: {
   label: string
   onClick: () => void
 }) {
-  return (
-    <Button
-      className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 hover:text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800"
-      onClick={onClick}
-      size="sm"
-      variant="outline"
-    >
-      <ArrowLeft className="size-4" />
+    return (
+      <DropdownMenuItem
+        className="gap-2 rounded-md px-2 py-1.5 text-[13px]"
+        onClick={onClick}
+        variant="destructive"
+      >
+        <ArrowLeft className="size-4 shrink-0" />
       {label}
-    </Button>
+    </DropdownMenuItem>
   )
 }
 

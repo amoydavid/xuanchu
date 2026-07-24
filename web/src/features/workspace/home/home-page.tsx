@@ -263,7 +263,7 @@ function HomeHeader({
     <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         <div className="mb-2 flex items-center gap-2 text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
-          <CircleDot className="size-3 text-emerald-600" />
+          <CircleDot className="size-3 text-primary" />
           {t("home.title")}
         </div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -350,7 +350,7 @@ function MyTodaySection({
         id="home-my-today"
         title={t("home.myToday.title")}
       />
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4">
         {counts.map((item) => (
           <a
             aria-label={`${t(`home.myToday.${item.key}`)} ${item.count}`}
@@ -362,7 +362,7 @@ function MyTodaySection({
               {t(`home.myToday.${item.key}`)}
             </div>
             <div className="mt-1 flex items-end justify-between">
-              <span className="text-2xl font-semibold tabular-nums">
+              <span className="font-mono text-2xl font-semibold tabular-nums">
                 {item.count}
               </span>
               <ArrowRight className="size-3 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
@@ -372,7 +372,7 @@ function MyTodaySection({
       </div>
 
       {data.items.length === 0 ? (
-        <div className="border bg-card px-5 py-8 text-center">
+        <div className="rounded-lg border bg-card px-5 py-8 text-center">
           <p className="font-medium">{t("home.myToday.emptyTitle")}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {t("home.myToday.emptyDescription")}
@@ -387,7 +387,7 @@ function MyTodaySection({
           </div>
         </div>
       ) : (
-        <div className="divide-y overflow-hidden rounded-xl border bg-card">
+        <div className="divide-y overflow-hidden rounded-lg border bg-card">
           {data.items.map((item) => (
             <HomeTaskRow
               actorID={actorID}
@@ -481,8 +481,8 @@ function HomeTaskRow({
               item.reasons.includes("overdue")
                 ? "bg-destructive"
                 : item.reasons.includes("started")
-                  ? "bg-emerald-600"
-                  : "bg-amber-500"
+                  ? "bg-success"
+                  : "bg-warn"
             )}
           />
           <div className="min-w-0 flex-1">
@@ -627,7 +627,7 @@ function ProjectAttentionCard({
   const actorName = actor?.display_name || actor?.name
 
   return (
-    <article className="rounded-xl border bg-card p-4">
+    <article className="rounded-lg border bg-card p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <Link
@@ -740,13 +740,13 @@ function WorkspaceInfoSection({
       {isPending ? (
         <div
           aria-busy="true"
-          className="space-y-2 rounded-xl border bg-card p-4"
+          className="space-y-2 rounded-lg border bg-card p-4"
         >
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-4/5" />
         </div>
       ) : isError ? (
-        <div className="rounded-xl border bg-card p-4 text-sm">
+        <div className="rounded-lg border bg-card p-4 text-sm">
           <p className="text-muted-foreground">
             {error?.message || t("common.error")}
           </p>
@@ -760,7 +760,7 @@ function WorkspaceInfoSection({
           </Button>
         </div>
       ) : (
-        <div className="divide-y overflow-hidden rounded-xl border bg-card">
+        <div className="divide-y overflow-hidden rounded-lg border bg-card">
           {rows.map((row) => {
             const value =
               row.value === null
@@ -810,9 +810,9 @@ function SystemIdentityPanel({ me }: { me?: MeResponse }) {
     },
   ].filter((item) => hasScope(scopes, item.scope))
   return (
-    <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+    <section className="rounded-lg border border-warn/30 bg-warn/5 p-5">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn" />
         <div>
           <h2 className="font-semibold">{t("home.system.title")}</h2>
           <p className="mt-1 text-sm text-foreground/80">
@@ -906,7 +906,7 @@ function CreatedTaskNotice({
   const taskRef = taskRouteRef(task) || taskStableID(task)
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-accent-soft px-4 py-3 text-sm"
       role="status"
     >
       <span>{t("home.create.created", { title: task.title })}</span>
@@ -948,7 +948,7 @@ function HomeSkeleton() {
 function HomeError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const { t } = useTranslation()
   return (
-    <section className="rounded-xl border bg-card p-6">
+    <section className="rounded-lg border bg-card p-6">
       <h2 className="font-semibold">{t("home.error.title")}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
       <Button className="mt-4" onClick={onRetry} variant="outline">

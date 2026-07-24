@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpDownIcon } from "lucide-react"
+import { ArrowUpDownIcon, Repeat } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -16,12 +16,8 @@ import {
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { cn } from "@/lib/utils"
 import type { ProjectWorkbenchTask } from "../api/project-api"
-import { useModifyTaskMutation } from "../hooks/use-task-mutations"
-import { InlineDatePicker } from "../shared/inline-date-picker"
-import { InlineSelectEditor } from "../shared/inline-select-editor"
-import { InlineTextEditor } from "../shared/inline-text-editor"
-import { TaskRowActions } from "./task-row-actions"
 import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
+import { TaskRowActions } from "./task-row-actions"
 import { taskDisplayRef, taskRouteRef } from "./task-reference"
 
 type TaskTableProps = {
@@ -33,12 +29,6 @@ type TaskTableProps = {
   workspaceSlug: string
 }
 
-const priorityOptions = [
-  { label: "-", value: "none" },
-  { label: "H", value: "H" },
-  { label: "M", value: "M" },
-  { label: "L", value: "L" },
-]
 
 export function TaskTable({
   canWrite,
@@ -51,11 +41,11 @@ export function TaskTable({
   const { t } = useTranslation()
   if (tasks.length === 0) {
     return (
-      <section className="border bg-card p-6">
+      <section className="rounded-lg border bg-card p-6">
         <h2 className="text-base font-medium">
           {t("projectReadonly.emptyTitle")}
         </h2>
-        <code className="mt-4 block border bg-background p-3 text-xs break-all">
+        <code className="rounded-lg mt-4 block border bg-background p-3 text-xs break-all">
           xuanchu --workspace {workspaceSlug} add "Design API" project:
           {projectSlug}
         </code>
@@ -66,8 +56,7 @@ export function TaskTable({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">{t("projectReadonly.tasks")}</h2>
-      <div className="hidden border bg-card md:block">
-        <Table>
+        <Table containerClassName="hidden md:block">
           <TableHeader>
             <TableRow>
               <SortableHead
@@ -109,7 +98,6 @@ export function TaskTable({
             ))}
           </TableBody>
         </Table>
-      </div>
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
           <TaskCard
@@ -173,7 +161,6 @@ function TaskTableRow({
   const rowWritable = canWrite && !isDeleted
   const taskRef = taskReference(task)
   const displayRef = taskDisplayRef(task, i18n.language)
-  const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
 
   return (
     <TableRow className={isDeleted ? "opacity-50" : undefined}>
@@ -186,38 +173,29 @@ function TaskTableRow({
           <code>{displayRef}</code>
         </TaskLink>
       </TableCell>
-      <TableCell className="max-w-lg min-w-64">
-        <InlineTextEditor
-          ariaLabel={t("projectReadonly.editTaskTitle", { taskRef: displayRef })}
-          disabled={!rowWritable}
-          displayClassName="max-w-lg"
-          onSave={async (title) => {
-            await modify.mutateAsync({ title })
-          }}
-          value={task.title}
-          validate={(title) =>
-            title.trim() ? null : t("projectReadonly.taskTitleRequired")
-          }
-        />
-        {isDeleted ? (
-          <Badge className="ml-2" variant="outline">
-            {t("myTasks.deleted")}
-          </Badge>
-        ) : null}
-        {task.recurrence_info ? (
-          <Badge
-            className="ml-1"
-            data-testid="recurrence-badge"
-            title={t(
-              `taskSeries.occurrence.${task.recurrence_info.materialization}`
-            )}
-            variant="outline"
-          >
-            {t("taskSeries.occurrence.badge", {
-              rule: recurrenceRuleLabel(task.recurrence_info.rule, t),
-            })}
-          </Badge>
-        ) : null}
+      <TableCell className="min-w-0 max-w-[420px]">
+        <TaskLink
+          className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate text-foreground underline-offset-4 hover:underline"
+          projectSlug={projectSlug}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
+          <span className="truncate">{task.title}</span>
+          {task.recurrence_info ? (
+            <span
+              className="inline-flex shrink-0 text-muted-foreground"
+              data-testid="recurrence-badge"
+              title={recurrenceRuleLabel(task.recurrence_info.rule, t)}
+            >
+              <Repeat className="size-3" />
+            </span>
+          ) : null}
+          {isDeleted ? (
+            <Badge className="shrink-0" variant="outline">
+              {t("myTasks.deleted")}
+            </Badge>
+          ) : null}
+        </TaskLink>
       </TableCell>
       <TableCell>
 		<Badge variant="outline">
@@ -226,41 +204,17 @@ function TaskTableRow({
 			: taskStatusLabel(task.status, t)}
 		</Badge>
       </TableCell>
-      <TableCell>
-        <InlineSelectEditor
-          ariaLabel={t("projectReadonly.taskPriority", { taskRef: displayRef })}
-          className="w-20"
-          disabled={!rowWritable}
-          onSave={async (priority) => {
-            await modify.mutateAsync(
-              priority === "none" ? { clear_priority: true } : { priority }
-            )
-          }}
-          options={priorityOptions}
-          placeholder="-"
-          triggerSize="sm"
-          value={task.priority ?? "none"}
-        />
+      <TableCell className="min-w-0 text-xs text-muted-foreground">
+        {task.priority ?? "-"}
       </TableCell>
       <TableCell className="tabular-nums text-xs text-muted-foreground">
         <UrgencyScore title={t("projectReadonly.urgencyHelp")} value={task.urgency} />
       </TableCell>
-      <TableCell className="max-w-48 truncate">{assigneeNames(task)}</TableCell>
-      <TableCell>
-        <InlineDatePicker
-          ariaLabel={t("projectReadonly.taskDueDate", { taskRef: displayRef })}
-          boundary="end"
-          className="w-36"
-          disabled={!rowWritable}
-          onSave={async (due) => {
-            await modify.mutateAsync(
-              due === null ? { clear_due: true } : { due }
-            )
-          }}
-          value={unixLikeToNumber(task.due)}
-        />
+      <TableCell className="min-w-0 max-w-48 truncate">{assigneeNames(task)}</TableCell>
+      <TableCell className="min-w-0 whitespace-nowrap font-mono text-xs text-muted-foreground">
+        {formatDue(task.due)}
       </TableCell>
-      <TableCell>
+      <TableCell className="whitespace-nowrap">
         <TaskRowActions
           canWrite={rowWritable}
           displayRef={displayRef}
@@ -290,7 +244,6 @@ function TaskCard({
   const { i18n, t } = useTranslation()
   const taskRef = taskReference(task)
   const displayRef = taskDisplayRef(task, i18n.language)
-  const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const isDeleted = task.status === "deleted"
   const rowWritable = canWrite && !isDeleted
   return (
@@ -310,46 +263,27 @@ function TaskCard({
 		</Badge>
       </div>
       <div className="mt-2">
-        <InlineTextEditor
-          ariaLabel={t("projectReadonly.editMobileTaskTitle", { taskRef: displayRef })}
-          disabled={!rowWritable}
-          displayClassName="max-w-full text-sm font-medium"
-          onSave={async (title) => {
-            await modify.mutateAsync({ title })
-          }}
-          value={task.title}
-          validate={(title) =>
-            title.trim() ? null : t("projectReadonly.taskTitleRequired")
-          }
-        />
+        <TaskLink
+          className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+          projectSlug={projectSlug}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
+          <span className="truncate">{task.title}</span>
+          {task.recurrence_info ? (
+            <span
+              className="inline-flex shrink-0 text-muted-foreground"
+              data-testid="recurrence-badge"
+              title={recurrenceRuleLabel(task.recurrence_info.rule, t)}
+            >
+              <Repeat className="size-3" />
+            </span>
+          ) : null}
+        </TaskLink>
       </div>
-      <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
-        <InlineSelectEditor
-          ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef: displayRef })}
-          className="w-full"
-          disabled={!rowWritable}
-          onSave={async (priority) => {
-            await modify.mutateAsync(
-              priority === "none" ? { clear_priority: true } : { priority }
-            )
-          }}
-          options={priorityOptions}
-          placeholder="-"
-          triggerSize="sm"
-          value={task.priority ?? "none"}
-        />
-        <InlineDatePicker
-          ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef: displayRef })}
-          boundary="end"
-          className="w-full"
-          disabled={!rowWritable}
-          onSave={async (due) => {
-            await modify.mutateAsync(
-              due === null ? { clear_due: true } : { due }
-            )
-          }}
-          value={unixLikeToNumber(task.due)}
-        />
+      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{task.priority ?? "-"}</span>
+        <span className="font-mono">{formatDue(task.due)}</span>
       </div>
       <div className="mt-2 truncate text-xs text-muted-foreground">
         {assigneeNames(task)}
@@ -375,18 +309,23 @@ function TaskCard({
 
 function TaskLink({
   children,
+  className,
   projectSlug,
   task,
   workspaceSlug,
 }: {
   children: ReactNode
+  className?: string
   projectSlug: string
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
   return (
     <Link
-      className="text-foreground underline-offset-4 hover:underline"
+      className={cn(
+        "text-foreground underline-offset-4 hover:underline",
+        className
+      )}
       params={{
         workspaceSlug,
         projectSlug,
@@ -408,6 +347,24 @@ function taskKey(task: ProjectWorkbenchTask): string {
   return task.id || task.uuid || ""
 }
 
+// 到期时间纯显示：unix 秒或 ISO 字符串 → YYYY-MM-DD；无值显示「-」。
+function formatDue(due: ProjectWorkbenchTask["due"]): string {
+  if (due === null || due === undefined) return "-"
+  const ts =
+    typeof due === "number"
+      ? due
+      : (() => {
+          const parsed = Date.parse(due)
+          return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000)
+        })()
+  if (ts === null) return "-"
+  const date = new Date(ts * 1000)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
 function assigneeNames(task: ProjectWorkbenchTask): string {
   if (!task.assignees || task.assignees.length === 0) {
     return "-"
@@ -419,19 +376,6 @@ function assigneeNames(task: ProjectWorkbenchTask): string {
     )
     .filter(Boolean)
     .join(", ")
-}
-
-function unixLikeToNumber(value: string | number | null | undefined) {
-  if (typeof value === "number") {
-    return value
-  }
-  if (typeof value === "string") {
-    const parsed = Date.parse(value)
-    if (!Number.isNaN(parsed)) {
-      return Math.floor(parsed / 1000)
-    }
-  }
-  return null
 }
 
 // UrgencyScore 展示后端计算的 urgency 总分；未计算（null/undefined）时显示占位符。

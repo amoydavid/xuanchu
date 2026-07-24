@@ -139,7 +139,7 @@ export function TagPicker({
             placeholder="输入标签名"
             value={query}
           />
-          <div className="max-h-72 space-y-1 overflow-auto border bg-background p-1">
+          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1">
             {tasks.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
                 正在加载标签...

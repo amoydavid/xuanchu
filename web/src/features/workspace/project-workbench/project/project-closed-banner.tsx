@@ -16,7 +16,7 @@ export function ProjectClosedBanner({ canManage, status }: ProjectClosedBannerPr
   }
 
   return (
-    <section className="flex items-start gap-3 border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100">
+    <section className="flex items-start gap-3 border border-warn/40 bg-warn/10 p-3 text-sm text-foreground">
       <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
       <div>
         <div className="font-medium">

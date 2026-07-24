@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -125,53 +125,36 @@ describe("TaskTable", () => {
     expect(screen.queryByText("stable-name")).toBeNull()
   })
 
-  it("saves an edited title with task slug ref", async () => {
+  it("renders title as a link to the task detail page", () => {
     renderTaskTable()
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "编辑任务标题 ads-1" })
+    // 标题不再 inline 编辑，改为跳转详情页的链接
+    expect(
+      screen.queryByRole("button", { name: "编辑任务标题 ads-1" })
+    ).toBeNull()
+    const titleLinks = screen.getAllByRole("link", { name: /写投放日报/ })
+    expect(titleLinks.length).toBeGreaterThan(0)
+    expect(titleLinks[0].getAttribute("href")).toContain(
+      "/workspaces/acme/projects/adsops/tasks/ads-1"
     )
-    await userEvent.clear(
-      screen.getByRole("textbox", { name: "编辑任务标题 ads-1" })
-    )
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "编辑任务标题 ads-1" }),
-      "写周报{Enter}"
-    )
-
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-      title: "写周报",
-    })
   })
 
-  it("saves priority from the inline selector", async () => {
+  it("displays priority as read-only text", () => {
     renderTaskTable()
 
-    await userEvent.click(
-      screen.getByRole("combobox", { name: "任务优先级 ads-1" })
-    )
-    await userEvent.click(screen.getByRole("option", { name: "H" }))
-
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
+    // 优先级仅展示，不再有 inline 选择器（桌面表格 + 移动卡片都渲染）
+    expect(screen.queryByRole("combobox", { name: "任务优先级 ads-1" })).toBeNull()
+    expect(screen.getAllByText("M").length).toBeGreaterThan(0)
   })
 
-  it("clears due date with clear_due payload", async () => {
+  it("displays due date as read-only text", () => {
     renderTaskTable()
 
-    await userEvent.click(
-      within(screen.getByRole("table")).getByRole("button", {
-        name: "任务截止日期 ads-1",
-      })
-    )
-    await userEvent.click(
-      await screen.findByRole("button", { name: "清除日期" })
-    )
-
-    await waitFor(() => {
-      expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-        clear_due: true,
-      })
-    })
+    // 截止日期仅展示，不再有 inline 日期选择器
+    expect(
+      screen.queryByRole("button", { name: "任务截止日期 ads-1" })
+    ).toBeNull()
+    expect(screen.getAllByText("2026-07-03").length).toBeGreaterThan(0)
   })
 
   it("runs done action for pending tasks", async () => {
@@ -203,40 +186,22 @@ describe("TaskTable", () => {
     expect(deleteTask).toHaveBeenCalledWith("acme", "ads-1")
   })
 
-  it("supports high frequency edits from the mobile task card", async () => {
+  it("renders mobile task card title as a link without inline editors", () => {
     renderTaskTable()
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "编辑移动任务标题 ads-1" })
-    )
-    await userEvent.clear(
-      screen.getByRole("textbox", { name: "编辑移动任务标题 ads-1" })
-    )
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "编辑移动任务标题 ads-1" }),
-      "手机改标题{Enter}"
-    )
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-      title: "手机改标题",
-    })
-
-    await userEvent.click(
-      screen.getByRole("combobox", { name: "移动任务优先级 ads-1" })
-    )
-    await userEvent.click(screen.getByRole("option", { name: "H" }))
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "移动任务截止日期 ads-1" })
-    )
-    await userEvent.click(
-      await screen.findByRole("button", { name: "清除日期" })
-    )
-    await waitFor(() => {
-      expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-        clear_due: true,
-      })
-    })
+    // 移动卡片标题也改为跳转链接，不再 inline 编辑
+    expect(
+      screen.queryByRole("button", { name: "编辑移动任务标题 ads-1" })
+    ).toBeNull()
+    expect(
+      screen.queryByRole("combobox", { name: "移动任务优先级 ads-1" })
+    ).toBeNull()
+    expect(
+      screen.queryByRole("button", { name: "移动任务截止日期 ads-1" })
+    ).toBeNull()
+    // 标题链接存在
+    const titleLinks = screen.getAllByRole("link", { name: /写投放日报/ })
+    expect(titleLinks.length).toBeGreaterThan(0)
   })
 
   it("uses localized task action labels", async () => {
@@ -255,7 +220,7 @@ describe("TaskTable", () => {
     expect(screen.getByRole("menuitem", { name: "Delete task" })).toBeTruthy()
   })
 
-  it("localizes recurring-task badges in English", async () => {
+  it("shows a recurring icon with localized rule label", async () => {
     await i18n.changeLanguage("en-US")
     renderTaskTable([
       task({
@@ -270,10 +235,12 @@ describe("TaskTable", () => {
       }),
     ])
 
-    const badges = screen.getAllByTestId("recurrence-badge")
-    expect(badges[0].textContent).toContain("Recurring · Daily")
-    expect(badges[0].getAttribute("title")).toBe("Planned instance")
-    expect(screen.queryByText("每天")).toBeNull()
+    // 循环来源用 Repeat 图标表示，title 为本地化规则（桌面表格 + 移动卡片各一个）
+    const icons = screen.getAllByTestId("recurrence-badge")
+    expect(icons.length).toBeGreaterThan(0)
+    expect(icons[0].getAttribute("title")).toBe("Daily")
+    // 不再渲染「循环 · 每天」这类文字 badge
+    expect(screen.queryByText(/Recurring/)).toBeNull()
   })
 
   it("uses a planned date in projected occurrence labels while keeping the stable id only in routes", async () => {
@@ -301,9 +268,10 @@ describe("TaskTable", () => {
 	}
 	expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
 	expect(screen.queryByText(occurrenceRef)).toBeNull()
+    // 标题不再 inline 编辑，改为跳转详情页的链接
     expect(
-      within(screen.getByRole("table")).getByRole("button", {
-        name: "编辑任务标题 ↻07-19",
+      within(screen.getByRole("table")).getByRole("link", {
+        name: /↻07-19/,
       })
     ).toBeTruthy()
     expect(

@@ -204,7 +204,7 @@ function TaskDetailPageContent({
         ? t("projectReadonly.taskNotFoundTitle")
         : t("common.error")
     return (
-      <section className="max-w-2xl border bg-card p-6">
+      <section className="rounded-lg max-w-2xl border bg-card p-6">
         <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {task.error instanceof ApiError ? task.error.code : "unknown"}
@@ -237,7 +237,7 @@ function TaskDetailPageContent({
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (
-      <section className="max-w-2xl border bg-card p-6">
+      <section className="rounded-lg max-w-2xl border bg-card p-6">
         <h1 className="text-xl font-semibold tracking-normal">
           {t("projectReadonly.taskNotFoundTitle")}
         </h1>

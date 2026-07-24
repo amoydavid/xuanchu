@@ -131,21 +131,20 @@ export function HookList({
       </AlertDialog>
 
       {query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {query.error instanceof ApiError
             ? query.error.message
             : t("common.error")}
         </div>
       ) : query.isLoading ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.loading")}
         </div>
       ) : (query.data ?? []).length === 0 ? (
-        <div className="border bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           {t("common.empty")}
         </div>
       ) : (
-        <div className="border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -171,7 +170,6 @@ export function HookList({
               ))}
             </TableBody>
           </Table>
-        </div>
       )}
     </div>
   )

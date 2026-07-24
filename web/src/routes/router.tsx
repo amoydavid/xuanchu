@@ -580,7 +580,7 @@ function RouteFallback() {
   return (
     <div
       aria-label="Loading"
-      className="h-24 animate-pulse border bg-card"
+      className="rounded-lg h-24 animate-pulse border bg-card"
       role="status"
     />
   )

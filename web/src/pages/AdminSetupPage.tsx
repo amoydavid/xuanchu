@@ -62,7 +62,7 @@ export function AdminSetupPage() {
       </div>
       <div className="mx-auto grid min-h-[calc(100svh-3rem)] max-w-5xl content-center gap-8 px-6 py-10 md:grid-cols-[1fr_420px]">
         <section className="max-w-xl space-y-5">
-          <div className="inline-flex size-11 items-center justify-center border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+          <div className="inline-flex size-11 items-center justify-center border border-primary/40 bg-accent-soft text-primary">
             <ShieldCheck className="size-5" />
           </div>
           <div>
@@ -75,17 +75,17 @@ export function AdminSetupPage() {
           </div>
         </section>
 
-        <section className="border bg-card p-5 shadow-sm">
+        <section className="rounded-lg border bg-card p-5 shadow-sm">
           {result ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <Check className="size-4 text-emerald-600" />
+                <Check className="size-4 text-primary" />
                 <h2 className="text-sm font-medium">
                   {t("admin.setupResultTitle")}
                 </h2>
               </div>
               <div className="space-y-2">
-                <div className="border bg-muted p-3 font-mono text-xs break-all">
+                <div className="rounded-lg border bg-muted p-3 font-mono text-xs break-all">
                   {result.token}
                 </div>
                 <p className="text-xs text-muted-foreground">

@@ -61,7 +61,7 @@ export function ProjectNotesTab({
   })
 
   return (
-    <section className="space-y-3 border bg-card p-4">
+    <section className="rounded-lg space-y-3 border bg-card p-4">
       <h2 className="text-sm font-medium">{t("projectSettings.notesTitle")}</h2>
 
       {closed ? (

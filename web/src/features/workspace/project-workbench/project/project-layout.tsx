@@ -262,7 +262,7 @@ function ProjectState({
   title: string
 }) {
   return (
-    <section className="max-w-2xl border bg-card p-6">
+    <section className="rounded-lg max-w-2xl border bg-card p-6">
       <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">{description}</p>
       {detail ? <code className="mt-4 block text-xs">{detail}</code> : null}

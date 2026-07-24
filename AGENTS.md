@@ -77,6 +77,19 @@
 - `internal/storage` 不负责参数解释和 CLI 行为。
 - 新增 HTTP/MCP 时必须复用 `internal/app`，不要复制业务逻辑。
 
+### 前端设计规范（`web/`）
+
+所有 Web Console（`web/`）的界面工作必须遵循根目录的 [DESIGN.md](/Users/mac/code/projects/dajee/task/DESIGN.md)。该规范定义了「冷静的工程绿」设计语言：
+
+- 唯一品牌色是翡翠绿 `--primary`，一屏至多两处主绿；状态色仅作 7px 圆点或小 chip，绝不大面积铺色。
+- 深色侧栏 + 浅色画布骨架；所有颜色为 `oklch()` 并收敛进 `web/src/index.css` 的 `:root` token，**禁止组件内裸 hex、禁止散用 Tailwind 原色**（`emerald`/`amber`/`red` 等）。
+- 字体三族：Inter（正文）/ Space Grotesk（标题）/ JetBrains Mono（一切数字、ID、时间、KPI 数值）。
+- 紧凑数据密度（按钮/输入/图标 36px），不膨胀到 44px；卡片/表格容器圆角统一 `rounded-lg`。
+- 表格容器不可手写，统一用 shadcn `<Table>` 组件；表格避免横向滚动（列 `min-w-0` + `truncate` 弹性收缩）。
+- 图标只用 Lucide；图表一律填充，不画裸线。
+
+新增/修改任何颜色、字体、间距、组件视觉前，先读 DESIGN.md 的对应章节，按 token 方式落地，改完跑 `pnpm --dir web typecheck && lint && build && test`。
+
 ## 4. 开发原则
 
 - 优先延续现有结构，不要为“优雅”重写仓库。

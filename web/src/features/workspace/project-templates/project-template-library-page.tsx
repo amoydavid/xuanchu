@@ -255,7 +255,7 @@ export function ProjectTemplateLibraryPage({
           {t("common.status")}
           <select
             aria-label={t("projectTemplates.statusFilter")}
-            className="h-8 border bg-background px-2 text-xs text-foreground"
+            className="rounded-lg h-8 border bg-background px-2 text-xs text-foreground"
             onChange={(event) => {
               setStatus(event.target.value)
               setOffset(0)
@@ -562,7 +562,9 @@ function TemplateListItem({
       aria-pressed={active}
       className={cn(
         "w-full border-l-2 p-3 text-left transition-colors hover:bg-muted/60",
-        active ? "border-l-foreground bg-muted/50" : "border-l-transparent"
+        active
+          ? "border-l-primary bg-accent-soft"
+          : "border-l-transparent"
       )}
       onClick={onSelect}
       type="button"

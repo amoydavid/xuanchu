@@ -104,7 +104,7 @@ export function TaskPropertyPanel({
   const projected = task.recurrence_info?.materialization === "projected"
 
   return (
-    <aside className="space-y-4 border bg-card p-4 text-sm">
+    <aside className="rounded-lg space-y-4 border bg-card p-4 text-sm">
       {/* Properties：高频字段，始终展示 */}
       <PropertyGroup title={t("taskDetail.groupProperties")}>
         <PropertyRow label={t("common.status")}>

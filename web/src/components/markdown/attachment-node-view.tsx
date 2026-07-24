@@ -48,7 +48,7 @@ export function AttachmentNodeView({ node, extension }: NodeViewProps) {
 
   if (attrs.state !== "resolved") {
     return (
-      <NodeViewWrapper as="span" className="inline-flex flex-col gap-1 rounded border bg-muted/30 p-1">
+      <NodeViewWrapper as="span" className="rounded-lg inline-flex flex-col gap-1 rounded border bg-muted/30 p-1">
         {attrs.image && attrs.sourceURL ? (
           <img
             src={attrs.sourceURL}

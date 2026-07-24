@@ -156,10 +156,11 @@ export function ProjectTaskToolbar({
 
   return (
     <section className="space-y-3">
-      <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
         <DebouncedInput
           ariaLabel="搜索任务"
-          className={cn(FILTER_CONTROL_CLASS, "col-span-2 w-full sm:w-56")}
+          className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-56")}
           key={`q:${filter.q ?? ""}`}
           onCommit={(value) => setFilter("q", value)}
           placeholder="搜索标题、内容"
@@ -283,10 +284,7 @@ export function ProjectTaskToolbar({
         <Popover>
           <PopoverTrigger asChild>
             <Button
-              className={cn(
-                FILTER_BUTTON_CLASS,
-                "col-span-2 w-full justify-start sm:w-auto"
-              )}
+              className={cn(FILTER_BUTTON_CLASS, "w-full justify-start sm:w-auto")}
               size="lg"
               type="button"
               variant="outline"
@@ -303,11 +301,14 @@ export function ProjectTaskToolbar({
             />
           </PopoverContent>
         </Popover>
+        </div>
         {canCreateTask ? (
-          <div className="col-span-2 flex min-w-0 sm:ml-auto">
+          // 主动作（新建任务）：移动端在筛选控件下方靠右；sm 以上靠 justify-between 稳定右贴边，
+          // shrink-0 保证按钮不被密集筛选控件压缩。
+          <div className="flex shrink-0 self-end sm:self-auto">
             <Button
               className={cn(
-                "min-w-0 flex-1 rounded-md sm:flex-none",
+                "rounded-md",
                 onCreateRecurringTask && "rounded-r-none"
               )}
               onClick={onCreateTask}

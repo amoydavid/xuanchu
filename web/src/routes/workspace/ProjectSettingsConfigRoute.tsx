@@ -15,21 +15,21 @@ export function ProjectSettingsConfigRoute() {
 
   if (!workspaceSlug || !me.data) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         Loading…
       </section>
     )
   }
   if (project.isError) {
     return (
-      <section className="border bg-card p-6 text-sm text-destructive">
+      <section className="rounded-lg border bg-card p-6 text-sm text-destructive">
         {project.error instanceof ApiError ? project.error.message : "error"}
       </section>
     )
   }
   if (project.isPending) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         Loading…
       </section>
     )

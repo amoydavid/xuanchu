@@ -11,14 +11,14 @@ export function ProjectSettingsLayoutRoute() {
 
   if (me.isError) {
     return (
-      <section className="border bg-card p-6 text-sm text-destructive">
+      <section className="rounded-lg border bg-card p-6 text-sm text-destructive">
         {me.error instanceof ApiError ? me.error.code : "unknown"}
       </section>
     )
   }
   if (!workspaceSlug || !me.data) {
     return (
-      <section className="border bg-card p-6 text-sm text-muted-foreground">
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
         Loading…
       </section>
     )

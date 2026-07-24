@@ -35,7 +35,7 @@ export function ResourcePage({
   return (
     <div className="space-y-4">
       <PageHeader title={title} />
-      <div className="flex flex-wrap gap-2 border bg-card p-2">
+      <div className="rounded-lg flex flex-wrap gap-2 border bg-card p-2">
         <Input className="flex-1" placeholder={t("common.search")} />
         <Button variant="outline">{t("common.filter")}</Button>
       </div>
@@ -46,7 +46,7 @@ export function ResourcePage({
           <Skeleton className="h-8 w-1/2" />
         </div>
       ) : query.isError ? (
-        <div className="border bg-card p-4 text-sm text-destructive">
+        <div className="rounded-lg border bg-card p-4 text-sm text-destructive">
           {errorMessage(query.error, t("common.error"))}
         </div>
       ) : (

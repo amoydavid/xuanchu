@@ -119,7 +119,7 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
       </div>
       <AuthFrame title={t("auth.signInTitle", { brand: brandName })} description={t("auth.sessionOnly")}>
         {redirectPath ? (
-          <div className="mb-4 border bg-card p-3 text-xs">
+          <div className="rounded-lg mb-4 border bg-card p-3 text-xs">
             <div className="text-muted-foreground">{t("auth.continueTo")}</div>
             <code className="mt-1 block break-all text-foreground">
               {redirectPath}

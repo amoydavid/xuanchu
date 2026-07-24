@@ -42,7 +42,7 @@ export function ProjectNotesTimeline({
             <div className="mb-1 text-xs text-muted-foreground">
               {ann.created_by?.name ?? "-"} · {formatTime(ann.entry)}
             </div>
-            <div className="rounded border bg-background p-3 text-sm">
+            <div className="rounded-lg rounded border bg-background p-3 text-sm">
               <MarkdownView>{ann.content}</MarkdownView>
             </div>
             {canManage ? (
