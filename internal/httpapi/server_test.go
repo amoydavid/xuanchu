@@ -82,13 +82,16 @@ func TestOpenAPIIsGeneratedFromRegisteredHTTPRoutes(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/api/v1/tasks/{taskRef}/links",
-		"/api/v1/tasks/{taskRef}/audit",
+		"/api/v1/tasks/{taskRef}/activity",
 		"/api/v1/config-schema/{key}",
 		"/api/v1/projects/{projectRef}/timeline",
 	} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("OpenAPI paths missing %s", path)
 		}
+	}
+	if _, ok := doc.Paths["/api/v1/tasks/{taskRef}/audit"]; ok {
+		t.Fatalf("OpenAPI unexpectedly documented removed task audit route")
 	}
 	if _, ok := doc.Paths["/mcp"]; ok {
 		t.Fatalf("OpenAPI unexpectedly documented /mcp")

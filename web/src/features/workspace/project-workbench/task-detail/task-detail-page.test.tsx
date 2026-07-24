@@ -9,7 +9,7 @@ import {
   deleteTask,
   doneTask,
   getTask,
-  getTaskAudit,
+  getTaskActivity,
   listTaskChildren,
   modifyTask,
   startTask,
@@ -49,7 +49,7 @@ vi.mock("../api/task-api", async () => {
     deleteTask: vi.fn(),
     doneTask: vi.fn(),
     getTask: vi.fn(),
-    getTaskAudit: vi.fn(),
+    getTaskActivity: vi.fn(),
     listTaskChildren: vi.fn(),
     modifyTask: vi.fn(),
     startTask: vi.fn(),
@@ -107,7 +107,10 @@ describe("TaskDetailPage", () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
     vi.mocked(getTask).mockResolvedValue(task())
-    vi.mocked(getTaskAudit).mockResolvedValue([])
+    vi.mocked(getTaskActivity).mockResolvedValue({
+      entries: [],
+      next_cursor: null,
+    })
     vi.mocked(listTaskChildren).mockResolvedValue([])
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(startTask).mockResolvedValue(task({ start: 1_900_000_000 }))
@@ -901,210 +904,76 @@ describe("TaskDetailPage", () => {
     expect(screen.getByRole("button", { name: "重试" })).toBeTruthy()
   })
 
-  it("renders scalar task change history as natural language", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 1,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "title",
-            kind: "scalar",
-            label_key: "projectWorkbench.taskHistory.field.title",
-            previous: { raw: "旧标题", text: "旧标题" },
-            current: { raw: "新标题", text: "新标题" },
+  it("renders the unified semantic activity timeline instead of raw audit history", async () => {
+    vi.mocked(getTaskActivity).mockResolvedValue({
+      entries: [
+        {
+          id: "audit:2",
+          kind: "lifecycle",
+          action: "completed",
+          actor: {
+            type: "user",
+            user: { id: "u1", name: "alice", display_name: "Alice" },
           },
-        ],
-      },
-    ])
+          occurred_at: "2026-07-04T00:00:00Z",
+        },
+        {
+          id: "annotation:note-1",
+          kind: "annotation",
+          action: "commented",
+          actor: { type: "unknown" },
+          occurred_at: "2026-07-03T00:00:00Z",
+          annotation: { id: "note-1", description: "需要素材截图" },
+        },
+      ],
+      next_cursor: null,
+    })
     renderPage()
 
-    // 等 audit query resolve 后的 change 内容出现。
-    await screen.findByText(/新标题/)
-    expect(screen.getByText(/Alice/)).toBeTruthy()
-    expect(screen.getByText(/旧标题/)).toBeTruthy()
+    await screen.findByText("完成了任务")
+    expect(screen.getByText("Alice")).toBeTruthy()
+    expect(screen.getByText("需要素材截图")).toBeTruthy()
+    expect(screen.getByRole("list", { name: "活动" })).toBeTruthy()
   })
 
-  it("renders set task change history with added and removed", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 2,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "assignees",
-            kind: "set",
-            label_key: "projectWorkbench.taskHistory.field.assignees",
-            added: [
-              {
-                raw: { id: "u2", name: "lisi", display_name: "李四" },
-                text: "李四",
-              },
-            ],
-            removed: [
-              {
-                raw: { id: "u1", name: "zhangsan", display_name: "张三" },
-                text: "张三",
-              },
-            ],
-          },
-        ],
-      },
-    ])
+  it("renders structured field changes from the activity endpoint", async () => {
+    vi.mocked(getTaskActivity).mockResolvedValue({
+      entries: [
+        {
+          id: "audit:3",
+          kind: "change",
+          action: "fields_changed",
+          actor: { type: "system" },
+          occurred_at: "2026-07-04T00:00:00Z",
+          changes: [
+            {
+              field: "assignees",
+              kind: "set",
+              label_key: "projectWorkbench.taskHistory.field.assignees",
+              added: [
+                {
+                  raw: { id: "u2", name: "lisi", display_name: "李四" },
+                  text: "李四",
+                },
+              ],
+              removed: [],
+            },
+          ],
+        },
+      ],
+      next_cursor: null,
+    })
     renderPage()
 
-    // 集合变化展示 display_name，不展示 UUID。
     await screen.findByText(/李四/)
-    expect(screen.getByText(/张三/)).toBeTruthy()
-    expect(screen.queryByText(/u2|u1/)).toBeNull()
-    // setChange 模板已含「新增/移除」动词，formatSet 不应再重复拼动词。
-    expect(screen.queryByText(/新增 新增/)).toBeNull()
-    expect(screen.queryByText(/移除 移除/)).toBeNull()
+    expect(screen.getByText("修改了任务")).toBeTruthy()
+    expect(screen.queryByText(/task\.modify/)).toBeNull()
   })
 
-  it("renders unset placeholder when scalar current is null", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 3,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "due",
-            kind: "scalar",
-            label_key: "projectWorkbench.taskHistory.field.due",
-            previous: { raw: 1_783_036_800, text: "2026-07-04" },
-            current: { raw: null, text: "" },
-          },
-        ],
-      },
-    ])
+  it("shows the Activity empty state without the old audit placeholder", async () => {
     renderPage()
 
-    // 清空 due 时显示「未设置」，不直接展示 null。
-    await screen.findByText(/未设置/)
-  })
-
-  it("shows empty placeholder when audit history is empty", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([])
-    renderPage()
-
-    await screen.findByText("暂无字段级变更记录")
-  })
-
-  it("renders wait field change with localized field name", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 5,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "wait",
-            kind: "scalar",
-            label_key: "projectWorkbench.taskHistory.field.wait",
-            previous: { raw: null, text: "" },
-            current: { raw: 1_783_036_800, text: "2026-07-04" },
-          },
-        ],
-      },
-    ])
-    renderPage()
-
-    // 低频字段 wait 也能渲染，字段名走 i18n（暂缓到）。
-    await screen.findByText(/暂缓到/)
-  })
-
-  it("renders UDA field change entries", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 6,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "udas",
-            kind: "uda",
-            label_key: "projectWorkbench.taskHistory.field.udas",
-            entries: [
-              {
-                name: "effort",
-                before: { raw: null, text: "" },
-                after: { raw: "2h", text: "2h" },
-              },
-              {
-                name: "budget",
-                before: { raw: "100", text: "100" },
-                after: { raw: null, text: "" },
-              },
-            ],
-          },
-        ],
-      },
-    ])
-    renderPage()
-
-    // UDA change：展示每个 UDA 的 name + before/after。
-    await screen.findByText(/effort/)
-    expect(screen.getByText(/budget/)).toBeTruthy()
-    expect(screen.getByText(/2h/)).toBeTruthy()
-    // effort before 和 budget after 都是未设置，至少出现一处。
-    expect(screen.getAllByText(/未设置/).length).toBeGreaterThan(0)
-  })
-
-  it("summarizes rich description activity without exposing attachment references", async () => {
-    vi.mocked(getTaskAudit).mockResolvedValue([
-      {
-        id: 4,
-        actor: { id: "u1", name: "alice", display_name: "Alice" },
-        action: "task.modify",
-        target_type: "task",
-        target_id: "task-1",
-        created_at: 1_783_036_800,
-        changes: [
-          {
-            field: "description",
-            kind: "scalar",
-            label_key: "projectWorkbench.taskHistory.field.description",
-            previous: {
-              raw: "[旧需求](ref://attachment/11111111-1111-1111-1111-111111111111)",
-              text: "旧需求",
-            },
-            current: {
-              raw: "![架构图](ref://attachment/22222222-2222-2222-2222-222222222222)",
-              text: "架构图",
-            },
-          },
-        ],
-      },
-    ])
-    renderPage()
-
-    // 活动列表只保留语义摘要和附件变化数量，不暴露 Markdown 或 UUID。
-    await screen.findByText(/Alice 更新了描述/)
-    expect(document.body.textContent).toContain("内嵌附件：新增 1，移除 1")
-    expect(screen.queryByText(/ref:\/\/attachment/)).toBeNull()
-
-    // 点击展开 Dialog，查看完整 before/after。
-    await userEvent.click(screen.getByRole("button", { name: "查看变更" }))
-    expect(screen.getByText("当前值")).toBeTruthy()
-    expect(screen.getByText("原值")).toBeTruthy()
+    await screen.findByText("暂无活动")
+    expect(screen.queryByText("暂无字段级变更记录")).toBeNull()
   })
 })

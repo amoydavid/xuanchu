@@ -455,16 +455,41 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 				return err
 			}
 		}
-		if err := tx.Where("task_uuid = ?", tsk.UUID).Delete(&TaskAnnotation{}).Error; err != nil {
+		var existingAnnotations []TaskAnnotation
+		if err := tx.Where("task_uuid = ?", tsk.UUID).Find(&existingAnnotations).Error; err != nil {
 			return err
 		}
+		existingByID := make(map[string]TaskAnnotation, len(existingAnnotations))
+		for _, row := range existingAnnotations {
+			existingByID[row.ID] = row
+		}
+		keptAnnotationIDs := make([]string, 0, len(tsk.Annotations))
 		for _, a := range tsk.Annotations {
 			if a.ID == "" {
 				a.ID = uuid.NewString()
 			}
-			if err := tx.Create(&TaskAnnotation{ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description}).Error; err != nil {
+			keptAnnotationIDs = append(keptAnnotationIDs, a.ID)
+			if _, ok := existingByID[a.ID]; ok {
+				if err := tx.Model(&TaskAnnotation{}).Where("id = ? AND task_uuid = ?", a.ID, tsk.UUID).Updates(map[string]any{
+					"entry": a.Entry, "description": a.Description,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err := tx.Create(&TaskAnnotation{
+				ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description,
+				CreatedByActorType: "unknown", CreatedAt: a.Entry,
+			}).Error; err != nil {
 				return err
 			}
+		}
+		deleteQuery := tx.Where("task_uuid = ?", tsk.UUID)
+		if len(keptAnnotationIDs) > 0 {
+			deleteQuery = deleteQuery.Where("id NOT IN ?", keptAnnotationIDs)
+		}
+		if err := deleteQuery.Delete(&TaskAnnotation{}).Error; err != nil {
+			return err
 		}
 		if err := tx.Where("task_uuid = ?", tsk.UUID).Delete(&TaskDependency{}).Error; err != nil {
 			return err
@@ -504,16 +529,34 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 	})
 }
 
+type TaskAnnotationActor struct {
+	Type        string
+	UserID      *string
+	TokenID     *string
+	TokenName   *string
+	TokenPrefix *string
+}
+
 func (r *TaskRepository) AddAnnotation(workspaceID, taskUUID string, annotation domain.Annotation, modified int64) error {
+	return r.AddAnnotationWithActor(workspaceID, taskUUID, annotation, TaskAnnotationActor{Type: "unknown"}, annotation.Entry, modified)
+}
+
+func (r *TaskRepository) AddAnnotationWithActor(workspaceID, taskUUID string, annotation domain.Annotation, actor TaskAnnotationActor, createdAt, modified int64) error {
 	if annotation.ID == "" {
 		annotation.ID = uuid.NewString()
 	}
+	if actor.Type == "" {
+		actor.Type = "unknown"
+	}
+	if createdAt == 0 {
+		createdAt = annotation.Entry
+	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&TaskAnnotation{
-			ID:          annotation.ID,
-			TaskUUID:    taskUUID,
-			Entry:       annotation.Entry,
-			Description: annotation.Description,
+			ID: annotation.ID, TaskUUID: taskUUID, Entry: annotation.Entry, Description: annotation.Description,
+			CreatedByActorType: actor.Type, CreatedByUserID: actor.UserID,
+			CreatedByTokenID: actor.TokenID, CreatedByTokenName: actor.TokenName,
+			CreatedByTokenPrefix: actor.TokenPrefix, CreatedAt: createdAt,
 		}).Error; err != nil {
 			return err
 		}
@@ -586,6 +629,34 @@ func (r *TaskRepository) ListAnnotations(workspaceID, taskUUID string, offset, l
 		out = append(out, domain.Annotation{ID: row.ID, Entry: row.Entry, Description: row.Description})
 	}
 	return out, int(total), nil
+}
+
+type TaskAnnotationListCursor struct {
+	CreatedAt        int64
+	ID               *string
+	IncludeCreatedAt bool
+}
+
+func (r *TaskRepository) ListAnnotationActivity(workspaceID, taskUUID string, cursor *TaskAnnotationListCursor, limit int) ([]TaskAnnotation, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	scope := "EXISTS (SELECT 1 FROM tasks WHERE tasks.uuid = task_annotations.task_uuid AND tasks.workspace_id = ?)"
+	query := r.db.Where("task_uuid = ? AND "+scope, taskUUID, workspaceID)
+	if cursor != nil {
+		if cursor.ID != nil {
+			query = query.Where("created_at < ? OR (created_at = ? AND id < ?)", cursor.CreatedAt, cursor.CreatedAt, *cursor.ID)
+		} else if cursor.IncludeCreatedAt {
+			query = query.Where("created_at <= ?", cursor.CreatedAt)
+		} else {
+			query = query.Where("created_at < ?", cursor.CreatedAt)
+		}
+	}
+	var rows []TaskAnnotation
+	if err := query.Order("created_at DESC").Order("id DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (r *TaskRepository) Projects(workspaceID string) ([]string, error) {
@@ -687,7 +758,10 @@ func toModel(tsk domain.Task) Task {
 		if a.ID == "" {
 			a.ID = uuid.NewString()
 		}
-		annotations = append(annotations, TaskAnnotation{ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description})
+		annotations = append(annotations, TaskAnnotation{
+			ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description,
+			CreatedByActorType: "unknown", CreatedAt: a.Entry,
+		})
 	}
 	depends := make([]TaskDependency, 0, len(tsk.Depends))
 	for _, d := range sortedUnique(tsk.Depends) {

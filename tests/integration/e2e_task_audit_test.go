@@ -12,7 +12,7 @@ import (
 
 // TestE2ETaskModifyAuditedAcrossEntryPoints 校验通过 Web Console 使用的 HTTP
 // 接口、MCP 工具和 CLI 对任务做任意字段修改时，都会被审计记录下来，并且能在
-// /api/v1/tasks/{taskRef}/audit 里读到字段级 changes。
+// /api/v1/tasks/{taskRef}/activity 里读到语义化字段 changes。
 //
 // 三个入口分别修改不同字段，避免互相干扰，便于在共享的 audit 流里精确定位。
 func TestE2ETaskModifyAuditedAcrossEntryPoints(t *testing.T) {
@@ -71,23 +71,23 @@ func TestE2ETaskModifyAuditedAcrossEntryPoints(t *testing.T) {
 		"scheduled": 1_783_123_200,
 	})
 
-	// 统一通过 HTTP task audit 端点验证三个入口的修改都被记录。
+	// 统一通过 HTTP task activity 端点验证三个入口的修改都被记录。
 	httpUUID := httpTask["uuid"].(string)
-	assertTaskAuditChange(t, baseURL, token, httpUUID, "priority")
-	assertTaskAuditChange(t, baseURL, token, httpUUID, "description")
-	assertTaskAuditChange(t, baseURL, token, httpUUID, "due")
+	assertTaskActivityChange(t, baseURL, token, httpUUID, "priority")
+	assertTaskActivityChange(t, baseURL, token, httpUUID, "description")
+	assertTaskActivityChange(t, baseURL, token, httpUUID, "due")
 	// 清空 due 后 latest change 的 current 必须保留显式 null。
-	assertTaskAuditChangeCurrentNull(t, baseURL, token, httpUUID, "due")
-	assertTaskAuditChange(t, baseURL, token, mcpTask["uuid"].(string), "title")
-	assertTaskAuditChange(t, baseURL, token, cliTask["uuid"].(string), "tags")
+	assertTaskActivityChangeCurrentNull(t, baseURL, token, httpUUID, "due")
+	assertTaskActivityChange(t, baseURL, token, mcpTask["uuid"].(string), "title")
+	assertTaskActivityChange(t, baseURL, token, cliTask["uuid"].(string), "tags")
 
 	// 低频字段也都被审计记录。
 	lowUUID := lowFreqTask["uuid"].(string)
-	assertTaskAuditChange(t, baseURL, token, lowUUID, "wait")
-	assertTaskAuditChange(t, baseURL, token, lowUUID, "scheduled")
-	assertTaskAuditChange(t, baseURL, token, lowUUID, "until")
-	assertTaskAuditChange(t, baseURL, token, lowUUID, "depends")
-	assertTaskAuditChange(t, baseURL, token, lowUUID, "udas")
+	assertTaskActivityChange(t, baseURL, token, lowUUID, "wait")
+	assertTaskActivityChange(t, baseURL, token, lowUUID, "scheduled")
+	assertTaskActivityChange(t, baseURL, token, lowUUID, "until")
+	assertTaskActivityChange(t, baseURL, token, lowUUID, "depends")
+	assertTaskActivityChange(t, baseURL, token, lowUUID, "udas")
 
 	// 同时确认通用 audit 流也记录了 task.modify（HTTP audit:list，需 audit:read）。
 	generalAudit := httpJSON(t, http.MethodGet, baseURL+"/api/v1/audit?limit=50", nil, authHeaders(token))
@@ -134,44 +134,45 @@ func mcpModifyTaskViaMCP(t *testing.T, baseURL, token, taskUUID string, args map
 	_ = mcpStructuredMap(t, res)
 }
 
-// assertTaskAuditChange 拉 /tasks/{ref}/audit，确认存在一条 task.modify，
-// 且 changes 里包含期望字段。每个入口修改的字段不同，借此验证字段级 diff
-// 真的被记录（而不只是空 audit 行）。
-func assertTaskAuditChange(t *testing.T, baseURL, token, taskUUID, wantField string) {
+// assertTaskActivityChange 拉 /tasks/{ref}/activity，确认存在一条
+// fields_changed，且 changes 里包含期望字段。
+func assertTaskActivityChange(t *testing.T, baseURL, token, taskUUID, wantField string) {
 	t.Helper()
 	resp := httpJSON(t, http.MethodGet,
-		baseURL+"/api/v1/tasks/"+taskUUID+"/audit?workspace=local&limit=20",
+		baseURL+"/api/v1/tasks/"+taskUUID+"/activity?workspace=local&limit=20",
 		nil, authHeaders(token))
-	rows, _ := resp["data"].([]any)
+	data, _ := resp["data"].(map[string]any)
+	rows, _ := data["entries"].([]any)
 	if len(rows) == 0 {
-		t.Fatalf("task %s audit returned no rows", taskUUID)
+		t.Fatalf("task %s activity returned no rows", taskUUID)
 	}
 	for _, row := range rows {
 		entry, _ := row.(map[string]any)
-		if entry["action"] != "task.modify" || entry["target_id"] != taskUUID {
+		if entry["action"] != "fields_changed" {
 			continue
 		}
 		if changesContainField(entry, wantField) {
 			return
 		}
 	}
-	// 输出原始 audit 帮助定位失败原因。
+	// 输出原始 Activity 帮助定位失败原因。
 	raw, _ := json.Marshal(resp)
-	t.Fatalf("task %s audit missing %q field change; audit=%s", taskUUID, wantField, raw)
+	t.Fatalf("task %s activity missing %q field change; activity=%s", taskUUID, wantField, raw)
 }
 
-// assertTaskAuditChangeCurrentNull 验证某个字段最新一次 change 的 current
+// assertTaskActivityChangeCurrentNull 验证某个字段最新一次 change 的 current
 // 保留了显式 null（清空 due/description 等场景），而不是被 omitempty 丢掉。
-func assertTaskAuditChangeCurrentNull(t *testing.T, baseURL, token, taskUUID, wantField string) {
+func assertTaskActivityChangeCurrentNull(t *testing.T, baseURL, token, taskUUID, wantField string) {
 	t.Helper()
 	resp := httpJSON(t, http.MethodGet,
-		baseURL+"/api/v1/tasks/"+taskUUID+"/audit?workspace=local&limit=20",
+		baseURL+"/api/v1/tasks/"+taskUUID+"/activity?workspace=local&limit=20",
 		nil, authHeaders(token))
-	rows, _ := resp["data"].([]any)
-	// audit 默认按 created_at desc 返回，找第一条匹配字段的 change。
+	data, _ := resp["data"].(map[string]any)
+	rows, _ := data["entries"].([]any)
+	// Activity 默认按 occurred_at desc 返回，找第一条匹配字段的 change。
 	for _, row := range rows {
 		entry, _ := row.(map[string]any)
-		if entry["action"] != "task.modify" || entry["target_id"] != taskUUID {
+		if entry["action"] != "fields_changed" {
 			continue
 		}
 		changes, _ := entry["changes"].([]any)
@@ -192,7 +193,7 @@ func assertTaskAuditChangeCurrentNull(t *testing.T, baseURL, token, taskUUID, wa
 		}
 	}
 	raw, _ := json.Marshal(resp)
-	t.Fatalf("task %s audit missing %q field change; audit=%s", taskUUID, wantField, raw)
+	t.Fatalf("task %s activity missing %q field change; activity=%s", taskUUID, wantField, raw)
 }
 
 func changesContainField(entry map[string]any, wantField string) bool {

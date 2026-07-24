@@ -551,6 +551,43 @@ func TestTaskRepositoryAddAnnotationAppendsWithoutReplacingExisting(t *testing.T
 	}
 }
 
+func TestTaskRepositoryUpdatePreservesAnnotationActor(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	created, err := repo.Create(domain.Task{
+		UUID: "task-actor", WorkspaceID: ws.ID, Title: "before",
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+		Annotations: []domain.Annotation{{ID: "annotation-actor", Entry: 101, Description: "note"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := "user-original"
+	if err := store.DB().Model(&TaskAnnotation{}).Where("id = ?", "annotation-actor").Updates(map[string]any{
+		"created_by_actor_type": "user",
+		"created_by_user_id":    userID,
+		"created_at":            int64(101),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	created.Title = "after"
+	created.Modified = 102
+	if err := repo.Update(created); err != nil {
+		t.Fatal(err)
+	}
+
+	var row TaskAnnotation
+	if err := store.DB().Where("id = ?", "annotation-actor").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.CreatedByActorType != "user" || row.CreatedByUserID == nil || *row.CreatedByUserID != userID {
+		t.Fatalf("annotation actor after task update = %#v", row)
+	}
+	if row.CreatedAt != 101 {
+		t.Fatalf("CreatedAt = %d, want 101", row.CreatedAt)
+	}
+}
+
 func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 	if _, err := repo.Create(domain.Task{
@@ -597,6 +634,32 @@ func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
 	}
 	if total != 7 || len(got) != 0 {
 		t.Fatalf("oob: total=%d len=%d", total, len(got))
+	}
+}
+
+func TestTaskRepositoryListAnnotationActivityCursor(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	if _, err := repo.Create(domain.Task{
+		UUID: "task-activity", WorkspaceID: ws.ID, Title: "activity",
+		Status: domain.StatusPending, Entry: 1, Modified: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if err := store.DB().Create(&TaskAnnotation{
+			ID: id, TaskUUID: "task-activity", Entry: 100, Description: "note-" + id,
+			CreatedByActorType: "unknown", CreatedAt: 100,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	cursorID := "c"
+	rows, err := repo.ListAnnotationActivity(ws.ID, "task-activity", &TaskAnnotationListCursor{CreatedAt: 100, ID: &cursorID}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].ID != "b" || rows[1].ID != "a" {
+		t.Fatalf("rows = %#v, want b,a", rows)
 	}
 }
 

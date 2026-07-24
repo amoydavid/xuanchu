@@ -264,10 +264,16 @@ type TaskTag struct {
 }
 
 type TaskAnnotation struct {
-	ID          string `gorm:"primaryKey"`
-	TaskUUID    string `gorm:"not null;index:idx_task_annotations_task"`
-	Entry       int64  `gorm:"not null"`
-	Description string `gorm:"not null"`
+	ID                   string  `gorm:"primaryKey;index:idx_task_annotations_activity,priority:3,sort:desc"`
+	TaskUUID             string  `gorm:"not null;index:idx_task_annotations_task;index:idx_task_annotations_activity,priority:1"`
+	Entry                int64   `gorm:"not null"`
+	Description          string  `gorm:"not null"`
+	CreatedByActorType   string  `gorm:"not null;default:'unknown';index"`
+	CreatedByUserID      *string `gorm:"index"`
+	CreatedByTokenID     *string `gorm:"index"`
+	CreatedByTokenName   *string
+	CreatedByTokenPrefix *string
+	CreatedAt            int64 `gorm:"not null;autoCreateTime:false;index:idx_task_annotations_activity,priority:2,sort:desc"`
 }
 
 type TaskDependency struct {

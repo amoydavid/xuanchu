@@ -680,7 +680,7 @@ git commit -m "feat: 实现循环系列完整用例"
 
 Add table tests for projected `modify/start/done/delete/annotate/link-add/dependency-add/child-add` and projected invalid `stop/reopen/denotate/link-update/link-remove`. Assert valid writes create exactly one task and preserve public ID; invalid actions return the existing status/not-found errors and leave task/audit/event row counts unchanged. Add no-op modify/clear-empty tests with the same no-write assertion. Run each valid action twice concurrently and assert one physical row.
 
-Add read tests proving projected annotations、links、children、audit return empty list/page, urgency is calculated from merged fields, and all reads leave task/audit/event row counts unchanged.
+Add read tests proving projected annotations、links、children return empty list/page, urgency is calculated from merged fields, and all reads leave task/audit/event row counts unchanged.
 
 - [x] **Step 2: 运行测试确认失败**
 
@@ -698,7 +698,7 @@ Ordinary task modifications on occurrence add sorted unique override names for t
 
 - [x] **Step 5: 接入全部 task 子资源**
 
-Replace direct `Info→UUID→write` sequences for annotation/link/dependency/child **add** with `WithTaskForWrite`. Annotation update/delete and link update/remove use `WithExistingTaskForSubresourceWrite`: ordinary/materialized tasks keep current behavior; projected returns the same 404 as a missing child resource and never materializes. A projected occurrence may become parent of a manual child after materialization; attempts to set an occurrence's own parent remain rejected. Read methods short-circuit projected annotations/links/children/audit to empty values and calculate urgency from TaskOccurrenceView without requiring UUID.
+Replace direct `Info→UUID→write` sequences for annotation/link/dependency/child **add** with `WithTaskForWrite`. Annotation update/delete and link update/remove use `WithExistingTaskForSubresourceWrite`: ordinary/materialized tasks keep current behavior; projected returns the same 404 as a missing child resource and never materializes. A projected occurrence may become parent of a manual child after materialization; attempts to set an occurrence's own parent remain rejected. Read methods short-circuit projected annotations/links/children to empty values and calculate urgency from TaskOccurrenceView without requiring UUID.
 
 - [x] **Step 6: 验证事件顺序和并发**
 
@@ -827,7 +827,7 @@ HTTP error mapping must cover `task_series_not_found`(404)、`task_series_inacti
 
 - [x] **Step 1: 写 HTTP 合约失败测试**
 
-Add tests for full Series lifecycle, required project/write permission, scope hiding, closed project, recurrence_rule/effective_from validation, UserInfo output, stop/delete_open, and all documented errors/status mappings. Series list contract tests cover status/q/assignee/all sort modes, invalid values, filtered total, pagination and HTTP/Remote parity. Add task list tests for auto/materialized/expand, missing range, >366 days, inclusive date input, projected GET without writes and stable occurrence ID after done. Test `/reports/{name}` and `/tasks?report=` with identical range/mode/task_type/query, asserting identical TaskViewPage for ready/blocked/blocking/waiting/urgency and pagination after scope/sort. Exercise every existing task/subresource route with an occurrence_ref: projected annotation/link add materializes; annotation/link update/delete returns 404 without materialization; annotations/links/children/audit reads are empty; urgency is computed; no-op/failed writes leave task/audit/event counts unchanged.
+Add tests for full Series lifecycle, required project/write permission, scope hiding, closed project, recurrence_rule/effective_from validation, UserInfo output, stop/delete_open, and all documented errors/status mappings. Series list contract tests cover status/q/assignee/all sort modes, invalid values, filtered total, pagination and HTTP/Remote parity. Add task list tests for auto/materialized/expand, missing range, >366 days, inclusive date input, projected GET without writes and stable occurrence ID after done. Test `/reports/{name}` and `/tasks?report=` with identical range/mode/task_type/query, asserting identical TaskViewPage for ready/blocked/blocking/waiting/urgency and pagination after scope/sort. Exercise every existing task/subresource route with an occurrence_ref: projected annotation/link add materializes; annotation/link update/delete returns 404 without materialization; annotations/links/children reads are empty; urgency is computed; no-op/failed writes leave task/audit/event counts unchanged.
 
 Use this response assertion shape:
 

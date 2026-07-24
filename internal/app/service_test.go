@@ -76,6 +76,96 @@ func newTestServiceWithRuntime(t *testing.T, store *storage.Store, now int64, ac
 	return svc
 }
 
+func TestServiceAnnotatePersistsActorAndAuditAnnotationID(t *testing.T) {
+	svc, closeFn := newTestService(t, 1700000000)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Title: "activity actor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Annotate(tsk.UUID, "hello timeline"); err != nil {
+		t.Fatal(err)
+	}
+
+	var annotation storage.TaskAnnotation
+	if err := svc.store.DB().Where("task_uuid = ?", tsk.UUID).First(&annotation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if annotation.CreatedByActorType != "user" || annotation.CreatedByUserID == nil || *annotation.CreatedByUserID == "" {
+		t.Fatalf("annotation actor = %#v", annotation)
+	}
+	if annotation.CreatedAt != 1700000000 {
+		t.Fatalf("CreatedAt = %d, want 1700000000", annotation.CreatedAt)
+	}
+
+	var audit storage.AuditLog
+	if err := svc.store.DB().Where("target_id = ? AND action = ?", tsk.UUID, "task.annotate").First(&audit).Error; err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(audit.PayloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := payload["annotation_id"].(string); got != annotation.ID {
+		t.Fatalf("annotation_id = %q, want %q payload=%s", got, annotation.ID, audit.PayloadJSON)
+	}
+}
+
+func TestServiceAnnotationsPersistTenantTokenActor(t *testing.T) {
+	svc, closeFn := newTestService(t, 1700000000)
+	defer closeFn()
+	svc.runtime.ActorType = "tenant_access_token"
+	svc.runtime.ActorTokenType = "tenant_access_token"
+	svc.runtime.ActorUserID = ""
+	svc.runtime.ActorTokenID = "tenant-token-1"
+	svc.runtime.ActorTokenName = "自动化"
+	svc.runtime.ActorTokenPrefix = "xct_test"
+	svc.requestScope = &RequestScope{Capabilities: []string{"task:write"}}
+
+	created, err := svc.AddWithAnnotations(AddInput{Title: "token annotations"}, []string{"first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Annotate(created.UUID, "second"); err != nil {
+		t.Fatal(err)
+	}
+	var rows []storage.TaskAnnotation
+	if err := svc.store.DB().Where("task_uuid = ?", created.UUID).Order("entry ASC").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("annotations = %#v", rows)
+	}
+	for _, row := range rows {
+		if row.CreatedByActorType != "tenant_access_token" || row.CreatedByUserID != nil ||
+			row.CreatedByTokenID == nil || *row.CreatedByTokenID != "tenant-token-1" ||
+			row.CreatedByTokenName == nil || *row.CreatedByTokenName != "自动化" ||
+			row.CreatedByTokenPrefix == nil || *row.CreatedByTokenPrefix != "xct_test" {
+			t.Fatalf("annotation actor = %#v", row)
+		}
+	}
+}
+
+func TestServiceAnnotateAuditFailureRollsBackAnnotation(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	created, err := svc.Add(AddInput{Title: "annotation rollback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.auditRepo = &failingAuditRepo{}
+	if err := svc.Annotate(created.UUID, "must rollback"); err == nil {
+		t.Fatal("Annotate() error = nil, want audit failure")
+	}
+	var count int64
+	if err := svc.store.DB().Model(&storage.TaskAnnotation{}).Where("task_uuid = ?", created.UUID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("annotation count = %d, want rollback to leave zero", count)
+	}
+}
+
 func mustCreateUserRecord(t *testing.T, store *storage.Store, user storage.User) storage.User {
 	t.Helper()
 	created, err := storage.NewUserRepository(store.DB()).Create(user)

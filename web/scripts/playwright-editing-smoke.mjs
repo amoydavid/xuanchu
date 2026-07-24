@@ -705,6 +705,35 @@ async function newMockedPage(browser, viewport) {
       return
     }
 
+    // 任务详情 Activity 使用独立语义时间线，不再从 task.annotations 或旧 audit
+    // 在前端拼接。这里动态读取 task 注解，确保编辑后 query 失效能拿到新正文。
+    if (method === "GET" && pathName === "/api/v1/tasks/ads-1/activity") {
+      await fulfill(route, {
+        entries: [
+          ...task.annotations.map((annotation) => ({
+            id: `annotation:${annotation.id}`,
+            kind: "annotation",
+            action: "commented",
+            actor: { type: "user", user },
+            occurred_at: annotation.entry,
+            annotation: {
+              id: annotation.id,
+              description: annotation.description,
+            },
+          })),
+          {
+            id: "snapshot:created",
+            kind: "lifecycle",
+            action: "created",
+            actor: { type: "unknown" },
+            occurred_at: "2026-06-27T09:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      })
+      return
+    }
+
     // 子任务列表端点（任务详情页子任务区会请求）：mock 为空数组。
     if (method === "GET" && pathName === "/api/v1/tasks/ads-1/children") {
       await fulfill(route, [])

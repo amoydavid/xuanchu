@@ -1171,7 +1171,7 @@ func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLi
 			Action:     "task.link.add",
 			TargetType: "task",
 			TargetID:   updated.UUID,
-			Payload:    map[string]any{"link_id": created.ID, "type": linkType, "url": url},
+			Payload:    taskLinkAuditPayload(created.ID, created.Type, created.URL, created.Title),
 		}
 		event := buildTaskHookEvent("task.modified", updated, tx.runtime, tx.clock.Unix())
 		return []AuditEntry{entry}, []HookEvent{event}, nil
@@ -1244,7 +1244,7 @@ func (s *Service) TaskRemoveLink(taskRef, linkID string) error {
 		return err
 	}
 	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
-		updated, err := tx.removeLinkLocked(taskRef, linkID)
+		updated, removed, err := tx.removeLinkLocked(taskRef, linkID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1252,7 +1252,7 @@ func (s *Service) TaskRemoveLink(taskRef, linkID string) error {
 			Action:     "task.link.remove",
 			TargetType: "task",
 			TargetID:   updated.UUID,
-			Payload:    map[string]any{"link_id": linkID},
+			Payload:    taskLinkAuditPayload(removed.ID, removed.Type, removed.URL, removed.Title),
 		}
 		event := buildTaskHookEvent("task.modified", updated, tx.runtime, tx.clock.Unix())
 		return []AuditEntry{entry}, []HookEvent{event}, nil
@@ -1274,7 +1274,7 @@ func (s *Service) TaskUpdateLink(taskRef, linkID, linkType, url, title string) (
 			Action:     "task.link.update",
 			TargetType: "task",
 			TargetID:   updatedTask.UUID,
-			Payload:    map[string]any{"link_id": updatedLink.ID, "type": updatedLink.Type, "url": updatedLink.URL},
+			Payload:    taskLinkAuditPayload(updatedLink.ID, updatedLink.Type, updatedLink.URL, updatedLink.Title),
 		}
 		event := buildTaskHookEvent("task.modified", updatedTask, tx.runtime, tx.clock.Unix())
 		return []AuditEntry{entry}, []HookEvent{event}, nil
@@ -1341,29 +1341,33 @@ func (s *Service) updateLinkLocked(taskRef, linkID, linkType, url, title string)
 	}, updatedTask, nil
 }
 
-func (s *Service) removeLinkLocked(taskRef, linkID string) (task.Task, error) {
+func (s *Service) removeLinkLocked(taskRef, linkID string) (task.Task, storage.TaskLink, error) {
 	tsk, err := s.resolveTargetForWrite(taskRef)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, storage.TaskLink{}, err
 	}
 	linkRepo := storage.NewTaskLinkRepository(s.store.DB())
 	link, err := linkRepo.GetByID(linkID)
 	if err != nil {
-		return task.Task{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+		return task.Task{}, storage.TaskLink{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
 	}
 	if link.TaskUUID != tsk.UUID {
-		return task.Task{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+		return task.Task{}, storage.TaskLink{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
 	}
 	if err := linkRepo.Delete(linkID); err != nil {
-		return task.Task{}, err
+		return task.Task{}, storage.TaskLink{}, err
 	}
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return task.Task{}, err
+		return task.Task{}, storage.TaskLink{}, err
 	}
 	updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, storage.TaskLink{}, err
 	}
-	return updated, nil
+	return updated, link, nil
+}
+
+func taskLinkAuditPayload(id, linkType, url, title string) map[string]any {
+	return map[string]any{"link_id": id, "type": linkType, "url": url, "title": title}
 }

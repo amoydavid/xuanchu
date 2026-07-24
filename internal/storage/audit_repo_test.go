@@ -73,3 +73,49 @@ func TestAuditRepositoryListFiltersByTargetAndAction(t *testing.T) {
 		t.Fatalf("rows[0] = %#v", rows[0])
 	}
 }
+
+func TestAuditRepositoryListActivityActionsAndCursor(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repo := NewAuditRepository(store.DB())
+	workspaceID, targetType, targetID := "ws-activity", "task", "task-1"
+	for _, entry := range []AuditLogEntry{
+		{ID: 1, ActorType: "user", WorkspaceID: &workspaceID, Action: "task.add", TargetType: targetType, TargetID: targetID, CreatedAt: 100},
+		{ID: 2, ActorType: "user", WorkspaceID: &workspaceID, Action: "task.start", TargetType: targetType, TargetID: targetID, CreatedAt: 100},
+		{ID: 3, ActorType: "user", WorkspaceID: &workspaceID, Action: "task.done", TargetType: targetType, TargetID: targetID, CreatedAt: 100},
+		{ID: 4, ActorType: "user", WorkspaceID: &workspaceID, Action: "hook.delivery", TargetType: targetType, TargetID: targetID, CreatedAt: 101},
+	} {
+		if err := repo.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cursorID := int64(3)
+	rows, err := repo.List(AuditListOptions{
+		WorkspaceID: &workspaceID, TargetType: &targetType, TargetID: &targetID,
+		Actions: []string{"task.add", "task.start", "task.done"},
+		Cursor:  &AuditListCursor{CreatedAt: 100, ID: &cursorID}, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].ID != 2 || rows[1].ID != 1 {
+		t.Fatalf("rows = %#v, want IDs 2,1", rows)
+	}
+
+	empty, err := repo.List(AuditListOptions{Actions: []string{}, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty action list returned %#v", empty)
+	}
+
+	exists, err := repo.ExistsForTaskActions(workspaceID, targetID, []string{"task.add", "task.recurrence.generated"})
+	if err != nil || !exists {
+		t.Fatalf("ExistsForTaskActions = %v, %v", exists, err)
+	}
+}

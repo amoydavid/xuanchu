@@ -1,11 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 
 import {
   getTask,
-  getTaskAudit,
+  getTaskActivity,
   listTaskChildren,
   type ProjectTask,
-  type TaskAuditEntry,
 } from "../api/task-api"
 import {
   canonicalTaskRouteRef,
@@ -15,8 +18,8 @@ import {
 export const taskQueryKeys = {
   task: (workspaceSlug: string, taskRef: string) =>
     ["task", workspaceSlug, taskRef] as const,
-  audit: (workspaceSlug: string, taskRef: string) =>
-    ["task", workspaceSlug, taskRef, "audit"] as const,
+  activity: (workspaceSlug: string, taskRef: string) =>
+    ["task", workspaceSlug, taskRef, "activity"] as const,
   children: (workspaceSlug: string, taskRef: string, includeClosed: boolean) =>
     [
       "task",
@@ -59,10 +62,16 @@ export function useTaskDetailQuery(
   })
 }
 
-export function useTaskAuditQuery(workspaceSlug: string, taskRef: string) {
-  return useQuery<TaskAuditEntry[]>({
-    queryKey: taskQueryKeys.audit(workspaceSlug, taskRef),
-    queryFn: () => getTaskAudit(workspaceSlug, taskRef),
+export function useTaskActivityQuery(workspaceSlug: string, taskRef: string) {
+  return useInfiniteQuery({
+    queryKey: taskQueryKeys.activity(workspaceSlug, taskRef),
+    queryFn: ({ pageParam }) =>
+      getTaskActivity(workspaceSlug, taskRef, {
+        limit: 30,
+        cursor: pageParam || undefined,
+      }),
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: workspaceSlug.length > 0 && taskRef.length > 0,
   })
 }

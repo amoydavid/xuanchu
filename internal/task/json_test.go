@@ -303,6 +303,25 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	}
 }
 
+func TestTaskAnnotationJSONKeepsTaskwarriorCompatibleShape(t *testing.T) {
+	annotation := AnnotationsToJSON([]Annotation{{
+		ID: "annotation-1", Entry: 100, Description: "保留正文",
+	}})[0]
+	raw, err := json.Marshal(annotation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"id":"annotation-1","entry":"1970-01-01T00:01:40Z","description":"保留正文"}`
+	if string(raw) != want {
+		t.Fatalf("annotation JSON = %s, want %s", raw, want)
+	}
+	for _, forbidden := range []string{"actor", "created_at", "created_by"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("annotation JSON leaked %q: %s", forbidden, raw)
+		}
+	}
+}
+
 // TestJSONTaskRejectsLegacyRecurField 锁定旧 recur/mask/imask 字段在 decode 时被拒绝（spec §11.1、§20.2）。
 func TestJSONTaskRejectsLegacyRecurField(t *testing.T) {
 	for _, legacy := range []string{`"recur":"daily"`, `"mask":"abc"`, `"imask":1`} {

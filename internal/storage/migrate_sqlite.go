@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const m5ProjectsAppliedMetaKey = "migration.m5.projects.applied"
@@ -51,6 +52,9 @@ func (s *Store) migrateSQLite() error {
 		return err
 	}
 	if err := s.prepareTaskAnnotationIDsForV020(); err != nil {
+		return err
+	}
+	if err := s.prepareTaskAnnotationActivityColumns(); err != nil {
 		return err
 	}
 	if err := s.prepareActorColumnsForP2(); err != nil {
@@ -515,11 +519,20 @@ id TEXT PRIMARY KEY,
 task_uuid TEXT NOT NULL,
 entry INTEGER NOT NULL,
 description TEXT NOT NULL,
+created_by_actor_type TEXT NOT NULL DEFAULT 'unknown',
+created_by_user_id TEXT,
+created_by_token_id TEXT,
+created_by_token_name TEXT,
+created_by_token_prefix TEXT,
+created_at INTEGER NOT NULL DEFAULT 0,
 CONSTRAINT fk_tasks_annotations FOREIGN KEY(task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
 )`); err != nil {
 		return err
 	}
-	return tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)")
+	if err := tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)"); err != nil {
+		return err
+	}
+	return tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_activity ON task_annotations(task_uuid, created_at DESC, id DESC)")
 }
 
 func rebuildTaskAnnotationsWithIDs(tx m5MigrationTx) error {
@@ -540,7 +553,7 @@ func rebuildTaskAnnotationsWithIDs(tx m5MigrationTx) error {
 		if err := rows.Scan(&taskUUID, &entry, &description); err != nil {
 			return err
 		}
-		if err := tx.exec("INSERT INTO task_annotations(id, task_uuid, entry, description) VALUES(?, ?, ?, ?)", uuid.NewString(), taskUUID, entry, description); err != nil {
+		if err := tx.exec("INSERT INTO task_annotations(id, task_uuid, entry, description, created_at) VALUES(?, ?, ?, ?, ?)", uuid.NewString(), taskUUID, entry, description, entry); err != nil {
 			return err
 		}
 	}
@@ -551,6 +564,40 @@ func rebuildTaskAnnotationsWithIDs(tx m5MigrationTx) error {
 		return err
 	}
 	return tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)")
+}
+
+func (s *Store) prepareTaskAnnotationActivityColumns() error {
+	if !s.db.Migrator().HasTable(&TaskAnnotation{}) {
+		return nil
+	}
+	columns := []struct {
+		name string
+		sql  string
+	}{
+		{"created_by_actor_type", "ALTER TABLE task_annotations ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'unknown'"},
+		{"created_by_user_id", "ALTER TABLE task_annotations ADD COLUMN created_by_user_id TEXT"},
+		{"created_by_token_id", "ALTER TABLE task_annotations ADD COLUMN created_by_token_id TEXT"},
+		{"created_by_token_name", "ALTER TABLE task_annotations ADD COLUMN created_by_token_name TEXT"},
+		{"created_by_token_prefix", "ALTER TABLE task_annotations ADD COLUMN created_by_token_prefix TEXT"},
+		{"created_at", "ALTER TABLE task_annotations ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0"},
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, column := range columns {
+			if s.db.Migrator().HasColumn(&TaskAnnotation{}, column.name) {
+				continue
+			}
+			if err := tx.Exec(column.sql).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Exec("UPDATE task_annotations SET created_by_actor_type = 'unknown' WHERE created_by_actor_type IS NULL OR created_by_actor_type = ''").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("UPDATE task_annotations SET created_at = entry WHERE created_at = 0").Error; err != nil {
+			return err
+		}
+		return tx.Exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_activity ON task_annotations(task_uuid, created_at DESC, id DESC)").Error
+	})
 }
 
 func (s *Store) prepareReminderRuleScheduleColumns() error {

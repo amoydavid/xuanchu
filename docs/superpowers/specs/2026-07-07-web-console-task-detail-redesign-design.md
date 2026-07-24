@@ -1,8 +1,9 @@
 # Web Console 任务详情页结构重构设计
 
 **日期：** 2026-07-07
-**状态：** 已实现（阶段一：手动 sub-task 能力闭环；阶段二：结构重排与 Activity 合并）
-**范围：** Workspace Web Console 的任务详情页与手动 sub-task 创建入口
+**最近更新：** 2026-07-24
+**状态：** 已实现（阶段一至阶段三已完成；阶段四“任务列表父子树”仍不在当前交付范围）
+**范围：** Workspace Web Console 的任务详情页、手动 sub-task 创建入口与任务 Activity 语义时间线
 **承接：**
 
 - `2026-06-17-web-console-project-task-browsing-design.md`
@@ -44,7 +45,7 @@
 | 父任务 | `parent` / `parent_info` | 当前任务的上级 | 详情接口已把 `parent` 展开为 `parent_info`（带 title+slug） |
 | 依赖 | `depends` / `depends_info` | 当前任务依赖谁（我卡在别人上） | |
 | 被阻塞/正在阻塞 | `blocked_by_info` | **反向依赖**：谁依赖当前任务（当前任务卡住了别人） | 命名易接反，UI 文案为“正在阻塞这些任务” |
-| 活动 / Activity | 注解 `annotations` + 任务 audit | 人写的注解与系统字段变更的统一时间线 | 第一版可分组件，但目标是同一时间轴 |
+| 活动 / Activity | 当前注解 + 任务 audit | 人写的注解、任务生命周期、字段和关系变化的统一产品时间线 | 不等于原始审计日志，也不读取 Hook delivery |
 | 紧迫度 / urgency | 独立接口，**非详情字段** | 计算值 | 有独立加载态，不随详情同步返回 |
 
 ## 2. 现状
@@ -107,7 +108,7 @@
 | urgency | 右侧属性（`TaskUrgencyPanel`） | **不在详情接口返回**，由独立请求获取，有独立加载态 |
 | `links` | 左侧链接编辑器 | 添加、编辑、删除链接 |
 | `annotations` | 左侧注解编辑器 | 添加、编辑、删除注解 |
-| task audit | 左侧变更历史 | 字段级历史 |
+| 字段历史 | 左侧变更历史 | 阶段二专用读取只返回 `task.modify`，前端又只显示带 `changes` 的行 |
 | UDA | 右侧属性 | 根据类型选择文本/数字/日期/开关 |
 
 ### 2.3 当前缺口
@@ -120,6 +121,10 @@
 6. 后端 `addTaskRequest` / `app.AddInput` / `TaskCreateInput` 当前没有 `parent` 字段；常规 Web 创建任务无法写入手动父子关系。
 7. `parent` 字段当前承担 recurring parent/child 关系；手动 sub-task 必须明确和 recurring child 的边界，避免把周期任务规则误当普通任务清单。
 8. 详情接口已填充 `parent_info`（当前任务的父），但**没有任何接口返回 children**（谁以当前任务为 parent）。子任务列表目前只能靠 `parent:<uuid>` 反查，且没有 child count、没有聚合、没有 include_closed 语义。
+9. 页面标题写“活动”，实际只是注解与 `task.modify` 字段变更的上下分区，既未统一排序，也不是完整的任务事实流。
+10. 创建、开始、停止、完成、重新打开等动作已经分别写入 `task.add`、`task.start`、`task.stop`、`task.done`、`task.reopen` audit，但阶段二的字段级历史读取只筛选 `task.modify`，所以详情页必然看不到这些生命周期事件。
+11. Hook 层同时存在 `task.created`、`task.completed` 等语义事件，但 Hook delivery 取决于 Hook 配置和投递生命周期，不能作为用户可见历史的事实源。
+12. `task_annotations` 保存注解 ID、时间和正文，但不保存作者；现有 `task.annotate` audit 又没有 `annotation_id`，无法可靠地把历史注解与 actor 关联。不能靠“同一秒”猜测作者。项目注解和任务链接已经有 `created_by` actor 列，任务注解应复用同一模式。
 
 ## 3. Linear 信息架构与交互思路
 
@@ -192,6 +197,9 @@ Project
 7. 保持现有权限、workspace/project scope、closed project 禁写、completed/deleted task 禁写规则。
 8. 保持中文为主的 UI 文案和注释；英文 locale 同步补齐。
 9. 不破坏 recurring task 现有语义：周期规则生成的 children 继续可见，但手动 sub-task 和 recurring child 在 UI 上要有明确提示。
+10. 将任务 Activity 收口为真正的语义时间线：至少覆盖创建、开始、停止、完成、重新打开、字段变更、链接变更和当前注解。
+11. Activity 由 app 层输出稳定的语义结构；Web 不理解内部 audit action，不拼接原始 payload，不生成无法本地化的后端文案。
+12. Activity 使用同一排序和分页契约，桌面与移动端读取同一数据源。
 
 ## 5. 非目标
 
@@ -203,6 +211,10 @@ Project
 - 不改变任务 Markdown 持久化格式；正文仍保存为 Markdown 字符串。
 - 不让前端绕过现有 app service 和 HTTP 授权。
 - 不把 recurring parent 的自动生成规则改造成普通 checklist。
+- 不把通用 Audit Console 嵌入任务详情页，也不向普通 task reader 暴露原始 audit payload。
+- 不把 Hook definition、Hook delivery、通知投递或自动化执行记录混进任务 Activity；它们属于运维/集成可观测性。
+- 不为 Activity 新建第二套 append-only 事件表；已有 `audit_logs` 继续承载系统动作事实，`task_annotations` 继续承载当前可见注解正文。
+- 不在本阶段实现 threaded comment、reaction、@mention 通知或注解修订历史。
 
 ## 6. 核心决策
 
@@ -210,7 +222,12 @@ Project
 |---|---|
 | 页面骨架 | 桌面使用左主右栏；移动端使用分段 tab 或纵向折叠，不让属性栏挤压正文 |
 | 主区顺序 | 标题/正文、子任务、活动 |
-| 活动定义 | 合并展示注解与字段变更历史；链接变更仍通过 audit 体现 |
+| 活动定义 | 合并当前注解、任务生命周期、字段变更与链接变更；输出产品语义，不直接暴露 audit action |
+| 活动事实源 | 生命周期/字段/关系事件来自 `audit_logs`；注解正文来自 `task_annotations`；Hook delivery 不参与 |
+| 活动接口 | task-read 专用 `GET /api/v1/tasks/{ref}/activity` 是任务详情历史的唯一读取接口；字段级任务审计端点已在确认无消费者后移除 |
+| 活动排序 | `occurred_at DESC`，同秒使用稳定 source key 倒序；使用 opaque cursor，不使用会漂移的 offset 合并分页 |
+| 注解去重 | 当前注解只渲染一次；`task.annotate` / `task.annotation.update` / `task.denotate` audit 不再另渲染一条重复事件 |
+| 活动视觉 | 单列纵向 timeline；左侧小圆点由细线连接，右侧展示 actor、动作、时间和详情；不用互相割裂的卡片列表 |
 | 链接位置 | 作为正文附近的“关联资源”小区块，不再和 Activity 同级抢主线 |
 | 子任务展示 | 当前任务的直接 children，默认显示 open children，提供显示 completed/deleted 的入口 |
 | 子任务创建 | 主区就地 composer；只要求标题，可补描述、负责人、优先级、截止日期、标签；**Enter 直接提交并保持 composer 打开**，支持连续快速拆多条 |
@@ -221,7 +238,7 @@ Project
 | 权限 | 前端基于 `/api/v1/me` 和 task/project 状态隐藏或禁用写入口；服务端 403 仍是最终事实 |
 | 子任务创建 API | 扩展现有 task create 能力补 `parent`，不新增一套独立 sub-task 业务逻辑 |
 | 子任务读取 API | 新增专用 `GET /tasks/{ref}/children` 端点（而非前端拼 `parent:<uuid>` query），因带 query 后默认状态过滤失效且需 child count / include_closed |
-| 阶段顺序 | 先手动 sub-task 能力闭环（给价值），再纯结构重排（降回归风险） |
+| 阶段顺序 | 阶段一至三已经完成；后续若继续推进，则进入不属于当前交付的任务列表父子树 |
 
 ## 7. 信息架构设计
 
@@ -390,7 +407,7 @@ GET /api/v1/tasks/{taskRef}/children?workspace=<workspace>&limit=50&include_clos
 
 1. `parent:<uuid>` 的状态语义反直觉（见上），若靠查询字符串表达，会把业务规则（默认只显示 open）散落到前端。
 2. 子任务区需要 child count、include_closed、manual/recurring 区分，前端拼 query 几乎注定返工。
-3. 阶段三要做父子树，专用端点可以一次把 include_closed、count、manual/recurring 区分的出口留好。
+3. 阶段四要做父子树，专用端点可以一次把 include_closed、count、manual/recurring 区分的出口留好。
 
 若实现时决定先用 query 快速跑通，必须在测试里固定“返回全状态”这个行为，并在前端明确按状态分组，避免默认就漏显已删除子任务。
 
@@ -456,22 +473,224 @@ GET /api/v1/tasks/{taskRef}/children?workspace=<workspace>&limit=50&include_clos
 
 ### 9.4 活动区
 
-Activity 应统一承载“人写的注解”和“系统记录的字段变更”。
+原“注解组件在上、字段变更组件在下”的过渡实现已经退役。阶段三交付的 Activity 是一条统一、可分页、按时间交错的产品时间线，不再由两个组件共用标题伪装成统一活动。
 
 ```text
 活动
 [写注解...]
 
-王五 添加注解 · 今天 10:30
-  需要补素材截图。
-
-Alice 修改优先级 · 昨天
-  M -> H
+●  李四 完成了任务 · 今天 11:02
+│
+●  王五 添加注解 · 今天 10:30
+│  需要补素材截图。
+│
+●  Alice 修改了优先级 · 昨天 18:40
+│  M -> H
+│
+●  Alice 创建了任务 · 昨天 18:20
 ```
 
-当前 `TaskAnnotationsEditor` 与 `TaskChangeHistory` 可以先保持两个组件，但视觉上归入同一个 Activity 区块。后续可再合并数据源。
+#### 9.4.1 产品语义
 
-**合并契约（避免假合并）：** 视觉合并的最终目标是「注解条目 + 变更条目按统一时间戳倒序排在同一条时间轴」。第一版即使沿用两个组件，也必须避免做成「上半段全是注解、下半段全是变更」——那对用户等于没合并。若第一版无法按统一时间戳交错排序，需在文档/代码里显式标注为过渡态，并列入待办，明确后续要合并数据源、统一排序。
+Activity 回答的是“这个任务发生了什么”，不是“数据库里写了哪些审计 action”。后端必须把内部 action 映射为稳定的 Activity action，前端只根据 `kind/action` 和结构化详情进行 i18n 渲染。
+
+| Activity `kind` | Activity `action` | 事实来源 | 默认展示 |
+|---|---|---|---|
+| `lifecycle` | `created` | `task.add` | “创建了任务” |
+| `lifecycle` | `generated` | `task.recurrence.generated` | “生成了本次任务” |
+| `lifecycle` | `started` | `task.start` | “开始了任务” |
+| `lifecycle` | `stopped` | `task.stop` | “停止了任务” |
+| `lifecycle` | `completed` | `task.done` | “完成了任务” |
+| `lifecycle` | `reopened` | `task.reopen` | “重新打开了任务” |
+| `lifecycle` | `deleted` | `task.delete` | “删除了任务”；仅在该任务仍可被授权读取时出现 |
+| `change` | `fields_changed` | 带非空 `changes` 的 `task.modify` | 一条 event 内按稳定顺序展示本次所有字段变化 |
+| `relation` | `link_added` | `task.link.add` | “添加了链接”，详情包含结构化链接摘要 |
+| `relation` | `link_updated` | `task.link.update` | “更新了链接” |
+| `relation` | `link_removed` | `task.link.remove` | “移除了链接” |
+| `annotation` | `commented` | 当前 `task_annotations` 行 | 展示当前注解正文 |
+
+阶段三首版不展示以下记录：
+
+- 空 `changes` 的 `task.modify`，因为没有可解释内容。
+- `task.annotate`、`task.annotation.update`、`task.denotate` 的 audit 行，因为当前注解已经作为 `annotation/commented` 条目展示，重复展示会造成“一次操作两条活动”。
+- 仅供兼容的 `task.append`、`task.prepend`、`task.edit` 若没有结构化字段 diff，不能用含糊的“更新了任务”占位。后续若要纳入，应先让这些写路径生成同一套 `changes`。
+- Hook delivery、通知 delivery、自动化 job 状态和通用审计管理动作。
+
+`task.add`、`task.done` 等是内部 audit action；`created`、`completed` 等是 Activity 公共语义。HTTP 响应和 Web i18n 不得直接依赖 audit action 名称。
+
+#### 9.4.2 App 读模型与 HTTP 契约
+
+新增 app 层读模型，名称可按实现风格微调，但字段语义必须保持：
+
+```go
+type TaskActivityEntry struct {
+    ID         string         // audit:<id> | annotation:<uuid> | snapshot:created
+    Kind       string         // lifecycle | change | relation | annotation
+    Action     string         // created | completed | fields_changed | commented ...
+    Actor      task.ActorInfo // user/token/system/unknown；HTTP 转 JSONActorInfo
+    OccurredAt int64
+    Changes    []TaskFieldChange
+    Annotation *TaskActivityAnnotation
+    Link       *TaskActivityLink
+}
+
+type TaskActivityPage struct {
+    Entries    []TaskActivityEntry
+    NextCursor *string
+}
+```
+
+HTTP：
+
+```text
+GET /api/v1/tasks/{taskRef}/activity?workspace=<workspace>&limit=30&cursor=<opaque>
+```
+
+```json
+{
+  "data": {
+    "entries": [
+      {
+        "id": "audit:42",
+        "kind": "lifecycle",
+        "action": "completed",
+        "actor": {
+          "type": "user",
+          "user": {
+            "id": "user-1",
+            "name": "lisi",
+            "display_name": "李四",
+            "email": "lisi@example.com",
+            "external_ids": []
+          }
+        },
+        "occurred_at": "2026-07-24T11:02:00Z"
+      }
+    ],
+    "next_cursor": null
+  }
+}
+```
+
+约束：
+
+- 入口只要求 `task:read` / `PermissionTaskRead`，与任务详情一致；不要求普通成员持有 `audit:read`。
+- App 先按当前 workspace 解析 task ref，再以 `workspace_id + target_type=task + target_id` 查询，不能接受前端传任意 target ID 绕过 scope。
+- `actor` 统一使用 `task.ActorInfo` / `task.JSONActorInfo`。自然人必须输出完整 `task.UserInfo`，字段为 `id/name/display_name/email/external_ids`，不能输出裸 UUID。
+- `tenant_access_token` 等非自然人 actor 使用 `type + token`；内部生成且没有自然人主体的事件使用 `type=system`；历史数据无法确认主体时使用 `type=unknown`，不能拿当前用户或任务负责人代替。
+- 后端不返回已拼好的人类句子。时间格式、字段名、状态和空值文案由 Web i18n 渲染。
+- `limit` 默认 30、最大 100。cursor 是服务端不透明值，至少编码最后一条的 `occurred_at + source_rank + source_id`；客户端不得解析或自行构造，非法或不兼容 cursor 返回稳定的 `api_bad_cursor`。
+
+`TaskDetailPage` 只请求 `/api/v1/tasks/{ref}/activity`，不再并行读取另一套字段历史并在前端二次拼接。确认 Web Console 和其他仓库入口没有消费者后，阶段三收尾已删除原字段级任务审计 route、App 入口、TypeScript fetch/query 及其 OpenAPI 文档；通用 `/api/v1/audit` 继续保留。
+
+#### 9.4.3 事实源、注解作者与兼容
+
+系统事件继续复用 `audit_logs`。不新增 `task_activity_entries`，也不从 hook delivery 反推历史。
+
+当前注解正文继续以 `task_annotations` 为准：已删除注解不应因为 audit payload 仍存在而重新显示正文。任务注解的作者元数据直接落在注解行，复用 `ProjectAnnotation` / `TaskLink` 已有 actor 列模式：
+
+```text
+created_by_actor_type
+created_by_user_id
+created_by_token_id
+created_by_token_name
+created_by_token_prefix
+created_at
+```
+
+约束：
+
+- `created_by_actor_type` 支持现有 user / tenant token 类型，并新增历史兼容用 `unknown`；不能把空 user ID 序列化成伪造的自然人。
+- 新增注解时，app 在同一事务里把 `RuntimeContext.actorColumns()` 写入注解行；编辑注解不能改变原作者。
+- SQLite 与 PostgreSQL 都需要显式迁移。历史行回填 `created_by_actor_type=unknown`、`created_at=entry`，不能默认成当前用户或 workspace 创建者。
+- Activity 读取注解行上的 actor 列并批量 `resolveUserInfos`，不扫描 JSON payload 反查作者。
+- Taskwarrior 兼容的 `task.JSONAnnotation` 继续保持 `id/entry/description`，不把 actor 元数据塞进 Taskwarrior JSON。Activity HTTP 使用自己的 `actor` 字段；独立 annotations HTTP 若同步扩展，也必须使用 `task.JSONActorInfo`。
+- Task bundle/import 若没有可信作者来源，导入的注解使用 `unknown`；由当前写操作直接创建的注解使用真实 runtime actor。不能把“执行导入的人”冒充为原注解作者。
+
+同时让新写入的 `task.annotate` audit 与项目注解保持一致，补充可追踪的 `annotation_id`：
+
+```json
+{
+  "annotation_id": "annotation-uuid",
+  "before_project_id": "...",
+  "after_project_id": "..."
+}
+```
+
+- `task.annotate` 必须在同一事务里写入注解和包含 `annotation_id` 的 audit；不能提交注解后再补 audit。
+- Activity actor 以注解行元数据为准；`annotation_id` 用于审计追踪，不要求 Activity 解析 payload 才能显示作者。
+- Activity 不把 `task.annotate` audit 另渲染为第二条活动。
+- `task.annotation.update` 与 `task.denotate` 继续写 audit，但阶段三不展示注解编辑/删除历史。
+- 历史注解仍要展示，actor 返回 `type=unknown`。禁止按同一秒、相同正文或数组位置猜作者。
+- `AddWithAnnotations`、模板实例化或导入路径若创建注解，也必须遵守同一 actor 写入契约。
+
+创建事件的兼容规则：
+
+- 有 `task.add` 时映射为 `created`。
+- recurrence occurrence 有 `task.recurrence.generated` 时映射为 `generated`，不再额外伪造 `created`。
+- 历史任务既没有 `task.add` 也没有 `task.recurrence.generated` 时，从任务 `entry` 合成 `snapshot:created`，actor 为 `unknown`，保证时间线有真实创建时间但不伪造创建人。
+- 不从当前 `status/end` 合成完成或重新打开事件；快照无法还原多次完成/重开历史，猜测会制造假事实。
+
+#### 9.4.4 排序、分页与去重
+
+统一顺序为：
+
+```text
+occurred_at DESC, source_rank DESC, source_id DESC
+```
+
+- `occurred_at`：audit 使用 `created_at`，annotation 使用新增的 `created_at`（历史 fallback 为 `entry`），snapshot creation 使用 task `entry`。
+- `source_rank` 是服务端固定的同秒排序值，只用于结果稳定，不表达业务优先级；取值一旦发布不可随意调整。
+- `source_id`：audit 使用自增 ID，annotation 使用 UUID，snapshot 使用固定 key。
+- 下一页严格查询“小于 cursor 排序键”的记录，避免新活动插入后出现 offset 重复或漏项。
+- App 层可以分别从 audit 与 annotation repository 取 `limit + 1` 条候选后归并；不能把两个已经各自 offset 的页面简单拼接，因为那会导致跨数据源漏项。
+- `task.modify` 一次操作即一条 Activity entry，即使包含多个 field changes；不要拆成多条后让一次保存刷屏。
+- 当前注解、对应 `task.annotate` audit 只产生一个 `annotation/commented` entry。
+- 前端以 `entry.id` 作为稳定 key，不用数组 index、时间戳或正文作为 key。
+
+#### 9.4.5 纵向时间线视觉
+
+`TaskActivityTimeline` 使用单列纵向布局。每个条目分成固定宽度的轨道列和自适应内容列：
+
+```text
+轨道列    内容列
+
+  ●       李四 完成了任务 · 今天 11:02
+  │
+  ●       王五 添加注解 · 今天 10:30
+  │       需要补素材截图。
+  │
+  ●       Alice 修改了优先级 · 昨天 18:40
+  │       M -> H
+  │
+  ●       Alice 创建了任务 · 昨天 18:20
+```
+
+视觉契约：
+
+- 使用 `<ol>` / `<li>` 表达有序活动列表，DOM 顺序与接口一致：最新在上、最旧在下。
+- 轨道列建议宽 16px；节点是 6–8px 实心圆点，连接线是 1px 细线。具体尺寸可以随现有 design token 微调，但节点必须清楚落在线上，不能像项目符号列表一样与线脱节。
+- 连接线位于节点后方并贯穿相邻条目。首条不向节点上方冒线；最后一条在没有下一页时不向节点下方拖尾。
+- 当 `next_cursor != nil` 时，最后节点下方保留一小段向下延伸并渐隐的线，表达时间线仍可继续；“加载更多”与内容列左边缘对齐，不把按钮塞进圆点位置。
+- 节点和连线是装饰元素，设置 `aria-hidden="true"`；事件含义必须由正文表达，不能只靠圆点颜色或形状区分。
+- 首版所有节点使用中性前景/边框 token，避免把 Activity 做成彩色状态灯。若后续需要强调 `completed` 等里程碑，只能作为辅助视觉，文本仍是权威语义。
+- 条目正文不套独立大卡片、不加整行边框。actor、动作、时间组成首行，结构化 changes、注解 Markdown 或链接摘要紧随其下；相邻条目靠 16–20px 纵向间距和时间线分隔。
+- actor 与动作使用正常正文色；时间使用弱化色。桌面尽量同一行，窄屏允许时间自然换行，但不能挤压或覆盖轨道列。
+- 注解的编辑/删除入口在该条目 hover/focus 时出现，预留固定操作空间，避免按钮出现导致正文或圆点横向跳动。
+- composer 位于 timeline 上方，不分配圆点，也不接入竖线；草稿尚未成为活动事实。
+- 空态不显示孤立圆点或竖线。加载态使用带节点和短线的 timeline skeleton，避免数据回来时布局跳变。
+- 桌面和移动端使用同一结构；移动端仅压缩轨道宽度和内容间距，不退化成卡片列表。
+
+#### 9.4.6 UI 行为
+
+- 桌面和移动端共用 `TaskActivityTimeline`，移动端“活动”tab 不实现另一套映射。
+- composer 位于时间线顶部。新增、编辑、删除注解成功后使 activity query 失效并刷新；任务 start/stop/done/reopen/modify/link mutation 同样刷新 activity query。
+- 初始加载使用骨架；翻页使用“加载更多”，不得清空已展示活动。
+- 局部失败显示“活动暂不可用”与重试入口，不阻塞任务标题、正文和属性读取。
+- 空态统一为“暂无活动”；不可继续显示“暂无字段级变更记录”，因为 Activity 已不再等于字段变更。
+- actor 展示顺序为 `display_name -> name -> id`；token 展示 token name；`system` 显示“系统”，`unknown` 显示“未知主体”。
+- 生命周期事件使用直接文案，例如“完成了任务”，不用“状态从 pending 修改为 completed”替代。
+- 字段变化继续展示结构化 before/after；长 description 变化沿用可展开查看，不在主时间线上铺满正文。
 
 ### 9.5 右侧属性分组
 
@@ -524,7 +743,7 @@ Custom fields
 | 区域 | 空态 | 加载态 | 失败态 |
 |---|---|---|---|
 | 子任务区 | 一句引导文案 + 一个明显的「添加子任务」按钮（可写时），而非空白；不可写时显示「暂无子任务」 | 骨架行占位 | 行内错误 + 重试入口，不用全局 toast 作为唯一反馈 |
-| 活动区 | 「暂无注解与变更」+ 注解 composer（可写时） | 骨架占位 | 行内错误 + 重试 |
+| 活动区 | 「暂无活动」+ 注解 composer（可写时） | 统一时间线骨架；加载更多不清空已有条目 | 行内“活动暂不可用”+ 重试 |
 | 正文 | 「添加描述…」可点击引导（沿用现状） | — | — |
 | urgency | 独立加载态（因是独立请求），加载中显示占位而非闪烁 | 独立 skeleton | 失败静默降级，不阻塞其他属性 |
 
@@ -592,7 +811,40 @@ canCreateSubTask =
 - 右侧属性分组渲染关键字段，空分组隐身。
 - 移动端 tab 能在正文、子任务、属性、活动之间切换。
 
-### 11.3 验证命令
+### 11.3 Activity 后端测试
+
+至少覆盖：
+
+- 创建任务后 Activity 包含唯一 `created`；完成后在其上方出现 `completed`。
+- start/stop/reopen 映射为稳定语义 action，不暴露 `task.start` 等 audit action。
+- 一次 `task.modify` 含多个 changes 时只返回一条 `fields_changed`。
+- 空 changes 的 modify、annotate/update/denotate audit 不单独出现。
+- 当前注解只出现一条；新注解从注解行解析完整 actor UserInfo，`task.annotate` audit 不重复出现。
+- 历史注解迁移后仍展示正文，actor 为 unknown、created_at fallback 为 entry；不得猜测当前用户。
+- 注解 actor migration 在 SQLite/PostgreSQL 都正确回填；Taskwarrior JSON annotation 形状保持兼容。
+- 删除注解后 Activity 不再泄露已删除正文。
+- 普通 task reader 可读取 Activity，但无 `audit:read` 时仍不能读取通用 Audit Console。
+- workspace/project scope 不能通过 task UUID、cursor 或 annotation ID 绕过。
+- 同秒多条 audit/annotation 顺序稳定；翻页无重复、无漏项。
+- 历史任务缺少创建 audit 时只合成一条 `snapshot:created`；不从 completed 快照伪造完成事件。
+- SQLite 与 PostgreSQL 查询均使用参数绑定，继续满足 `CGO_ENABLED=0`。
+
+### 11.4 Activity 前端测试
+
+至少覆盖：
+
+- 创建、完成、重开、字段变化、链接变化和注解按 `occurred_at` 交错展示。
+- 生命周期文案使用 Activity action i18n，不渲染内部 audit action。
+- actor 按 display_name/name/id fallback；system、unknown、token 文案正确。
+- 一次多字段修改显示为一个条目；description 可展开。
+- Activity 使用语义化纵向 timeline：有序列表、装饰性节点/连线不进入无障碍名称，桌面和移动端不退化成独立卡片列表。
+- 首条上方无线、末条在无下一页时下方无线；有下一页时显示延伸线，“加载更多”与内容列对齐。
+- composer、空态不显示伪造的 timeline 节点；加载态保持轨道与内容列布局稳定。
+- 新增/编辑/删除注解和任务动作成功后刷新 activity query。
+- “加载更多”追加条目并保留已有列表；next_cursor 为空时隐藏入口。
+- Activity 局部失败不影响详情其他区域；空态为“暂无活动”。
+
+### 11.5 验证命令
 
 实现完成前不要声称完成。至少运行：
 
@@ -621,22 +873,35 @@ git diff --check
 
 阶段一交付后，用户立刻能拆任务，获得可感知价值；且不动大 UI，回归面小。
 
-### 阶段二：结构重排与 Activity 合并（再优化排布）
+### 阶段二：结构重排与 Activity 视觉归并（已完成）
 
 - 重排 TaskDetailPage 主区和右侧栏为「正文/关联资源/子任务/活动」。
 - 右侧属性按 Properties/Schedule/Relations/System/Custom fields 分组，空组隐身。
-- Activity 视觉合并注解与变更（按 §9.4 合并契约）。
+- Activity 只完成“共用标题和区域”的视觉归并，仍是两个数据源上下排列；阶段三负责完成 §9.4 的语义合并契约。
 - 纯视觉改动，风险集中、可灰度、可回退。
 
 说明：阶段一、二可在同一个 plan 中连续执行，但提交必须拆开——能力闭环与视觉重排分别可独立回退。
 
-### 阶段三：任务列表父子树
+### 阶段三：任务 Activity 语义时间线（已完成）
+
+- 新增 `TaskActivityEntry` app 读模型和 task-read 专用 `/api/v1/tasks/{ref}/activity` HTTP 端点。
+- 扩展 audit repository 的安全 action/cursor 查询，复用 actor 批量解析。
+- 为任务注解补齐与项目注解/任务链接一致的 actor 持久化字段，并让新注解 audit payload 带 `annotation_id`。
+- 将 lifecycle、field change、link relation 和当前 annotation 映射为稳定 Activity action。
+- 前端以统一的纵向 `TaskActivityTimeline` 替代 `TaskAnnotationsEditor + TaskChangeHistory` 的上下拼接，左侧圆点以细线连接，右侧承载事件内容。
+- 补齐 cursor 分页、权限、跨 workspace、历史 fallback、删除注解不泄露正文和 Web mutation 刷新测试。
+
+阶段三已经按独立 implementation plan 完成：详情页只读取 `/api/v1/tasks/{ref}/activity`，当前注解、生命周期、字段和链接事件按统一游标排序；无人使用的字段级任务审计端点及 Web 兼容代码已删除。Web 使用 `<ol>/<li>` 单列纵向时间线，左侧圆点和细线均为装饰元素，composer、空态与错误态不伪造节点。
+
+实现验证补充：SQLite 旧注解迁移、零 CGO 查询和全量测试已通过；PostgreSQL schema/query 条件测试已加入 `internal/storage/postgres_test.go`，但本次环境未配置 `XUANCHU_TEST_DB_URL`，因此按仓库惯例 skip，不能视为真实 PostgreSQL 实测结果。
+
+### 阶段四：任务列表父子树
 
 - 将任务列表页升级为父子层级展示。
 - 保留 recurring parent 隐藏、recurring child 可见的现有语义。
 - 需要 child count 或 lazy loading 时再新增后端聚合。
 
-阶段三不属于本 spec 的第一交付，但阶段一的 children 端点与 sub-task 数据形态必须为它留出口。
+阶段四不属于本 spec 的当前交付，但阶段一的 children 端点与 sub-task 数据形态必须为它留出口。
 
 ## 13. ASCII 终态原型
 
@@ -660,9 +925,16 @@ git diff --check
 |  |                                                          |  +-------------+ |
 |  | 活动                                                     |  | Relations   | |
 |  | [写注解...]                                              |  | 父任务 -    | |
-|  | David 添加注解：需要素材截图 · 9m ago                     |  | 依赖 DEM-7  | |
-|  | David changed priority M -> H · 9m ago                   |  | 阻塞 DEM-40 | |
-|  +----------------------------------------------------------+  +-------------+ |
+|  | ● 李四 完成了任务 · 2m ago                                |  | 依赖 DEM-7  | |
+|  | │                                                        |  | 阻塞 DEM-40 | |
+|  | ● David 添加注解 · 9m ago                                |  +-------------+ |
+|  | │  需要素材截图                                          |                  |
+|  | │                                                        |                  |
+|  | ● David 修改了优先级 · 12m ago                           |                  |
+|  | │  M -> H                                                |                  |
+|  | │                                                        |                  |
+|  | ● Alice 创建了任务 · 1d ago                              |                  |
+|  +----------------------------------------------------------+                  |
 |                                                                                |
 +--------------------------------------------------------------------------------+
 ```
@@ -692,5 +964,9 @@ git diff --check
 - children 读取已明确为专用端点，并写明 `parent:<uuid>` query 的状态陷阱。
 - 空态/加载态/失败态已定义（§9.6）。
 - 分阶段以“先能力后重排”为序，降低回归风险。
+- Activity 已明确为产品语义时间线，而不是 `task.modify` 别名或原始审计日志。
+- Activity 事实源、action 映射、完整 actor、注解 actor migration、去重、历史 fallback、cursor 排序与权限边界已定义。
+- Activity 视觉明确为带圆点和连接线的单列纵向 timeline，并覆盖首尾线段、分页延伸、移动端与无障碍规则。
+- 创建和完成等生命周期事件有明确映射；Hook delivery 被排除，不会因 Hook 配置影响用户历史。
 - ASCII 原型覆盖默认态、添加态、移动端。
 - 验证命令包含 Go、CGO=0、Web 和 smoke。

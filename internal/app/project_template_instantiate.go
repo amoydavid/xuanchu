@@ -368,7 +368,7 @@ func (s *Service) instantiateProjectTemplate(templateRef string, input Instantia
 				if err != nil {
 					return nil, nil, err
 				}
-				payload := mergeAnyMaps(map[string]any{"link_id": created.ID, "type": created.Type, "url": created.URL}, sourcePayload)
+				payload := mergeAnyMaps(taskLinkAuditPayload(created.ID, created.Type, created.URL, created.Title), sourcePayload)
 				entries = append(entries, AuditEntry{Action: "task.link.add", ProjectID: &project.ID, TargetType: "task", TargetID: item.ID, Payload: payload})
 			}
 		}

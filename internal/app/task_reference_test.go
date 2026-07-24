@@ -171,10 +171,6 @@ func TestProjectedOccurrenceReadSubresourcesStayEmptyWithoutMaterializing(t *tes
 	if err != nil || total != 0 || len(annotations) != 0 {
 		t.Fatalf("ListAnnotations(projected) = %#v, %d, %v", annotations, total, err)
 	}
-	audit, err := svc.ListTaskAudit(ref, TaskAuditInput{Limit: 20})
-	if err != nil || len(audit) != 0 {
-		t.Fatalf("ListTaskAudit(projected) = %#v, %v", audit, err)
-	}
 	explain, err := svc.ExplainUrgency(ref)
 	if err != nil {
 		t.Fatalf("ExplainUrgency(projected): %v", err)

@@ -26,6 +26,9 @@ func (s *Store) migratePostgres() error {
 	if err := s.prepareTaskAnnotationIDsPostgres(); err != nil {
 		return err
 	}
+	if err := s.prepareTaskAnnotationActivityColumnsPostgres(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(
 		&TaskTag{}, &TaskAnnotation{}, &TaskDependency{},
 		&TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}, &Attachment{},
@@ -208,6 +211,35 @@ WHERE table_schema = current_schema()
 			return err
 		}
 		return tx.Exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)").Error
+	})
+}
+
+func (s *Store) prepareTaskAnnotationActivityColumnsPostgres() error {
+	var tableName sql.NullString
+	if err := s.db.Raw("SELECT to_regclass('task_annotations')::text").Scan(&tableName).Error; err != nil {
+		return err
+	}
+	if !postgresRegclassFound(tableName) {
+		return nil
+	}
+	statements := []string{
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'unknown'",
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE task_annotations ADD COLUMN IF NOT EXISTS created_at bigint NOT NULL DEFAULT 0",
+		"UPDATE task_annotations SET created_by_actor_type = 'unknown' WHERE created_by_actor_type IS NULL OR created_by_actor_type = ''",
+		"UPDATE task_annotations SET created_at = entry WHERE created_at = 0",
+		"CREATE INDEX IF NOT EXISTS idx_task_annotations_activity ON task_annotations(task_uuid, created_at DESC, id DESC)",
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, statement := range statements {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

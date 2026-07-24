@@ -245,7 +245,7 @@ func decodedPathParam(r *http.Request, name string) (string, error) {
 - [x] **Step 5: 验证并提交**
 
 ```bash
-go test ./internal/httpapi -run 'TaskHTTP|Occurrence|TaskInfo|TaskLink|TaskAudit|TaskUrgency' -count=1
+go test ./internal/httpapi -run 'TaskHTTP|Occurrence|TaskInfo|TaskLink|TaskActivity|TaskUrgency' -count=1
 git add internal/httpapi
 git commit -m "fix: 统一 HTTP 循环实例引用"
 ```

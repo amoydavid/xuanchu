@@ -218,7 +218,7 @@ TaskRefResolution
 | stop/reopen | 普通状态约束 | 停止本次/重新打开本次，遵守实例状态约束 |
 | delete | 删除任务 | 跳过本次，写 recurrence skip 审计 |
 | annotation/link/dependency/child | 操作任务子资源 | 只操作本次；projected 按原 spec 决定是否物化 |
-| urgency/audit | 普通任务结果 | 基于实例 view；projected 读取不物化 |
+| urgency | 普通任务结果 | 基于实例 view；projected 读取不物化 |
 
 ### 7.2 单次 override
 
@@ -920,7 +920,7 @@ occ:series:slot ----------+                         |
 - malformed `%`、双重编码和 encoded slash 返回 400；
 - `GET /tasks/ops-7` 返回 recurrence_info；
 - UUID/task_slug/occurrence_ref 三种 GET 的核心 occurrence 字段一致；
-- modify/start/done/stop/reopen/delete/annotation/link/dependency/children/audit/urgency 使用 task_slug 时保留 occurrence 语义；
+- modify/start/done/stop/reopen/delete/annotation/link/dependency/children/urgency 使用 task_slug 时保留 occurrence 语义；
 - projected 首次写入返回 task_slug；
 - 所有失败写入无 task/audit/event/project_seq 副作用；
 - project/workspace allowlist 不能通过别名绕过。

@@ -966,7 +966,7 @@ HTTP、Remote `TaskViewPageDTO`、MCP `structuredContent.data` 使用同一 page
 - `POST /tasks/{id}/start|done` 对 projected occurrence 原子物化并执行本次动作；`stop/reopen` 对 projected 返回状态错误，不物化。
 - `DELETE /api/v1/tasks/{id}` 对 occurrence 执行“跳过本次”；series 不属于该路由。
 - annotations、links、dependencies、children 等 task 子资源写入口共享同一个 resolver，但必须先校验请求是否可能成功：新增 annotation/link/dependency/child 时 projected occurrence 先物化；update/delete/remove 已有子资源时，若 projected occurrence 尚未物化，则该子资源必然不存在，直接返回 404 且不物化。
-- projected occurrence 的 annotations、links、children、audit 读接口返回与普通空任务相同的空 list/page，不物化；urgency 使用投影合并后的字段即时计算并返回说明，不物化。projected 的 `entry=null`，因此 urgency 不计算 age 项；due、priority、tags、project、UDA 等按继承值计算，blocked/blocking 固定为 false。materialized occurrence 按实体数据读取。
+- projected occurrence 的 annotations、links、children 读接口返回与普通空任务相同的空 list/page，不物化；urgency 使用投影合并后的字段即时计算并返回说明，不物化。projected 的 `entry=null`，因此 urgency 不计算 age 项；due、priority、tags、project、UDA 等按继承值计算，blocked/blocking 固定为 false。materialized occurrence 按实体数据读取。
 - 空 patch、清空本就为空的集合等无有效变化写入在物化前完成 diff，直接返回当前 projected view，不创建 Task、不写 audit/event。任何参数错误、权限错误、状态错误或子资源不存在错误都不得留下物化实体。
 - 所有 occurrence 写响应返回 materialized view，`id` 仍为原 occurrence_ref，同时补充 `uuid/task_slug`。
 
@@ -2125,7 +2125,7 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - series 不发普通 task.created；occurrence 会发。
 - projected 纯读不写库；modify/done/skip/annotate/link/dependency 首次写均原子物化。
 - series shared modify 不覆盖 recurrence_overrides。
-- projected 的 annotation/link/children/audit 读取为空、urgency 可计算且不物化；对不存在子资源的 update/delete/remove 失败且不物化。
+- projected 的 annotation/link/children 读取为空、urgency 可计算且不物化；对不存在子资源的 update/delete/remove 失败且不物化。
 - no-op modify 和所有失败写入均不物化、不写 audit/event。
 - external edit 的取消、失败和无 diff 不物化；有 diff 时物化与 modify 原子提交。
 

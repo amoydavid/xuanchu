@@ -144,7 +144,7 @@ describe("task mutation hooks", () => {
         refetchType: "none",
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: ["task", "acme", "ads-1", "audit"],
+        queryKey: ["task", "acme", "ads-1", "activity"],
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "tasks"],
@@ -177,6 +177,9 @@ describe("task mutation hooks", () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "timeline"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["task", "acme", "ads-1", "activity"],
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["my-tasks", "acme"],
@@ -246,6 +249,9 @@ describe("task mutation hooks", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "timeline"],
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["task", "acme", "ads-1", "activity"],
+      })
     })
   })
 
@@ -268,6 +274,9 @@ describe("task mutation hooks", () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "tasks"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["task", "acme", "ads-1", "activity"],
       })
     })
   })

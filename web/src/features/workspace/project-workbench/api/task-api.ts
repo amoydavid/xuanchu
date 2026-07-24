@@ -107,7 +107,11 @@ export type TaskImportTask = {
   wait?: string | null
   scheduled?: string | null
   until?: string | null
-  annotations?: Array<{ id?: string; entry: string; description: string }> | null
+  annotations?: Array<{
+    id?: string
+    entry: string
+    description: string
+  }> | null
   depends?: string[] | null
   parent?: string | null
   assignees?: Array<
@@ -248,24 +252,50 @@ export type TaskFieldChange =
   | TaskSetFieldChange
   | TaskUDAFieldChange
 
-export type TaskAuditEntry = {
-  id: number
-  actor_type?: string
-  actor?: UserInfo | null
-  actor_token?: { id: string; name: string; prefix: string } | null
-  action: string
-  target_type: string
-  target_id: string
-  payload?: unknown
-  changes?: TaskFieldChange[]
-  created_at: number
+export type TaskActivityActor = {
+  type: "user" | "tenant_access_token" | "system" | "unknown" | string
+  user?: UserInfo | null
+  token?: { id: string; name: string; prefix: string } | null
 }
 
-export function taskAuditPath(
+export type TaskActivityEntry = {
+  id: string
+  kind: "lifecycle" | "change" | "relation" | "annotation"
+  action:
+    | "created"
+    | "generated"
+    | "started"
+    | "stopped"
+    | "completed"
+    | "reopened"
+    | "deleted"
+    | "fields_changed"
+    | "link_added"
+    | "link_updated"
+    | "link_removed"
+    | "commented"
+    | string
+  actor: TaskActivityActor
+  occurred_at: string
+  changes?: TaskFieldChange[]
+  annotation?: { id: string; description: string } | null
+  link?: { id: string; type: string; url: string; title: string } | null
+}
+
+export type TaskActivityPage = {
+  entries: TaskActivityEntry[]
+  next_cursor: string | null
+}
+
+export function taskActivityPath(
   workspaceSlug: string,
-  taskRef: string
+  taskRef: string,
+  options: { limit?: number; cursor?: string } = {}
 ): string {
-  return `/api/v1/tasks/${encodeSegment(taskRef)}/audit?${workspaceQuery(workspaceSlug)}`
+  let query = workspaceQuery(workspaceSlug)
+  if (options.limit !== undefined) query += `&limit=${options.limit}`
+  if (options.cursor) query += `&cursor=${encodeURIComponent(options.cursor)}`
+  return `/api/v1/tasks/${encodeSegment(taskRef)}/activity?${query}`
 }
 
 export function createTask(
@@ -433,12 +463,13 @@ export function importTasks(
   )
 }
 
-export function getTaskAudit(
+export function getTaskActivity(
   workspaceSlug: string,
-  taskRef: string
-): Promise<TaskAuditEntry[]> {
-  return workspaceApiGet<TaskAuditEntry[]>(
-    taskAuditPath(workspaceSlug, taskRef)
+  taskRef: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<TaskActivityPage> {
+  return workspaceApiGet<TaskActivityPage>(
+    taskActivityPath(workspaceSlug, taskRef, options)
   )
 }
 

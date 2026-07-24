@@ -51,7 +51,7 @@
 | v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
 | v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
-| v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
+| v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏 + Activity 语义时间线 |
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
 | v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
@@ -570,7 +570,8 @@ docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 
 - **手动 sub-task 创建闭环**：`app.AddInput` / HTTP `addTaskRequest` / 前端 `TaskCreateInput` 增加 `parent` 字段；创建时校验 parent 存在/跨 workspace/自引用/环/deleted/completed/recurring/project 不一致，并默认继承父任务 project。新增专用 `GET /api/v1/tasks/{taskRef}/children?include_closed=` 端点（避免 `parent:<uuid>` query 的默认状态过滤陷阱）。
 - **就地 composer**：任务详情页正文与活动之间新增子任务列表与就地 composer；标题 Enter 直接提交并保持 composer 打开（支持连续拆多条），失败保留草稿。子任务默认隐藏 deleted、折叠 completed。
-- **结构重排**：桌面主区按「正文/关联资源 → 子任务 → 活动」组织；右侧属性栏按 Properties / Schedule / Relations / System / Custom 分组、可折叠、空组隐身；注解与变更历史归入统一 Activity 区块（过渡态，已标注后续按统一时间戳交错排序的 TODO）。
+- **结构重排**：桌面主区按「正文/关联资源 → 子任务 → 活动」组织；右侧属性栏按 Properties / Schedule / Relations / System / Custom 分组、可折叠、空组隐身。
+- **Activity 语义时间线**：新增 task-read 专用 `GET /api/v1/tasks/{taskRef}/activity`，由 App 层合并生命周期、字段变化、链接变化和当前注解，使用 opaque cursor 稳定分页；详情页以左侧圆点和细线连接的单列纵向 timeline 展示。Activity 是任务详情历史的唯一读取接口；已移除无人使用的字段级任务审计端点，通用 Audit Console 不受影响。
 - **移动端**：分段 tab 扩展为「正文 / 子任务 / 属性 / 活动」，默认打开正文。
 - **权限与错误**：前端按 `canTaskWrite && !projectClosed && 任务可写 && 非 recurring parent` 门控创建入口；服务端 workspace/project scope 与 task:write 仍是最终事实。
 
@@ -579,6 +580,7 @@ docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```text
 docs/superpowers/specs/2026-07-07-web-console-task-detail-redesign-design.md
 docs/superpowers/plans/2026-07-07-web-console-task-detail-redesign-implementation.md
+docs/superpowers/plans/2026-07-24-web-console-task-activity-timeline-implementation.md
 ```
 
 ## v0.5.6：Web Console 项目自动化

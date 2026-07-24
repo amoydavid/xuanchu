@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -180,6 +181,87 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 	}
 	if created.UUID != tsk.UUID {
 		t.Errorf("UUID mismatch: %q vs %q", created.UUID, tsk.UUID)
+	}
+}
+
+func TestPostgresTaskAnnotationActivitySchemaAndQueries(t *testing.T) {
+	dbURL := postgresTestURL(t)
+	store, err := Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	for _, column := range []string{
+		"created_by_actor_type", "created_by_user_id", "created_by_token_id",
+		"created_by_token_name", "created_by_token_prefix", "created_at",
+	} {
+		if !store.DB().Migrator().HasColumn(&TaskAnnotation{}, column) {
+			t.Fatalf("task_annotations.%s missing after PostgreSQL migration", column)
+		}
+	}
+	var indexDef string
+	if err := store.DB().Raw(`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'task_annotations' AND indexname = 'idx_task_annotations_activity'`).Scan(&indexDef).Error; err != nil {
+		t.Fatal(err)
+	}
+	normalizedIndex := strings.ToLower(strings.Join(strings.Fields(indexDef), " "))
+	if !strings.Contains(normalizedIndex, "(task_uuid, created_at desc, id desc)") {
+		t.Fatalf("idx_task_annotations_activity = %q", indexDef)
+	}
+
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := store.DB().Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	defer tx.Rollback() //nolint:errcheck -- 测试事务只用于隔离 fixture。
+	taskID := uuid.NewString()
+	if _, err := NewTaskRepository(tx).Create(task.Task{
+		UUID: taskID, WorkspaceID: ws.ID, Title: "activity postgres",
+		Status: task.StatusPending, Entry: 100, Modified: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{uuid.NewString(), uuid.NewString()}
+	if ids[0] < ids[1] {
+		ids[0], ids[1] = ids[1], ids[0]
+	}
+	for _, id := range ids {
+		if err := tx.Create(&TaskAnnotation{
+			ID: id, TaskUUID: taskID, Entry: 500, Description: id,
+			CreatedByActorType: "unknown", CreatedAt: 500,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := NewTaskRepository(tx)
+	first, err := repo.ListAnnotationActivity(ws.ID, taskID, nil, 1)
+	if err != nil || len(first) != 1 || first[0].ID != ids[0] {
+		t.Fatalf("first annotation page = %#v, err=%v", first, err)
+	}
+	cursorID := first[0].ID
+	second, err := repo.ListAnnotationActivity(ws.ID, taskID, &TaskAnnotationListCursor{CreatedAt: 500, ID: &cursorID}, 1)
+	if err != nil || len(second) != 1 || second[0].ID != ids[1] {
+		t.Fatalf("second annotation page = %#v, err=%v", second, err)
+	}
+
+	auditRepo := NewAuditRepository(tx)
+	for index, action := range []string{"task.add", "workspace.modify"} {
+		if err := auditRepo.Append(AuditLogEntry{
+			WorkspaceID: &ws.ID, Action: action, TargetType: "task", TargetID: taskID,
+			PayloadJSON: `{}`, CreatedAt: int64(600 + index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := auditRepo.List(AuditListOptions{
+		WorkspaceID: &ws.ID, Actions: []string{"task.add"}, Limit: 10,
+	})
+	if err != nil || len(rows) != 1 || rows[0].Action != "task.add" {
+		t.Fatalf("PostgreSQL audit action filter = %#v, err=%v", rows, err)
 	}
 }
 

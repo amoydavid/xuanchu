@@ -406,10 +406,9 @@ function TaskDetailPageContent({
               workspaceSlug={workspaceSlug}
             />
           </div>
-          {/* 活动：注解 + 变更历史统一时间轴（过渡态，spec §9.4） */}
+          {/* 活动：生命周期、字段、关系和当前注解统一语义时间轴（spec §9.4） */}
           <div className={mobilePanelClass(activeMobileTab, "activity")}>
             <ActivitySection
-              annotations={taskData.annotations}
               canWrite={taskWritable}
               projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
@@ -588,13 +587,18 @@ function TaskDescriptionBlock({
                 taskRef,
                 projectRef,
                 fetchSuggestions: async ({ kind, query, signal }) => {
-                  const resolved = await suggestContentReferences({
-                    type: kind,
-                    query,
-                    project: projectRef,
-                    limit: 20,
-                  }, { signal })
-                  return resolved.map(resolutionToMenuItem).filter((item) => item !== null)
+                  const resolved = await suggestContentReferences(
+                    {
+                      type: kind,
+                      query,
+                      project: projectRef,
+                      limit: 20,
+                    },
+                    { signal }
+                  )
+                  return resolved
+                    .map(resolutionToMenuItem)
+                    .filter((item) => item !== null)
                 },
               }}
               ariaLabel={t("projectReadonly.taskDescription")}
@@ -613,7 +617,9 @@ function TaskDescriptionBlock({
             <div className="text-sm text-destructive">{error}</div>
           ) : null}
           {failedUploads > 0 ? (
-            <div className="text-sm text-destructive">图片上传失败，请删除占位内容后重试粘贴。</div>
+            <div className="text-sm text-destructive">
+              图片上传失败，请删除占位内容后重试粘贴。
+            </div>
           ) : null}
           <DialogFooter>
             <Button

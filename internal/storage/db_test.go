@@ -1300,6 +1300,53 @@ func TestM5MigrationRebuildsM4RelationForeignKeys(t *testing.T) {
 	}
 }
 
+func TestTaskAnnotationActivityColumnsMigrated(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+	seedM4GORMDatabaseWithTaskRelations(t, dbPath)
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	for _, column := range []string{
+		"created_by_actor_type", "created_by_user_id", "created_by_token_id",
+		"created_by_token_name", "created_by_token_prefix", "created_at",
+	} {
+		if !store.DB().Migrator().HasColumn(&TaskAnnotation{}, column) {
+			t.Fatalf("task_annotations.%s missing after migration", column)
+		}
+	}
+	var row TaskAnnotation
+	if err := store.DB().Where("task_uuid = ?", "task-1").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.CreatedByActorType != "unknown" {
+		t.Fatalf("CreatedByActorType = %q, want unknown", row.CreatedByActorType)
+	}
+	if row.CreatedByUserID != nil || row.CreatedByTokenID != nil || row.CreatedByTokenName != nil || row.CreatedByTokenPrefix != nil {
+		t.Fatalf("historical annotation actor columns = %#v, want nil", row)
+	}
+	if row.CreatedAt != row.Entry {
+		t.Fatalf("CreatedAt = %d, want entry %d", row.CreatedAt, row.Entry)
+	}
+	if !store.DB().Migrator().HasIndex(&TaskAnnotation{}, "idx_task_annotations_activity") {
+		t.Fatal("idx_task_annotations_activity missing after migration")
+	}
+
+	if err := store.prepareTaskAnnotationActivityColumns(); err != nil {
+		t.Fatalf("idempotent annotation migration: %v", err)
+	}
+	var count int64
+	if err := store.DB().Model(&TaskAnnotation{}).Where("task_uuid = ?", "task-1").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("annotation count after second migration = %d, want 1", count)
+	}
+}
+
 type seedTask struct {
 	WorkspaceSlug string
 	UUID          string

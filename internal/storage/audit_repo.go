@@ -36,8 +36,16 @@ type AuditListOptions struct {
 	TargetType  *string
 	TargetID    *string
 	Action      *string
+	Actions     []string
+	Cursor      *AuditListCursor
 	Limit       int
 	Offset      int
+}
+
+type AuditListCursor struct {
+	CreatedAt        int64
+	ID               *int64
+	IncludeCreatedAt bool
 }
 
 type AuditRepository struct {
@@ -75,6 +83,12 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	if opts.ProjectID != nil && opts.WorkspaceID == nil {
 		return nil, fmt.Errorf("%w: workspace_id is required when filtering audit logs by project_id", ErrInvalidAuditScope)
 	}
+	if opts.Action != nil && opts.Actions != nil {
+		return nil, fmt.Errorf("single action and action list cannot be combined")
+	}
+	if opts.Actions != nil && len(opts.Actions) == 0 {
+		return []AuditLogEntry{}, nil
+	}
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 50
@@ -94,6 +108,18 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	}
 	if opts.Action != nil {
 		query = query.Where("action = ?", *opts.Action)
+	}
+	if opts.Actions != nil {
+		query = query.Where("action IN ?", opts.Actions)
+	}
+	if opts.Cursor != nil {
+		if opts.Cursor.ID != nil {
+			query = query.Where("created_at < ? OR (created_at = ? AND id < ?)", opts.Cursor.CreatedAt, opts.Cursor.CreatedAt, *opts.Cursor.ID)
+		} else if opts.Cursor.IncludeCreatedAt {
+			query = query.Where("created_at <= ?", opts.Cursor.CreatedAt)
+		} else {
+			query = query.Where("created_at < ?", opts.Cursor.CreatedAt)
+		}
 	}
 	var rows []AuditLog
 	if err := query.Order("created_at DESC").Order("id DESC").Offset(opts.Offset).Limit(limit).Find(&rows).Error; err != nil {
@@ -123,4 +149,16 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 		})
 	}
 	return out, nil
+}
+
+func (r *AuditRepository) ExistsForTaskActions(workspaceID, taskID string, actions []string) (bool, error) {
+	if len(actions) == 0 {
+		return false, nil
+	}
+	var count int64
+	err := r.db.Model(&AuditLog{}).
+		Where("workspace_id = ? AND target_type = ? AND target_id = ? AND action IN ?", workspaceID, "task", taskID, actions).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
 }

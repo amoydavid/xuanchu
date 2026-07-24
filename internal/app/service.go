@@ -471,11 +471,13 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 		}
 		entries := []AuditEntry{taskAuditEntry("task.add", created.UUID, change)}
 		for _, annotation := range annotations {
-			targetTask, annChange, err := tx.annotateLocked(created.UUID, annotation)
+			targetTask, annChange, annotationID, err := tx.annotateLocked(created.UUID, annotation)
 			if err != nil {
 				return nil, nil, err
 			}
-			entries = append(entries, taskAuditEntry("task.annotate", targetTask.UUID, annChange))
+			entry := taskAuditEntry("task.annotate", targetTask.UUID, annChange)
+			entry.Payload = mergeAnyMaps(entry.Payload, map[string]any{"annotation_id": annotationID})
+			entries = append(entries, entry)
 			_ = targetTask // annotation events not required in M8 v1
 		}
 		created, err = tx.repo.GetByUUID(tx.workspaceID, created.UUID)
@@ -1220,27 +1222,28 @@ func (s *Service) Annotate(target, description string) error {
 		return err
 	}
 	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
-		annotatedTask, change, err := tx.annotateLocked(target, description)
+		annotatedTask, change, annotationID, err := tx.annotateLocked(target, description)
 		if err != nil {
 			return nil, nil, err
 		}
 		event := buildTaskHookEvent("task.modified", annotatedTask, tx.runtime, tx.clock.Unix())
 		entry := taskAuditEntry("task.annotate", annotatedTask.UUID, change)
+		entry.Payload = mergeAnyMaps(entry.Payload, map[string]any{"annotation_id": annotationID})
 		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) annotateLocked(target, description string) (task.Task, projectChange, error) {
+func (s *Service) annotateLocked(target, description string) (task.Task, projectChange, string, error) {
 	description = strings.TrimSpace(description)
 	if description == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("annotation description is required")
+		return task.Task{}, projectChange{}, "", fmt.Errorf("annotation description is required")
 	}
 
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
 		tsk, err := s.resolveTargetForWrite(target)
 		if err != nil {
-			return task.Task{}, projectChange{}, err
+			return task.Task{}, projectChange{}, "", err
 		}
 		change := projectChangeForTask(tsk)
 		entry := now
@@ -1257,20 +1260,25 @@ func (s *Service) annotateLocked(target, description string) (task.Task, project
 			}
 			entry++
 		}
-		if err := s.repo.AddAnnotation(s.workspaceID, tsk.UUID, task.Annotation{ID: uuid.NewString(), Entry: entry, Description: description}, entry); err != nil {
+		annotationID := uuid.NewString()
+		actor := s.runtime.actorColumns()
+		if err := s.repo.AddAnnotationWithActor(s.workspaceID, tsk.UUID, task.Annotation{ID: annotationID, Entry: entry, Description: description}, storage.TaskAnnotationActor{
+			Type: actor.Type, UserID: actor.UserID, TokenID: actor.TokenID,
+			TokenName: actor.TokenName, TokenPrefix: actor.TokenPrefix,
+		}, entry, entry); err != nil {
 			if storage.IsUniqueConstraintError(err) {
 				now = entry + 1
 				continue
 			}
-			return task.Task{}, projectChange{}, err
+			return task.Task{}, projectChange{}, "", err
 		}
 		updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
 		if err != nil {
-			return task.Task{}, projectChange{}, err
+			return task.Task{}, projectChange{}, "", err
 		}
-		return updated, change, nil
+		return updated, change, annotationID, nil
 	}
-	return task.Task{}, projectChange{}, fmt.Errorf("annotation conflict could not be resolved")
+	return task.Task{}, projectChange{}, "", fmt.Errorf("annotation conflict could not be resolved")
 }
 
 func (s *Service) Denotate(target string, annotationID string) error {

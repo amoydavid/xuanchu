@@ -18,14 +18,6 @@ type AuditListInput struct {
 	Offset       int
 }
 
-// TaskAuditInput 是任务详情历史专用查询入参。
-// 它只接受 limit/offset；target 由内部按 taskRef 解析，
-// action 固定为 task.modify。
-type TaskAuditInput struct {
-	Limit  int
-	Offset int
-}
-
 type AuditEntry struct {
 	Action      string
 	WorkspaceID *string
@@ -265,39 +257,8 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	return s.auditLogViewsFromRows(rows)
 }
 
-// ListTaskAudit 是任务详情历史专用入口，只要求 task:read。
-// 它只返回该 task 的 task.modify 变更，避免普通 member/viewer
-// 能读任务却看不到详情页历史。
-func (s *Service) ListTaskAudit(taskRef string, input TaskAuditInput) ([]AuditLogView, error) {
-	if err := s.Require(PermissionTaskRead); err != nil {
-		return nil, err
-	}
-	resolved, err := s.ResolveTaskReferenceForRead(taskRef)
-	if err != nil {
-		return nil, err
-	}
-	if resolved.Task == nil {
-		return []AuditLogView{}, nil
-	}
-	targetType := "task"
-	targetID := resolved.Task.UUID
-	action := "task.modify"
-	rows, err := s.auditRepo.List(storage.AuditListOptions{
-		WorkspaceID: &s.runtime.WorkspaceID,
-		TargetType:  &targetType,
-		TargetID:    &targetID,
-		Action:      &action,
-		Limit:       input.Limit,
-		Offset:      input.Offset,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return s.auditLogViewsFromRows(rows)
-}
-
 // auditLogViewsFromRows 把 storage 行转换为视图，统一解析 actor / delegator
-// 和 payload 里的字段级 changes，避免 ListAudit / ListTaskAudit 复制逻辑。
+// 和 payload 里的字段级 changes。
 func (s *Service) auditLogViewsFromRows(rows []storage.AuditLogEntry) ([]AuditLogView, error) {
 	out := make([]AuditLogView, 0, len(rows))
 	userIDs := make([]string, 0)

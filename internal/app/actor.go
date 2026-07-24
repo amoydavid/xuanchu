@@ -55,7 +55,14 @@ func actorInfoFromRuntime(rt RuntimeContext) task.ActorInfo {
 func actorInfoFromColumns(cols actorColumns, fallbackUserID string, users map[string]task.UserInfo) task.ActorInfo {
 	actorType := cols.Type
 	if actorType == "" {
-		actorType = actorTypeUser
+		if cols.UserID != nil || fallbackUserID != "" {
+			actorType = actorTypeUser
+		} else {
+			actorType = "unknown"
+		}
+	}
+	if actorType == "system" || actorType == "unknown" {
+		return task.ActorInfo{Type: actorType}
 	}
 	if actorType == auth.TokenTypeTenantAccess {
 		token := task.TokenActorInfo{}
@@ -74,6 +81,9 @@ func actorInfoFromColumns(cols actorColumns, fallbackUserID string, users map[st
 	if cols.UserID != nil && *cols.UserID != "" {
 		userID = *cols.UserID
 	}
+	if userID == "" {
+		return task.ActorInfo{Type: "unknown"}
+	}
 	ui := users[userID]
 	if ui.ID == "" {
 		ui = task.UserInfo{ID: userID, Name: userID}
@@ -84,7 +94,14 @@ func actorInfoFromColumns(cols actorColumns, fallbackUserID string, users map[st
 func (s *Service) actorInfoFromColumns(cols actorColumns, fallbackUserID string) (task.ActorInfo, error) {
 	actorType := cols.Type
 	if actorType == "" {
-		actorType = actorTypeUser
+		if cols.UserID != nil || fallbackUserID != "" {
+			actorType = actorTypeUser
+		} else {
+			actorType = "unknown"
+		}
+	}
+	if actorType == "system" || actorType == "unknown" {
+		return task.ActorInfo{Type: actorType}, nil
 	}
 	if actorType == auth.TokenTypeTenantAccess {
 		return actorInfoFromColumns(cols, fallbackUserID, nil), nil
@@ -92,6 +109,9 @@ func (s *Service) actorInfoFromColumns(cols actorColumns, fallbackUserID string)
 	userID := fallbackUserID
 	if cols.UserID != nil && *cols.UserID != "" {
 		userID = *cols.UserID
+	}
+	if userID == "" {
+		return task.ActorInfo{Type: "unknown"}, nil
 	}
 	users, err := s.resolveUserInfos([]string{userID})
 	if err != nil {

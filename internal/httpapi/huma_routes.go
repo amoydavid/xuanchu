@@ -159,6 +159,12 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 		minimum := float64(0)
 		return &huma.Param{Name: "offset", In: "query", Description: "Zero-based page offset.", Schema: &huma.Schema{Type: "integer", Format: "int32", Default: 0, Minimum: &minimum}}
 	}
+	activityLimit := func() *huma.Param {
+		minimum, maximum := float64(1), float64(taskActivityMaxLimit)
+		return &huma.Param{Name: "limit", In: "query", Description: "Activity page size; defaults to 30.", Schema: &huma.Schema{
+			Type: "integer", Format: "int32", Default: 30, Minimum: &minimum, Maximum: &maximum,
+		}}
+	}
 	taskViewParams := func(includeReport bool) []*huma.Param {
 		params := workspaceScope()
 		if includeReport {
@@ -234,6 +240,12 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 		return params
 	case route.Method == http.MethodGet && route.Path == "/api/v1/tasks":
 		return append(taskViewParams(true), boolParam("include_deleted", "Include deleted tasks when no explicit status predicate is supplied."))
+	case route.Method == http.MethodGet && route.Path == "/api/v1/tasks/{taskRef}/activity":
+		return []*huma.Param{
+			stringParam("workspace", "Workspace slug or UUID."),
+			activityLimit(),
+			stringParam("cursor", "Opaque cursor returned by the previous activity page."),
+		}
 	case route.Method == http.MethodGet && route.Path == "/api/v1/reports/{name}":
 		return taskViewParams(false)
 	case route.Method == http.MethodGet && route.Path == "/api/v1/task-series":
@@ -406,6 +418,8 @@ func contractSuccessResponse(route humaRoute) *huma.Response {
 		data = taskViewPageOpenAPISchema()
 	case taskRouteReturnsOccurrenceView(route):
 		data = taskOccurrenceOpenAPISchema()
+	case route.Method == http.MethodGet && route.Path == "/api/v1/tasks/{taskRef}/activity":
+		data = taskActivityPageOpenAPISchema()
 	case route.Method == http.MethodGet && route.Path == "/api/v1/task-series":
 		data = taskSeriesPageOpenAPISchema()
 	case route.Method == http.MethodPost && route.Path == "/api/v1/task-series":
@@ -585,6 +599,23 @@ func actorInfoOpenAPISchema() *huma.Schema {
 		"user":  user,
 		"token": token,
 	}, Required: []string{"type"}}
+}
+
+func taskActivityPageOpenAPISchema() *huma.Schema {
+	annotation := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "description": {Type: "string"},
+	}, Required: []string{"id", "description"}}
+	link := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "type": {Type: "string"}, "url": {Type: "string"}, "title": {Type: "string"},
+	}, Required: []string{"id", "type", "url", "title"}}
+	entry := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "kind": {Type: "string", Enum: []any{"lifecycle", "change", "relation", "annotation"}},
+		"action": {Type: "string"}, "actor": actorInfoOpenAPISchema(), "occurred_at": {Type: "string", Format: "date-time"},
+		"changes": {Type: "array", Items: &huma.Schema{Type: "object"}}, "annotation": annotation, "link": link,
+	}, Required: []string{"id", "kind", "action", "actor", "occurred_at"}}
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"entries": {Type: "array", Items: entry}, "next_cursor": {Type: "string", Nullable: true},
+	}, Required: []string{"entries", "next_cursor"}}
 }
 
 func taskOccurrenceOpenAPISchema() *huma.Schema {
@@ -1058,7 +1089,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodPost, Path: "/api/v1/task-drafts/{draftRef}/attachments", Tag: "Attachments", Summary: "Upload a private task-creation draft attachment.", Handler: s.handleTaskCreationDraftAttachmentUpload, Status: http.StatusCreated},
 		{Method: http.MethodPost, Path: "/api/v1/task-drafts/{draftRef}/attachments/import-url", Tag: "Attachments", Summary: "Import a remote image into a private task-creation draft.", Handler: s.handleTaskCreationDraftAttachmentImportURL, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Get task details.", Handler: s.handleTaskInfo},
-		{Method: http.MethodGet, Path: "/api/v1/tasks/{taskRef}/audit", Tag: "Tasks", Summary: "List task audit history.", Handler: s.handleTaskAudit},
+		{Method: http.MethodGet, Path: "/api/v1/tasks/{taskRef}/activity", Tag: "Tasks", Summary: "List task activity timeline.", Handler: s.handleTaskActivity},
 		{Method: http.MethodPatch, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Modify a task.", Handler: s.handleTaskModify},
 		{Method: http.MethodDelete, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Delete a task.", Handler: s.handleTaskDelete},
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/done", Tag: "Tasks", Summary: "Complete a task.", Handler: s.handleTaskDone},

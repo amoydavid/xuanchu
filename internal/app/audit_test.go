@@ -62,7 +62,6 @@ func TestTenantTokenAuditStoresMachineActor(t *testing.T) {
 	}
 }
 
-
 func TestTenantTokenRuntimeUsesScopeAndListsBoundWorkspace(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -284,97 +283,6 @@ func mustTenantServiceForTest(t *testing.T, svc *Service, rawToken, capability s
 		t.Fatalf("NewService(tenant) error = %v", err)
 	}
 	return tenantSvc
-}
-
-// TestListTaskAuditRequiresTaskReadNotAuditRead 校验任务详情历史只要求
-// task:read，不要求 audit:read。viewer 角色有 task:read 但没有 audit:read。
-func TestListTaskAuditRequiresTaskReadNotAuditRead(t *testing.T) {
-	store := newTestStore(t)
-	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	created, err := ownerSvc.Add(AddInput{Title: "task"})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if err := ownerSvc.Modify(created.UUID, ModifyInput{Title: stringPtr("changed")}); err != nil {
-		t.Fatalf("Modify() error = %v", err)
-	}
-
-	userRepo := storage.NewUserRepository(store.DB())
-	memberRepo := storage.NewMemberRepository(store.DB())
-	ws, err := store.LocalWorkspace()
-	if err != nil {
-		t.Fatalf("LocalWorkspace() error = %v", err)
-	}
-	viewer, err := userRepo.Create(storage.User{ID: "user-viewer", Name: "viewer", CreatedAt: 100, ModifiedAt: 100})
-	if err != nil {
-		t.Fatalf("Create(viewer) error = %v", err)
-	}
-	if err := memberRepo.Upsert(storage.Membership{
-		UserID:      viewer.ID,
-		WorkspaceID: ws.ID,
-		Role:        string(RoleViewer),
-		JoinedAt:    100,
-		ModifiedAt:  100,
-	}); err != nil {
-		t.Fatalf("Upsert(viewer) error = %v", err)
-	}
-
-	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewer.Name, ws.Slug)
-
-	// viewer 能读任务历史。
-	rows, err := viewerSvc.ListTaskAudit(created.UUID, TaskAuditInput{Limit: 10})
-	if err != nil {
-		t.Fatalf("ListTaskAudit() error = %v", err)
-	}
-	if len(rows) == 0 {
-		t.Fatal("ListTaskAudit() returned no rows")
-	}
-	if rows[0].Action != "task.modify" || rows[0].TargetID != created.UUID {
-		t.Fatalf("rows[0] = %#v", rows[0])
-	}
-
-	// spec 2026-07-05：所有可登录成员（含 viewer）可读 workspace 全量 audit。
-	// viewer 在 runtime 上持有 audit:read scope（由 token/session 授予），role 层
-	// 不再阻断 ListAudit。
-	rows, err = viewerSvc.ListAudit(AuditListInput{Limit: 10})
-	if err != nil {
-		t.Fatalf("ListAudit() error = %v, want nil（viewer 现在可读 audit）", err)
-	}
-	if len(rows) == 0 {
-		t.Fatal("ListAudit() returned no rows")
-	}
-}
-
-// TestListTaskAuditOnlyReturnsTargetTask 校验只返回该 task 的 task.modify。
-func TestListTaskAuditOnlyReturnsTargetTask(t *testing.T) {
-	svc, closeFn := newTestService(t, 100)
-	defer closeFn()
-
-	taskA, err := svc.Add(AddInput{Title: "A"})
-	if err != nil {
-		t.Fatalf("Add(A) error = %v", err)
-	}
-	taskB, err := svc.Add(AddInput{Title: "B"})
-	if err != nil {
-		t.Fatalf("Add(B) error = %v", err)
-	}
-	if err := svc.Modify(taskA.UUID, ModifyInput{Title: stringPtr("A2")}); err != nil {
-		t.Fatalf("Modify(A) error = %v", err)
-	}
-	if err := svc.Modify(taskB.UUID, ModifyInput{Title: stringPtr("B2")}); err != nil {
-		t.Fatalf("Modify(B) error = %v", err)
-	}
-
-	rows, err := svc.ListTaskAudit(taskA.UUID, TaskAuditInput{Limit: 10})
-	if err != nil {
-		t.Fatalf("ListTaskAudit() error = %v", err)
-	}
-	if len(rows) != 1 {
-		t.Fatalf("rows = %d, want 1", len(rows))
-	}
-	if rows[0].TargetID != taskA.UUID {
-		t.Fatalf("rows[0].TargetID = %s, want %s", rows[0].TargetID, taskA.UUID)
-	}
 }
 
 // TestParseTaskFieldChangesHandlesBadPayload 校验坏 payload / 旧 payload

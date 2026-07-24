@@ -80,6 +80,16 @@ function invalidateProjectTaskSurface(
   })
 }
 
+function invalidateTaskActivity(
+  queryClient: ReturnType<typeof useQueryClient>,
+  workspaceSlug: string,
+  taskRef: string
+) {
+  void queryClient.invalidateQueries({
+    queryKey: taskQueryKeys.activity(workspaceSlug, taskRef),
+  })
+}
+
 export function useCreateTaskMutation(
   workspaceSlug: string,
   projectSlug: string,
@@ -181,12 +191,7 @@ export function useModifyTaskMutation(
           queryKey: taskQueryKeys.task(workspaceSlug, alias),
           refetchType: "none",
         })
-      }
-      if (ref) {
-        // 任务字段变更会产生新的 audit 历史，刷新详情页变更历史。
-        void queryClient.invalidateQueries({
-          queryKey: taskQueryKeys.audit(workspaceSlug, ref),
-        })
+        invalidateTaskActivity(queryClient, workspaceSlug, alias)
       }
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectTasksPrefix(
@@ -245,6 +250,7 @@ export function useTaskActionMutation(
           queryKey: taskQueryKeys.task(workspaceSlug, alias),
           refetchType: "none",
         })
+        invalidateTaskActivity(queryClient, workspaceSlug, alias)
       }
       invalidateProjectTaskSurface(queryClient, workspaceSlug, projectSlug)
       void queryClient.invalidateQueries({
@@ -297,6 +303,7 @@ export function useTaskAnnotationMutations(
     void queryClient.invalidateQueries({
       queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
     })
+    invalidateTaskActivity(queryClient, workspaceSlug, taskRef)
   }
 
   return {
@@ -347,6 +354,7 @@ export function useTaskLinkMutations(
     void queryClient.invalidateQueries({
       queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),
     })
+    invalidateTaskActivity(queryClient, workspaceSlug, taskRef)
   }
 
   return {

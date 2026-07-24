@@ -4,7 +4,7 @@ import {
   importTasksPath,
   taskAnnotationItemPath,
   taskAnnotationPath,
-  taskAuditPath,
+  taskActivityPath,
   taskDonePath,
   taskLinkItemPath,
   taskLinkPath,
@@ -50,9 +50,14 @@ describe("project workbench task api paths", () => {
     )
   })
 
-  it("builds task audit path with encoded workspace and task ref", () => {
-    expect(taskAuditPath("workspace 1", "ads/1")).toBe(
-      "/api/v1/tasks/ads%2F1/audit?workspace=workspace%201"
+  it("builds opaque task activity cursor path", () => {
+    expect(
+      taskActivityPath("workspace 1", "ads/1", {
+        limit: 30,
+        cursor: "opaque+/=cursor",
+      })
+    ).toBe(
+      "/api/v1/tasks/ads%2F1/activity?workspace=workspace%201&limit=30&cursor=opaque%2B%2F%3Dcursor"
     )
   })
 
