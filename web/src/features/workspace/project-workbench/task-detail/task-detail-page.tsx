@@ -568,7 +568,7 @@ function TaskDescriptionBlock({
         )}
       </section>
       <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               {t("projectReadonly.editDescriptionTitle")}

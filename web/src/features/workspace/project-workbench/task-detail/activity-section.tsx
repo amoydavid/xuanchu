@@ -186,7 +186,7 @@ export function ActivitySection({
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{t("taskDetail.editAnnotation")}</DialogTitle>
             <DialogDescription>

@@ -241,7 +241,7 @@ export function TaskCreateDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("taskSeries.create.title")}</DialogTitle>
           <DialogDescription>
@@ -314,7 +314,7 @@ export function TaskCreateDialog({
                 value={common}
                 workspaceSlug={workspaceSlug}
               />
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="mb-4 grid gap-3 md:grid-cols-2">
                 <InlineDatePicker
                   ariaLabel={t("taskCreate.due")}
                   boundary="end"
