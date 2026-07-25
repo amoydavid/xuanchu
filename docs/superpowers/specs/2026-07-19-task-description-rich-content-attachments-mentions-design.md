@@ -616,7 +616,7 @@ GET /api/v1/content-references/suggestions?type=user|task&q=<query>&project=<pro
 
 - `type=user` 要求 `member:read`，只返回当前 workspace active member，响应中的用户必须是完整 `task.JSONUserInfo`。
 - `type=task` 要求 `task:read`，只返回 request scope 可读的实际任务；返回 `id/title/task_slug/project/url/status`，不返回 description。
-- `q` trim 后至少 1 个字符；limit 默认 20、最大 50。
+- `q` 允许为空：空 query 时 user 返回当前 workspace 全部 active member、task 返回可读任务（均按 limit 截断），让用户敲 `@` / `#` 就看到候选列表；非空 query 则按 display_name/name/email（user）或 title/slug（task）过滤。limit 默认 20、最大 50。
 - task 结果当前项目优先，然后按最近修改时间和 title 排序。
 
 ### 13.3 批量解析

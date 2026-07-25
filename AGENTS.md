@@ -17,7 +17,7 @@
 
 ## 1. 项目目标
 
-`xuanchu` 的最终目标见 [README.md](/Users/mac/code/projects/dajee/task/README.md) 和 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)：
+`xuanchu` 的最终目标见 [README.md](README.md) 和 [ROADMAP.md](ROADMAP.md)：
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO。
@@ -79,7 +79,7 @@
 
 ### 前端设计规范（`web/`）
 
-所有 Web Console（`web/`）的界面工作必须遵循根目录的 [DESIGN.md](/Users/mac/code/projects/dajee/task/DESIGN.md)。该规范定义了「冷静的工程绿」设计语言：
+所有 Web Console（`web/`）的界面工作必须遵循根目录的 [DESIGN.md](DESIGN.md)。该规范定义了「冷静的工程绿」设计语言：
 
 - 唯一品牌色是翡翠绿 `--primary`，一屏至多两处主绿；状态色仅作 7px 圆点或小 chip，绝不大面积铺色。
 - 深色侧栏 + 浅色画布骨架；所有颜色为 `oklch()` 并收敛进 `web/src/index.css` 的 `:root` token，**禁止组件内裸 hex、禁止散用 Tailwind 原色**（`emerald`/`amber`/`red` 等）。
@@ -115,7 +115,7 @@
 
 这个仓库已经采用 spec/plan 驱动流程，后续请继续沿用：
 
-1. 产品方向或 milestone 拆解先落到 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)。
+1. 产品方向或 milestone 拆解先落到 [ROADMAP.md](ROADMAP.md)。
 2. 新 milestone 开始前，先写中文 spec：
    - 路径：`docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
 3. spec 通过后，再写 implementation plan：
@@ -155,22 +155,14 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 ## 7. Git 与提交规范
 
-- 除非用户明确要求，否则不要改写历史。
 - 不要 `git reset --hard`。
 - 不要 `git checkout -- <file>` 去覆盖用户改动。
-- 不要随意删除未跟踪文件，除非确认它是你刚生成的产物。
 - 提交信息尽量简短清晰，延续当前风格：
   - `feat: ...`
   - `fix: ...`
   - `docs: ...`
   - `chore: ...`
 - 使用中文提交信息
-
-提交前先确认：
-
-- 只包含和当前任务相关的文件。
-- 文档变更和代码变更逻辑一致。
-- 路线图、README、spec 是否需要同步。
 
 ## 8. SQLite 与数据层硬约束
 
