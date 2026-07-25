@@ -541,6 +541,7 @@ export const enUS = {
     retry: "Retry",
     loading: "Loading",
     empty: "No data",
+    noResults: "No results found",
     error: "Error",
     language: "Language",
     theme: "Theme",

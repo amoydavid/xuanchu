@@ -122,13 +122,11 @@ func orderedUserInfoList(ids []string, infos map[string]domain.UserInfo) []domai
 
 // SuggestContentReferences 查询用户或任务引用建议。
 //
-// type=user 时返回当前 workspace 的 active member，按 display_name/name/email 匹配；
-// type=task 时返回 request scope 内可读的实际任务，当前项目优先。
+// query 允许为空：空 query 时 user 返回当前 workspace 的全部 active member、
+// task 返回 request scope 内可读的实际任务（均按 limit 截断），让用户敲 @ / #
+// 就看到候选列表；非空 query 则按 display_name/name/email（user）或 title/slug（task）过滤。
 func (s *Service) SuggestContentReferences(ctx context.Context, input ContentReferenceSuggestionInput) ([]ContentReferenceSuggestion, error) {
 	query := strings.TrimSpace(input.Query)
-	if len(query) < 1 {
-		return nil, RuntimeError{Code: "content_reference_query_invalid", Message: "query is required"}
-	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 20

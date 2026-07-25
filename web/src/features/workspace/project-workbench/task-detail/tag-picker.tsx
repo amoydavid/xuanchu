@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { stopScrollPropagation } from "@/lib/scroll-propagation"
 import { getProjectTasks } from "../api/project-api"
 import { useEditFeedback } from "../shared/edit-feedback"
 
@@ -139,7 +140,7 @@ export function TagPicker({
             placeholder="输入标签名"
             value={query}
           />
-          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1">
+          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1" onWheelCapture={stopScrollPropagation}>
             {tasks.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
                 正在加载标签...

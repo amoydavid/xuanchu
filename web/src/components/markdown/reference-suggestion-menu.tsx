@@ -1,11 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { ApiError } from "@/lib/api"
-import {
-  loadContentReference,
-  type ContentReferenceResolution,
-} from "@/features/workspace/content-references"
+import { installWheelScrollIsolation } from "@/lib/scroll-propagation"
+import type { ContentReferenceResolution } from "@/features/workspace/content-references"
 
 import type { ReferenceTriggerKind } from "./reference-suggestion"
 
@@ -19,6 +16,7 @@ export type ReferenceSuggestionMenuItem = {
 }
 
 // fetchSuggestions 是 suggest API 的最小包装，便于测试注入。
+// 仅供 suggestion 插件（reference-suggestion-plugin.ts）调用；菜单本身不再 fetch。
 export type FetchSuggestions = (input: {
   kind: ReferenceTriggerKind
   query: string
@@ -26,18 +24,22 @@ export type FetchSuggestions = (input: {
 }) => Promise<ReferenceSuggestionMenuItem[]>
 
 // ReferenceSuggestionMenuProps 描述菜单组件的 props。
+//
+// 数据来源：items / loading / error 由 @tiptap/suggestion 引擎统一获取（内置防抖 +
+// AbortSignal），菜单只负责渲染 + 键盘/鼠标交互。定位由父层（MentionFloatingMenu）
+// 用 Floating UI 接管。
 export type ReferenceSuggestionMenuProps = {
   kind: ReferenceTriggerKind
   query: string
-  fetchSuggestions: FetchSuggestions
+  items: ReferenceSuggestionMenuItem[]
+  loading: boolean
+  error: string | null
   onSelect: (item: ReferenceSuggestionMenuItem) => void
   onClose: () => void
-  // anchorRect 用于定位；当前实现不强制定位，由父容器决定。
-  anchorRect?: DOMRect
+  // registerKeyHandler 让菜单注册自己的 onKeyDown；suggestion 引擎把方向键/Enter
+  // 路由进来（编辑器持有焦点，React 事件不会在菜单上触发）。
+  registerKeyHandler?: (handler: (event: KeyboardEvent) => boolean) => void
 }
-
-// debounceMs 是 spec §15.4 的输入防抖（150ms）。
-const debounceMs = 150
 
 // maxItems 是菜单最多展示数量。
 const maxItems = 20
@@ -45,105 +47,96 @@ const maxItems = 20
 // ReferenceSuggestionMenu 是 @/# 触发后的下拉菜单。
 //
 // 行为：
-// - 空 query 不请求服务端。
-// - 150ms debounce；新 query 通过 AbortController 取消旧请求。
+// - 数据由 suggestion 引擎统一获取并经 props 传入；菜单不重复 fetch。
 // - 支持上下键、Enter、Esc、鼠标点击。
 // - 请求失败显示错误文案；空结果显示「无匹配」。
 export function ReferenceSuggestionMenu({
   kind,
   query,
-  fetchSuggestions,
+  items,
+  loading,
+  error,
   onSelect,
   onClose,
+  registerKeyHandler,
 }: ReferenceSuggestionMenuProps) {
   const { t } = useTranslation()
-  const [items, setItems] = useState<ReferenceSuggestionMenuItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [activeIndex, setActiveIndex] = useState(0)
-  useEffect(() => {
-    const controller = new AbortController()
-    if (query.trim().length === 0) {
-      // 空 query 不请求。
-      const reset = () => {
-        setItems([])
-        setLoading(false)
-        setError(null)
-      }
-      reset()
-      return () => controller.abort()
-    }
-    const startLoading = () => {
-      setLoading(true)
-      setError(null)
-    }
-    startLoading()
-    const handle = setTimeout(() => {
-      fetchSuggestions({ kind, query, signal: controller.signal })
-        .then((next) => {
-          setItems(next.slice(0, maxItems))
-          setActiveIndex(0)
-          setLoading(false)
-        })
-        .catch((err: unknown) => {
-          if (err instanceof DOMException && err.name === "AbortError") return
-          if (err instanceof ApiError) {
-            setError(err.code)
-          } else {
-            setError(t("common.error"))
-          }
-          setLoading(false)
-        })
-    }, debounceMs)
-    return () => {
-      clearTimeout(handle)
-      // 立即取消上一 query（以及组件卸载时的请求），不要等下一次 150ms
-      // debounce 才中止，避免旧结果竞争覆盖新菜单。
-      controller.abort()
-    }
-    // fetchSuggestions 通常是编辑器 render 时创建的 closure；仅因其身份变化而重置
-    // debounce 会造成请求循环。query/kind 是实际触发条件。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, query])
+  const menuRef = useRef<HTMLDivElement>(null)
+  // activeIndex 用 query 作为 key，让每次新查询（@a → @ab）都从 0 开始，
+  // 避免 useEffect 里 setState 重置高亮项。
+  const [activeIndex, setActiveIndex] = useState({ query, index: 0 })
+  // query 变化时回到 0；index 永远 >= 0，渲染时再按 items.length clamp。
+  const effectiveIndex =
+    activeIndex.query === query ? activeIndex.index : 0
+  const clampedIndex = Math.min(effectiveIndex, Math.max(0, items.length - 1))
 
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault()
-      setActiveIndex((i) => Math.min(i + 1, items.length - 1))
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault()
-      setActiveIndex((i) => Math.max(i - 1, 0))
-    } else if (event.key === "Enter") {
-      event.preventDefault()
-      const item = items[activeIndex]
-      if (item) onSelect(item)
-    } else if (event.key === "Escape") {
-      event.preventDefault()
-      onClose()
-    }
+  // activeIndexRef 让按键处理器连按方向键时立即读到最新值（state 更新是异步的）。
+  // 在 effect 里写 ref，符合 React 19 的 ref 使用规范。
+  const activeIndexRef = useRef(0)
+  const stateRef = useRef({ items, onSelect, onClose })
+  useEffect(() => {
+    activeIndexRef.current = clampedIndex
+    stateRef.current = { items, onSelect, onClose }
+  })
+
+  // 菜单通过 portal 挂到 body；用原生目标监听器隔离 Dialog 的 document 滚动锁。
+  useEffect(() => {
+    const element = menuRef.current
+    if (!element) return
+    return installWheelScrollIsolation(element)
+  }, [])
+
+  const moveIndex = (delta: number) => {
+    const currentItems = stateRef.current.items
+    const next = Math.max(0, Math.min(activeIndexRef.current + delta, currentItems.length - 1))
+    activeIndexRef.current = next
+    setActiveIndex({ query, index: next })
   }
+
+  // 按键处理器只在挂载时注册一次：内部通过 ref 读最新状态。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): boolean => {
+      const { items: currentItems, onSelect: currentOnSelect, onClose: currentOnClose } = stateRef.current
+      if (event.key === "ArrowDown") {
+        moveIndex(1)
+        return true
+      }
+      if (event.key === "ArrowUp") {
+        moveIndex(-1)
+        return true
+      }
+      if (event.key === "Enter") {
+        const item = currentItems[activeIndexRef.current]
+        if (item) currentOnSelect(item)
+        return true
+      }
+      if (event.key === "Escape") {
+        currentOnClose()
+        return true
+      }
+      return false
+    }
+    registerKeyHandler?.(handleKeyDown)
+    // 仅在挂载时注册一次；handler 通过 ref 读最新状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const visibleItems = items.slice(0, maxItems)
 
   return (
     <div
+      ref={menuRef}
       role="listbox"
       aria-label={kind === "user" ? t("task.mentions.userPlaceholder") : t("task.mentions.taskPlaceholder")}
       className="max-h-60 w-72 overflow-auto rounded-md border bg-popover shadow-md"
       tabIndex={-1}
-      onKeyDown={onKeyDown}
     >
       {error && (
         <div className="px-3 py-2 text-xs text-destructive">{error}</div>
       )}
-      {!error && !loading && items.length === 0 && query.trim().length > 0 && (
+      {!error && !loading && visibleItems.length === 0 && (
         <div className="px-3 py-2 text-xs text-muted-foreground">
           {t("common.noResults")}
-        </div>
-      )}
-      {!error && !loading && query.trim().length === 0 && (
-        <div className="px-3 py-2 text-xs text-muted-foreground">
-          {kind === "user"
-            ? t("task.mentions.userPlaceholder")
-            : t("task.mentions.taskPlaceholder")}
         </div>
       )}
       {loading && (
@@ -151,17 +144,20 @@ export function ReferenceSuggestionMenu({
           {t("common.loading")}
         </div>
       )}
-      {items.map((item, index) => (
+      {visibleItems.map((item, index) => (
         <button
           key={`${item.kind}-${item.id}`}
           type="button"
           role="option"
-          aria-selected={index === activeIndex}
+          aria-selected={index === clampedIndex}
           className={
             "block w-full px-3 py-2 text-left text-xs " +
-            (index === activeIndex ? "bg-accent" : "")
+            (index === clampedIndex ? "bg-accent" : "")
           }
-          onMouseEnter={() => setActiveIndex(index)}
+          onMouseEnter={() => {
+            activeIndexRef.current = index
+            setActiveIndex({ query, index })
+          }}
           onClick={() => onSelect(item)}
         >
           <span className="font-medium">{item.label}</span>
@@ -199,19 +195,3 @@ export function resolutionToMenuItem(
   }
   return null
 }
-
-// defaultFetchSuggestions 通过 content-reference batch loader 拉取建议。
-//
-// 当前实现使用 resolve batch loader（已经会去重）；suggest API 的真实查询
-// 由 suggestContentReferences 提供，但需要 workspace/projectRef 上下文，
-// 这里通过 closure 注入。
-export function makeDefaultFetchSuggestions(suggest: (input: {
-  kind: ReferenceTriggerKind
-  query: string
-  signal: AbortSignal
-}) => Promise<ReferenceSuggestionMenuItem[]>): FetchSuggestions {
-  return suggest
-}
-
-// 占位：loadContentReference 用于 resolve 单项。
-export const _resolveRef = loadContentReference

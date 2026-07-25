@@ -91,6 +91,39 @@ func TestContentReferenceSuggestReturnsUsers(t *testing.T) {
 	}
 }
 
+// TestContentReferenceSuggestEmptyQueryReturnsMembers 验证空 query（不传 q）时
+// 返回 workspace 全部成员，让用户敲 @ 就看到候选列表。
+func TestContentReferenceSuggestEmptyQueryReturnsMembers(t *testing.T) {
+	fixture, alice := newHTTPContentRefFixture(t)
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/content-references/suggestions?type=user&workspace=local", authHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Results []struct {
+				Type string `json:"type"`
+				User struct {
+					ID string `json:"id"`
+				} `json:"user"`
+			} `json:"results"`
+			Count int `json:"count"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, rr.Body.String())
+	}
+	found := false
+	for _, r := range resp.Data.Results {
+		if r.Type == "user" && r.User.ID == alice.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("empty query should return all members, alice missing: %#v", resp.Data.Results)
+	}
+}
+
 func TestContentReferenceSuggestRejectsInvalidType(t *testing.T) {
 	fixture, _ := newHTTPContentRefFixture(t)
 	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/content-references/suggestions?type=project&q=x&workspace=local", authHeader(fixture.token))

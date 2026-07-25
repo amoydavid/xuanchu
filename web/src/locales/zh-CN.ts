@@ -526,6 +526,7 @@ export const zhCN = {
     retry: "重试",
     loading: "加载中",
     empty: "暂无数据",
+    noResults: "无匹配结果",
     error: "发生错误",
     language: "语言",
     theme: "主题",

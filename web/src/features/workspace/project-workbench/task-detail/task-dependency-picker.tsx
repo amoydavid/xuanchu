@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { stopScrollPropagation } from "@/lib/scroll-propagation"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import {
   getProjectTasks,
@@ -157,7 +158,7 @@ export function TaskDependencyPicker({
             placeholder={t("projectReadonly.dependencySearchPlaceholder")}
             value={query}
           />
-          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1">
+          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1" onWheelCapture={stopScrollPropagation}>
             {tasks.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
                 {t("projectReadonly.loadingTasks")}

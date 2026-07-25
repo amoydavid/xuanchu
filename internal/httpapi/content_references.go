@@ -21,11 +21,9 @@ func (s *Server) handleContentReferenceSuggestions(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "content_reference_query_invalid", "type must be user or task", nil)
 		return
 	}
+	// query 允许为空：空 query 时 user 返回 workspace 全部 active member、
+	// task 返回可读任务（按 limit 截断），让用户敲 @ / # 就看到候选列表。
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if query == "" {
-		writeError(w, http.StatusBadRequest, "content_reference_query_invalid", "q is required", nil)
-		return
-	}
 	limit := 20
 	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

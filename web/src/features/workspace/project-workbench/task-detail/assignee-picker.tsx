@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { stopScrollPropagation } from "@/lib/scroll-propagation"
 import type { ProjectWorkbenchAssignee } from "../api/project-api"
 import { getWorkspaceMembers } from "../api/users-api"
 import { useEditFeedback } from "../shared/edit-feedback"
@@ -118,7 +119,7 @@ export function AssigneePicker({
             placeholder="输入姓名、邮箱或用户 ID"
             value={query}
           />
-          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1">
+          <div className="rounded-lg max-h-72 space-y-1 overflow-auto border bg-background p-1" onWheelCapture={stopScrollPropagation}>
             {members.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
                 正在加载成员...

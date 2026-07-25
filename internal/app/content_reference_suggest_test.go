@@ -24,6 +24,30 @@ func TestSuggestContentReferencesReturnsActiveMembers(t *testing.T) {
 	}
 }
 
+// TestSuggestContentReferencesEmptyQueryReturnsAllMembers 验证空 query 时返回
+// workspace 全部 active member（按 limit 截断），让用户敲 @ 就看到候选列表。
+func TestSuggestContentReferencesEmptyQueryReturnsAllMembers(t *testing.T) {
+	svc, store := eventNotificationTestEnv(t)
+	alice := createEventNotificationAssignee(t, svc, store, "alice-empty")
+	bob := createEventNotificationAssignee(t, svc, store, "bob-empty")
+
+	results, err := svc.SuggestContentReferences(context.Background(), ContentReferenceSuggestionInput{
+		Type: "user", Query: "", Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("SuggestContentReferences: %v", err)
+	}
+	ids := make(map[string]bool, len(results))
+	for _, r := range results {
+		if r.User != nil {
+			ids[r.User.ID] = true
+		}
+	}
+	if !ids[alice.ID] || !ids[bob.ID] {
+		t.Fatalf("empty query should return all members, got ids=%v", ids)
+	}
+}
+
 func TestSuggestContentReferencesReturnsTasks(t *testing.T) {
 	svc, _ := eventNotificationTestEnv(t)
 	proj, err := svc.AddProject(AddProjectInput{Name: "Suggest", Slug: "sgt"})

@@ -90,6 +90,16 @@
 
 新增/修改任何颜色、字体、间距、组件视觉前，先读 DESIGN.md 的对应章节，按 token 方式落地，改完跑 `pnpm --dir web typecheck && lint && build && test`。
 
+### Dialog 与 Portal 浮层的鼠标滚动
+
+这是 Web Console 中的常见陷阱：浮层列表已经设置 `max-height + overflow-auto`，键盘操作也正常，但放进 Radix `Dialog` 后鼠标滚轮完全无效。遇到这种现象时先检查事件边界，不要继续堆 CSS。
+
+- 常见根因有两层：自定义浮层通过 `createPortal(..., document.body)` 挂到 Dialog DOM 子树之外；Radix 模态态可能让外部节点继承 `pointer-events: none`，同时底层 `react-remove-scroll` 会在 `document` 上取消锁容器之外的 `wheel`。
+- 自定义 portal 的浮层根节点必须显式设置 `pointer-events-auto`，滚动容器本身使用有界高度和 `overflow-auto`。
+- 如果 `react-remove-scroll` 仍会取消浏览器默认滚动，复用 `web/src/lib/scroll-propagation.ts` 的原生 wheel 隔离能力：在实际滚动元素上注册 `{ passive: false }` 的原生监听器，更新 `scrollTop` 后阻止事件继续到 document 滚动锁。
+- 不要只依赖 React `onWheelCapture` / `stopPropagation`。React portal 的合成事件与 document 原生监听器存在执行顺序差异，单元测试可能通过而真实浏览器仍被 `preventDefault`。
+- 回归测试必须制造真实溢出条件（`scrollHeight > clientHeight`），派发可取消的 `WheelEvent`，断言列表 `scrollTop` 改变且 document 锁监听器未收到事件；之后还要在真实 Dialog 中用鼠标验证。Markdown 编辑器的 `@` / `#` suggestion menu 是现成验收入口。
+
 ## 4. 开发原则
 
 - 优先延续现有结构，不要为“优雅”重写仓库。

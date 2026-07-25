@@ -1,3 +1,4 @@
+import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom"
 import Placeholder from "@tiptap/extension-placeholder"
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model"
 import type { EditorView } from "@tiptap/pm/view"
@@ -23,6 +24,7 @@ import {
   Undo2Icon,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -51,11 +53,14 @@ import {
   type FetchSuggestions,
   type ReferenceSuggestionMenuItem,
 } from "./reference-suggestion-menu"
+import type { ReferenceTriggerKind } from "./reference-suggestion"
 import {
-  detectReferenceTrigger,
-  type ReferenceSuggestionState,
-  type ReferenceTriggerKind,
-} from "./reference-suggestion"
+  clearEditorConfig,
+  createReferenceSuggestionExtension,
+  registerMenuKeyHandler,
+  setEditorConfig,
+  type ReferenceSuggestionEvent,
+} from "./reference-suggestion-plugin"
 import "./markdown.css"
 
 type MarkdownEditorProps = {
@@ -117,12 +122,8 @@ function replaceDeferredMarker(markdown: string, marker: string, replacement: st
   return markdown.split(marker).join(replacement).split(escaped).join(replacement)
 }
 
-const emptySuggestionState: ReferenceSuggestionState = {
-  active: false,
-  kind: null,
-  query: "",
-  range: null,
-}
+// mentionMenuClosed 是 suggestion 关闭事件的常量，避免每次 render 新建对象。
+const mentionMenuClosed: ReferenceSuggestionEvent = { open: false }
 
 export function MarkdownEditor({
   ariaLabel,
@@ -144,7 +145,8 @@ export function MarkdownEditor({
     { open: false }
   )
   const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg")
-  const [suggestion, setSuggestion] = useState<ReferenceSuggestionState>(emptySuggestionState)
+  // suggestion 由 @tiptap/suggestion 引擎通过 onChange 回调驱动；这里只存渲染所需状态。
+  const [suggestion, setSuggestion] = useState<ReferenceSuggestionEvent>(mentionMenuClosed)
   const [failedUploads, setFailedUploads] = useState<Array<{ candidate: PasteImageCandidate; marker: string }>>([])
   const composingRef = useRef(false)
   const uploadQueueRef = useRef<AttachmentUploadQueue | null>(null)
@@ -152,6 +154,13 @@ export function MarkdownEditor({
   const editorRef = useRef<ReturnType<typeof useEditor>>(null)
   const pendingUploadsRef = useRef(0)
   const failedMarkersRef = useRef(new Set<string>())
+
+  // suggestionExtension 在挂载时创建一次（useEditor 也只在挂载时消费 extensions）。
+  // extension 不持有配置：配置通过模块级 WeakMap（key=editor）由下面的 effect 写入，
+  // extension 通过 this.editor 读取，因此 render 中不传递任何 React ref。
+  const [suggestionExtension] = useState(() =>
+    attachmentContext ? createReferenceSuggestionExtension() : null
+  )
 
   const replacePasteMarker = useCallback((marker: string, markdown: string) => {
     const currentEditor = editorRef.current
@@ -223,14 +232,8 @@ export function MarkdownEditor({
           onModEnter?.()
           return Boolean(onModEnter)
         }
-        if (event.key === "Escape" && suggestion.active) {
-          setSuggestion(emptySuggestionState)
-          return true
-        }
-        if (suggestion.active && (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter")) {
-          // 让菜单自己处理。
-          return false
-        }
+        // mention 的 Escape / 方向键 / Enter 由 @tiptap/suggestion 插件接管，
+        // 这里不再手动处理。
         return false
       },
       handleDOMEvents: {
@@ -334,6 +337,8 @@ export function MarkdownEditor({
         workspaceSlug: attachmentContext.workspaceSlug,
         taskRef: attachmentContext.taskRef,
       } : undefined),
+      // @ / # 触发由 @tiptap/suggestion 引擎接管；suggestionExtension 挂载时创建。
+      ...(suggestionExtension ? [suggestionExtension] : []),
       Placeholder.configure({
         placeholder,
       }),
@@ -349,34 +354,27 @@ export function MarkdownEditor({
         }
       emittedMarkdownValuesRef.current.add(nextMarkdown)
       onChange(nextMarkdown)
-      // 检测 @ / # 触发。
-      if (!attachmentContext) return
-      const selection = updatedEditor.state.selection
-      const textBefore = updatedEditor.state.doc.textBetween(
-        Math.max(0, selection.from - 64),
-        selection.from,
-        "\n"
-      )
-      const match = detectReferenceTrigger({
-        textBeforeCaret: textBefore,
-        composing: composingRef.current,
-      })
-      if (match) {
-        setSuggestion({
-          active: true,
-          kind: match.kind,
-          query: match.query,
-          range: { from: selection.from - match.query.length - 1, to: selection.from },
-        })
-      } else if (suggestion.active) {
-        setSuggestion(emptySuggestionState)
-      }
+      // @ / # 触发已交给 @tiptap/suggestion 插件，这里不再手动检测。
     },
   })
 
   useEffect(() => {
     editorRef.current = editor
   }, [editor])
+
+  // 把最新的 fetchSuggestions / onChange 写入 editor 对应的模块级配置（WeakMap）。
+  // suggestion 引擎通过 this.editor 读取；effect 挂载后立即执行，远早于引擎首次（debounce 150ms）请求。
+  useEffect(() => {
+    if (!editor || !attachmentContext || !suggestionExtension) return
+    setEditorConfig(editor, {
+      fetchSuggestions: attachmentContext.fetchSuggestions,
+      onChange: (event) => setSuggestion(event),
+      lastError: null,
+    })
+    return () => {
+      clearEditorConfig(editor)
+    }
+  }, [editor, attachmentContext, suggestionExtension])
 
   useEffect(() => () => {
     // 关闭编辑器时中断未完成请求，并清理已完成但尚未绑定的 draft；服务端 janitor
@@ -392,31 +390,6 @@ export function MarkdownEditor({
 
     editor.setEditable(!disabled)
   }, [disabled, editor])
-
-  // handleSuggestionSelect 把选中的 reference 替换为 markdown link。
-  const handleSuggestionSelect = useCallback(
-    (item: ReferenceSuggestionMenuItem) => {
-      if (!editor || !suggestion.range) {
-        setSuggestion(emptySuggestionState)
-        return
-      }
-      const label =
-        item.label ||
-        (item.kind === "task" && item.description ? `#${item.description}` : item.id)
-      const { from, to } = suggestion.range
-      editor
-        .chain()
-        .focus()
-        .deleteRange({ from, to })
-        .insertContentAt(from, {
-          type: "xuanchuReference",
-          attrs: { kind: item.kind as ReferenceTriggerKind, id: item.id, label },
-        })
-        .run()
-      setSuggestion(emptySuggestionState)
-    },
-    [editor, suggestion.range]
-  )
 
   useEffect(() => {
     if (!editor) {
@@ -650,19 +623,21 @@ export function MarkdownEditor({
         </div>
       ) : null}
           <TableBubbleMenu editor={editor} />
-          {suggestion.active && suggestion.kind && attachmentContext && (
-            <div className="absolute left-1/2 top-full z-10 -translate-x-1/2 pt-1">
-              <ReferenceSuggestionMenu
-                kind={suggestion.kind}
-                query={suggestion.query}
-                fetchSuggestions={attachmentContext.fetchSuggestions}
-                onSelect={(item) => {
-                  handleSuggestionSelect(item)
-                }}
-                onClose={() => setSuggestion(emptySuggestionState)}
-              />
-            </div>
-          )}
+          {suggestion.open && attachmentContext ? (
+            <MentionFloatingMenu
+              clientRect={suggestion.clientRect}
+              kind={suggestion.kind}
+              query={suggestion.query}
+              items={suggestion.items}
+              loading={suggestion.loading}
+              error={suggestion.error}
+              onSelect={(item) => {
+                suggestion.command(item)
+                setSuggestion(mentionMenuClosed)
+              }}
+              onClose={() => setSuggestion(mentionMenuClosed)}
+            />
+          ) : null}
         </>
       )}
       <LinkDialog
@@ -675,6 +650,92 @@ export function MarkdownEditor({
       />
     </div>
     </TooltipProvider>
+  )
+}
+
+// MentionFloatingMenu 把 @ / # 候选菜单通过 portal 渲染到 document.body，
+// 并用 Floating UI 相对触发点（Suggestion 引擎提供的 clientRect）定位。
+//
+// 这样做的原因：编辑器外层容器是 overflow-hidden，且常出现在可滚动的 Dialog 内，
+// 原来用 absolute top-full 挂在编辑器底部会让弹层被裁切（看不见），
+// 位置也不跟随光标。Floating UI 的 flip/shift 中间件自动避让视口边界，
+// portal 脱离 overflow 容器，从根本上解决裁切 + 定位两个问题。
+function MentionFloatingMenu({
+  clientRect,
+  kind,
+  query,
+  items,
+  loading,
+  error,
+  onSelect,
+  onClose,
+}: {
+  clientRect: () => DOMRect | null
+  kind: ReferenceTriggerKind
+  query: string
+  items: ReferenceSuggestionMenuItem[]
+  loading: boolean
+  error: string | null
+  onSelect: (item: ReferenceSuggestionMenuItem) => void
+  onClose: () => void
+}) {
+  const floatingRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const floating = floatingRef.current
+    if (!floating) return
+    // 虚拟锚点：getBoundingClientRect 委托给 Suggestion 引擎的 clientRect，
+    // 它返回 @ / # 触发点的实时坐标。
+    const virtualReference = {
+      getBoundingClientRect: () => clientRect() ?? new DOMRect(),
+    }
+    const update = () => {
+      void computePosition(virtualReference, floating, {
+        placement: "bottom-start",
+        middleware: [offset(4), flip({ padding: 8 }), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        floating.style.left = `${x}px`
+        floating.style.top = `${y}px`
+      })
+    }
+    update()
+    // autoUpdate 监听滚动/resize/光标移动，在会话期间保持弹层跟随。
+    const cleanup = autoUpdate(virtualReference, floating, update)
+    return cleanup
+    // clientRect 是 Suggestion 引擎提供的稳定闭包，会话期间不变。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 把菜单的按键处理注册到 suggestion 引擎，让方向键/Enter 由菜单接管。
+  // 这里用 ref 持有最新 handler，通过 registerMenuKeyHandler 转发给插件。
+  const onKeyDownRef = useRef<(event: KeyboardEvent) => boolean>(() => false)
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => onKeyDownRef.current(event)
+    registerMenuKeyHandler(handler)
+    return () => {
+      registerMenuKeyHandler(null)
+    }
+  }, [])
+
+  return createPortal(
+    <div
+      ref={floatingRef}
+      className="pointer-events-auto fixed z-50"
+      style={{ left: -9999, top: -9999 }}
+    >
+      <ReferenceSuggestionMenu
+        kind={kind}
+        query={query}
+        items={items}
+        loading={loading}
+        error={error}
+        onSelect={onSelect}
+        onClose={onClose}
+        registerKeyHandler={(handler) => {
+          onKeyDownRef.current = handler
+        }}
+      />
+    </div>,
+    document.body
   )
 }
 

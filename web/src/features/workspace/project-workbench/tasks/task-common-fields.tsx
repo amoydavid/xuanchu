@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { MarkdownEditor, type DeferredAttachment } from "@/components/markdown"
 import { resolutionToMenuItem } from "@/components/markdown/reference-suggestion-menu"
 import { suggestContentReferences } from "@/features/workspace/content-references"
+import { stopScrollPropagation } from "@/lib/scroll-propagation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -219,7 +220,7 @@ function CommonAssigneeSelector({
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80 space-y-2">
-          <div className="max-h-64 space-y-1 overflow-auto">
+          <div className="max-h-64 space-y-1 overflow-auto" onWheelCapture={stopScrollPropagation}>
             {!loaded ? (
               <p className="px-2 py-3 text-sm text-muted-foreground">
                 {t("taskCreate.loadingAssignees")}
@@ -377,7 +378,7 @@ function CommonUDAFields({
                 placeholder={t("taskCreate.searchCustomFields")}
                 value={search}
               />
-              <div className="max-h-56 space-y-1 overflow-auto">
+              <div className="max-h-56 space-y-1 overflow-auto" onWheelCapture={stopScrollPropagation}>
                 {available.length === 0 ? (
                   <p className="px-2 py-3 text-sm text-muted-foreground">
                     {t("taskCreate.noCustomFieldsAvailable")}
