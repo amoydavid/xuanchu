@@ -85,7 +85,7 @@ func (s *Service) PreviewSavedProjectAutomation(projectRef string, ruleID string
 	if err != nil {
 		return ProjectAutomationPreviewView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationPreviewView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
 	}
 	input := projectAutomationRuleAddInputFromRow(row)
@@ -240,6 +240,63 @@ func (s *Service) projectAutomationEffectiveConfigValue(projectID string, key st
 		return *def.DefaultValue, nil
 	}
 	return "", nil
+}
+
+// workspaceAutomationConfigValue 只读取 Workspace scope/default，不走 Project scope。
+// Workspace 规则的 Provider 配置必须由 Workspace 决定，Project 自身 config 不能反向覆盖。
+func (s *Service) workspaceAutomationConfigValue(key string) (string, error) {
+	key, err := normalizeScopedConfigKey(key)
+	if err != nil {
+		return "", err
+	}
+	def, err := s.scopedConfigDefinition(key)
+	if err != nil {
+		return "", err
+	}
+	if v, ok, err := s.configRepo.Get(storage.ConfigKey{WorkspaceID: s.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: s.workspaceID, Key: key}); err != nil || ok {
+		return v, err
+	}
+	if def.DefaultValue != nil {
+		return *def.DefaultValue, nil
+	}
+	return "", nil
+}
+
+// resolveAutomationDeliveryAPIKey 按 Delivery 冻结的 scope 读取当前 secret 明文。
+// Project scope：保留 project > workspace > default 解析；Workspace scope：只读 Workspace/default。
+// dispatcher 不读取当前 Rule，因此 Rule 被修改或删除后仍能发送。
+func (s *Service) resolveAutomationDeliveryAPIKey(row storage.AutomationDelivery) (string, error) {
+	key := strings.TrimSpace(row.APIKeyConfigKey)
+	if key == "" {
+		return "", RuntimeError{Code: "automation_provider_config_missing", Message: "delivery missing api_key_config_key"}
+	}
+	normalized, err := normalizeScopedConfigKey(key)
+	if err != nil {
+		return "", err
+	}
+	switch row.RuleScopeType {
+	case storage.AutomationScopeWorkspace:
+		value, err := s.workspaceAutomationConfigValue(normalized)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(value) == "" {
+			return "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.api_key"}
+		}
+		return value, nil
+	default:
+		if row.ProjectID == nil || *row.ProjectID == "" {
+			return "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.api_key"}
+		}
+		value, err := s.projectAutomationEffectiveConfigValue(*row.ProjectID, normalized)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(value) == "" {
+			return "", RuntimeError{Code: "automation_provider_config_missing", Message: "missing agent.provider.api_key"}
+		}
+		return value, nil
+	}
 }
 
 // buildAutomationTemplateVars 构建模板变量 map，键为变量名（不含 {{}}），值为渲染后的字符串。

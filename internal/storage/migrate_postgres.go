@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -10,12 +11,15 @@ func (s *Store) migratePostgres() error {
 	if err := s.prepareAPITokenUserIDNullablePostgres(); err != nil {
 		return err
 	}
+	if err := s.prepareAutomationScopeSchemaPostgres(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(
 		&Meta{}, &User{}, &Workspace{}, &Membership{},
 		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{},
 		&Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{},
 		&NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{},
-		&ProjectAutomationRule{}, &ProjectAutomationDelivery{},
+		&AutomationRule{}, &AutomationDelivery{},
 		&UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}, &Task{},
 	); err != nil {
 		return err
@@ -148,11 +152,11 @@ func (s *Store) prepareActorColumnsForP2Postgres() error {
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_id text",
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_name text",
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
-		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
-		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_user_id text",
-		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_id text",
-		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_name text",
-		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
 	}
 	for _, stmt := range statements {
 		if err := s.db.Exec(stmt).Error; err != nil {
@@ -245,4 +249,183 @@ func (s *Store) prepareTaskAnnotationActivityColumnsPostgres() error {
 
 func postgresRegclassFound(name sql.NullString) bool {
 	return name.Valid && name.String != ""
+}
+
+// prepareAutomationScopeSchemaPostgres 把 legacy project_automation_* 重命名为
+// automation_*，回填 scope_type/scope_id，并把 delivery.project_id 改为可空。
+// fresh DB 没有 legacy 表时直接返回；所有变更在单个事务内完成。
+func (s *Store) prepareAutomationScopeSchemaPostgres() error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 检测 legacy 表是否仍然存在（旧 binary 创建过）。
+		var legacyRulesCount int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'project_automation_rules'`).Scan(&legacyRulesCount).Error; err != nil {
+			return err
+		}
+		var legacyDeliveriesCount int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'project_automation_deliveries'`).Scan(&legacyDeliveriesCount).Error; err != nil {
+			return err
+		}
+		var newRulesCount int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'automation_rules'`).Scan(&newRulesCount).Error; err != nil {
+			return err
+		}
+		var newDeliveriesCount int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'automation_deliveries'`).Scan(&newDeliveriesCount).Error; err != nil {
+			return err
+		}
+
+		legacyRules := legacyRulesCount > 0
+		legacyDeliveries := legacyDeliveriesCount > 0
+		newRules := newRulesCount > 0
+		newDeliveries := newDeliveriesCount > 0
+		switch {
+		case !legacyRules && !legacyDeliveries:
+			// fresh DB：交给 AutoMigrate 创建。
+			return nil
+		case legacyRules && legacyDeliveries && !newRules && !newDeliveries:
+			// 继续 legacy -> 新表迁移。
+		case newRules && newDeliveries:
+			// 新表已存在（测试夹具或多次启动），不做迁移。
+			return nil
+		default:
+			return fmt.Errorf("automation scope migration (postgres): inconsistent legacy/new tables: legacy_rules=%v legacy_deliveries=%v new_rules=%v new_deliveries=%v",
+				legacyRules, legacyDeliveries, newRules, newDeliveries)
+		}
+
+		// 1. 创建新表。
+		stmts := []string{
+			`CREATE TABLE automation_rules (
+	id text PRIMARY KEY,
+	workspace_id text NOT NULL,
+	scope_type text NOT NULL DEFAULT 'project',
+	scope_id text NOT NULL,
+	name text NOT NULL,
+	description text NOT NULL DEFAULT '',
+	enabled boolean NOT NULL DEFAULT TRUE,
+	trigger_type text NOT NULL,
+	trigger_config_json text NOT NULL DEFAULT '{}',
+	condition_json text NOT NULL DEFAULT '{}',
+	action_type text NOT NULL DEFAULT 'openai_compatible',
+	action_config_json text NOT NULL DEFAULT '{}',
+	context_config_json text NOT NULL DEFAULT '{}',
+	instruction_template text NOT NULL DEFAULT '',
+	system_prompt text NOT NULL DEFAULT '',
+	created_by_actor_type text NOT NULL DEFAULT 'user',
+	created_by_user_id text,
+	created_by_token_id text,
+	created_by_token_name text,
+	created_by_token_prefix text,
+	created_at bigint NOT NULL,
+	modified_at bigint NOT NULL
+)`,
+			`CREATE TABLE automation_deliveries (
+	id text PRIMARY KEY,
+	workspace_id text NOT NULL,
+	rule_scope_type text NOT NULL DEFAULT 'project',
+	rule_scope_id text NOT NULL,
+	project_id text,
+	rule_id text NOT NULL,
+	trigger_type text NOT NULL,
+	event_id text NOT NULL DEFAULT '',
+	event_type text NOT NULL DEFAULT '',
+	dedupe_key text NOT NULL,
+	replay_of_delivery_id text,
+	api_key_config_key text NOT NULL DEFAULT '',
+	allowed_hosts_config_key text NOT NULL DEFAULT '',
+	max_attempts bigint NOT NULL DEFAULT 0,
+	status text NOT NULL,
+	resolved_url text NOT NULL DEFAULT '',
+	rendered_method text NOT NULL DEFAULT 'POST',
+	rendered_headers_json text NOT NULL DEFAULT '{}',
+	request_body_json text NOT NULL DEFAULT '',
+	request_body_preview text NOT NULL DEFAULT '',
+	request_body_hash text NOT NULL DEFAULT '',
+	response_status_code integer,
+	response_body_preview text NOT NULL DEFAULT '',
+	provider_request_id text NOT NULL DEFAULT '',
+	usage_json text NOT NULL DEFAULT '{}',
+	attempt_count bigint NOT NULL DEFAULT 0,
+	next_attempt_at bigint,
+	claim_expires_at bigint,
+	last_attempt_at bigint,
+	last_error text NOT NULL DEFAULT '',
+	created_at bigint NOT NULL,
+	modified_at bigint NOT NULL
+)`,
+		}
+		for _, stmt := range stmts {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("automation scope migration (postgres): create schema: %w", err)
+			}
+		}
+		// 2. 复制规则并回填 scope。
+		if err := tx.Exec(`INSERT INTO automation_rules (
+	id, workspace_id, scope_type, scope_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+)
+SELECT
+	id, workspace_id, 'project', project_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	COALESCE(created_by_actor_type, 'user'), created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+FROM project_automation_rules`).Error; err != nil {
+			return fmt.Errorf("automation scope migration (postgres): copy rules: %w", err)
+		}
+		// 3. 复制 Delivery，回填冻结 scope；project_id 保持非空字符串以保留历史。
+		if err := tx.Exec(`INSERT INTO automation_deliveries (
+	id, workspace_id, rule_scope_type, rule_scope_id, project_id, rule_id, trigger_type, event_id, event_type,
+	dedupe_key, replay_of_delivery_id, api_key_config_key, allowed_hosts_config_key, max_attempts,
+	status, resolved_url, rendered_method, rendered_headers_json,
+	request_body_json, request_body_preview, request_body_hash,
+	response_status_code, response_body_preview, provider_request_id, usage_json,
+	attempt_count, next_attempt_at, claim_expires_at, last_attempt_at, last_error,
+	created_at, modified_at
+)
+SELECT
+	id, workspace_id, 'project', project_id, project_id, rule_id, trigger_type, event_id, event_type,
+	dedupe_key, NULL, '', '', 0,
+	status, resolved_url, rendered_method, rendered_headers_json,
+	request_body_json, request_body_preview, request_body_hash,
+	response_status_code, response_body_preview, provider_request_id, usage_json,
+	attempt_count, next_attempt_at, claim_expires_at, last_attempt_at, last_error,
+	created_at, modified_at
+FROM project_automation_deliveries`).Error; err != nil {
+			return fmt.Errorf("automation scope migration (postgres): copy deliveries: %w", err)
+		}
+		// 4. 校验主键集合一致。
+		var ruleDiff int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM (
+	SELECT id FROM project_automation_rules EXCEPT SELECT id FROM automation_rules
+	UNION
+	SELECT id FROM automation_rules EXCEPT SELECT id FROM project_automation_rules
+)`).Scan(&ruleDiff).Error; err != nil {
+			return err
+		}
+		if ruleDiff != 0 {
+			return fmt.Errorf("automation scope migration (postgres): rule primary key set changed, diff=%d", ruleDiff)
+		}
+		var deliveryDiff int64
+		if err := tx.Raw(`SELECT count(*)::bigint FROM (
+	SELECT id FROM project_automation_deliveries EXCEPT SELECT id FROM automation_deliveries
+	UNION
+	SELECT id FROM automation_deliveries EXCEPT SELECT id FROM project_automation_deliveries
+)`).Scan(&deliveryDiff).Error; err != nil {
+			return err
+		}
+		if deliveryDiff != 0 {
+			return fmt.Errorf("automation scope migration (postgres): delivery primary key set changed, diff=%d", deliveryDiff)
+		}
+		// 5. 删除 legacy 表。
+		if err := tx.Exec("DROP TABLE project_automation_deliveries").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DROP TABLE project_automation_rules").Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }

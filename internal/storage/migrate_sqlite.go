@@ -17,6 +17,7 @@ import (
 const m5ProjectsAppliedMetaKey = "migration.m5.projects.applied"
 const taskSlugMigrationMetaKey = "migration.v0.1.1.task_slug.applied"
 const projectTemplateWorkspaceFKMigrationMetaKey = "migration.project_templates.workspace_fk.applied"
+const automationScopeMigrationMetaKey = "migration.automation.scope.applied"
 
 var m5ProjectSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
@@ -33,7 +34,16 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareAPITokenUserIDNullable(); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &ProjectAutomationRule{}, &ProjectAutomationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &AutomationRule{}, &AutomationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
+		return err
+	}
+	// Automation scope migration 必须在 AutoMigrate 创建 meta/automation_* 之后运行，
+	// 因为它需要读写 meta 标记，且需要在 AutoMigrate 之后再校验新表确实存在。
+	// 但要在任何业务写入之前完成 legacy -> 新表的回填。
+	if err := s.prepareAutomationScopeSchemaSQLite(); err != nil {
+		return err
+	}
+	if err := s.verifyAutomationScopeSchemaSQLite(); err != nil {
 		return err
 	}
 	if err := s.prepareProjectTemplateSchemaSQLite(); err != nil {
@@ -329,12 +339,12 @@ func (s *Store) prepareActorColumnsForP2() error {
 			{"created_by_token_name", "ALTER TABLE task_links ADD COLUMN created_by_token_name TEXT"},
 			{"created_by_token_prefix", "ALTER TABLE task_links ADD COLUMN created_by_token_prefix TEXT"},
 		},
-		"project_automation_rules": {
-			{"created_by_actor_type", "ALTER TABLE project_automation_rules ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
-			{"created_by_user_id", "ALTER TABLE project_automation_rules ADD COLUMN created_by_user_id TEXT"},
-			{"created_by_token_id", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_id TEXT"},
-			{"created_by_token_name", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_name TEXT"},
-			{"created_by_token_prefix", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_prefix TEXT"},
+		"automation_rules": {
+			{"created_by_actor_type", "ALTER TABLE automation_rules ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE automation_rules ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE automation_rules ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE automation_rules ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE automation_rules ADD COLUMN created_by_token_prefix TEXT"},
 		},
 	}
 	for table, tableColumns := range columns {
@@ -1466,4 +1476,464 @@ func tasksHasM5ProjectForeignKey(tx m5MigrationTx) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// prepareAutomationScopeSchemaSQLite 把 legacy project_automation_* 表数据回填到通用
+// automation_* 表。fresh DB 由 AutoMigrate 直接建好新表，本函数只校验存在性。
+// legacy DB 时 AutoMigrate 已经创建了空的 automation_* 表，本函数负责复制数据并删旧表。
+func (s *Store) prepareAutomationScopeSchemaSQLite() error {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	began := false
+	committed := false
+	defer func() {
+		if began && !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+		_, _ = conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	}()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	began = true
+
+	tx := m5MigrationTx{ctx: ctx, conn: conn}
+	applied, err := metaKeyApplied(tx, automationScopeMigrationMetaKey)
+	if err != nil {
+		return err
+	}
+	if applied {
+		// 已声明迁移完成，但要确认表结构是 scope-aware 的，否则显式失败。
+		if err := assertAutomationScopeTablesExist(tx); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+
+	legacyRules, err := tableExists(tx, "project_automation_rules")
+	if err != nil {
+		return err
+	}
+	legacyDeliveries, err := tableExists(tx, "project_automation_deliveries")
+	if err != nil {
+		return err
+	}
+	newRules, err := tableExists(tx, "automation_rules")
+	if err != nil {
+		return err
+	}
+	newDeliveries, err := tableExists(tx, "automation_deliveries")
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case !legacyRules && !legacyDeliveries:
+		// fresh DB：新表已经由 AutoMigrate 创建，无需做任何 legacy 处理。
+		if err := assertAutomationScopeTablesExist(tx); err != nil {
+			return err
+		}
+	case legacyRules && legacyDeliveries && newRules && newDeliveries:
+		// legacy + new 共存：AutoMigrate 已建空新表，复制 legacy 数据后删除 legacy 表。
+		if err := backfillAutomationFromLegacySQLite(tx); err != nil {
+			return err
+		}
+	case legacyRules && legacyDeliveries && !newRules && !newDeliveries:
+		// 极少见：AutoMigrate 没建新表。直接 rename + backfill。
+		if err := migrateLegacyAutomationTablesSQLite(tx); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("automation scope migration: inconsistent legacy/new tables: legacy_rules=%v legacy_deliveries=%v new_rules=%v new_deliveries=%v",
+			legacyRules, legacyDeliveries, newRules, newDeliveries)
+	}
+
+	if err := assertAutomationScopeTablesExist(tx); err != nil {
+		return err
+	}
+	if err := setMetaInTx(tx, automationScopeMigrationMetaKey, "true"); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// migrateLegacyAutomationTablesSQLite 执行真正的 rename + backfill + DDL 调整。
+// 必须保证旧记录的主键、状态、dedupe_key、请求/响应和时间完全不变。
+func migrateLegacyAutomationTablesSQLite(tx m5MigrationTx) error {
+	// 1. 重命名旧表，腾出 automation_* 名字给新结构。
+	if err := tx.exec("ALTER TABLE project_automation_rules RENAME TO project_automation_rules_legacy_scope"); err != nil {
+		return fmt.Errorf("automation scope migration: rename rules: %w", err)
+	}
+	if err := tx.exec("ALTER TABLE project_automation_deliveries RENAME TO project_automation_deliveries_legacy_scope"); err != nil {
+		return fmt.Errorf("automation scope migration: rename deliveries: %w", err)
+	}
+	// 2. 删除随表重命名而来的旧索引，避免新表创建索引时被 IF NOT EXISTS 误判。
+	for _, indexName := range []string{
+		"idx_project_automation_rules_scope",
+		"idx_project_automation_rules_ws_project_name",
+		"idx_project_automation_deliveries_scope",
+		"idx_project_automation_deliveries_due",
+	} {
+		if err := tx.exec("DROP INDEX IF EXISTS " + indexName); err != nil {
+			return err
+		}
+	}
+	// 3. 显式创建新表结构，使用通用 scope 字段。
+	if err := createAutomationScopeSchemaSQLite(tx); err != nil {
+		return err
+	}
+	// 4. 复制规则并回填 scope_type=project, scope_id=project_id。
+	if err := tx.exec(`INSERT INTO automation_rules (
+	id, workspace_id, scope_type, scope_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+)
+SELECT
+	id, workspace_id, 'project', project_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+FROM project_automation_rules_legacy_scope`); err != nil {
+		return fmt.Errorf("automation scope migration: copy rules: %w", err)
+	}
+	// 5. 复制 Delivery 并回填冻结 scope 字段。ProjectID 在旧表里是 NOT NULL string，
+	//    新模型是 *string；写 NULL 表示 schedule 无 Project，但 legacy 数据全部来自
+	//    Project Automation，因此全部保留为非空指针。
+	if err := tx.exec(`INSERT INTO automation_deliveries (
+	id, workspace_id, rule_scope_type, rule_scope_id, project_id, rule_id, trigger_type, event_id, event_type,
+	dedupe_key, replay_of_delivery_id, api_key_config_key, allowed_hosts_config_key, max_attempts,
+	status, resolved_url, rendered_method, rendered_headers_json,
+	request_body_json, request_body_preview, request_body_hash,
+	response_status_code, response_body_preview, provider_request_id, usage_json,
+	attempt_count, next_attempt_at, claim_expires_at, last_attempt_at, last_error,
+	created_at, modified_at
+)
+SELECT
+	d.id, d.workspace_id, 'project', d.project_id, d.project_id, d.rule_id, d.trigger_type, d.event_id, d.event_type,
+	d.dedupe_key, NULL, '', '', 0,
+	d.status, d.resolved_url, d.rendered_method, d.rendered_headers_json,
+	d.request_body_json, d.request_body_preview, d.request_body_hash,
+	d.response_status_code, d.response_body_preview, d.provider_request_id, d.usage_json,
+	d.attempt_count, d.next_attempt_at, d.claim_expires_at, d.last_attempt_at, d.last_error,
+	d.created_at, d.modified_at
+FROM project_automation_deliveries_legacy_scope d`); err != nil {
+		return fmt.Errorf("automation scope migration: copy deliveries: %w", err)
+	}
+	// 6. 校验迁移前后行数和主键集合一致。
+	if err := assertAutomationLegacyMigrationCounts(tx); err != nil {
+		return err
+	}
+	// 7. 删除 legacy 表，避免长期保留误导性结构。
+	if err := tx.exec("DROP TABLE project_automation_deliveries_legacy_scope"); err != nil {
+		return err
+	}
+	if err := tx.exec("DROP TABLE project_automation_rules_legacy_scope"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// backfillAutomationFromLegacySQLite 处理 AutoMigrate 已经创建空新表、
+// legacy 表仍然存在的常见情况：复制数据，删除 legacy 表，保留新表 schema 不变。
+func backfillAutomationFromLegacySQLite(tx m5MigrationTx) error {
+	// 幂等：只有当新表无数据时才复制。如果已经有数据（多次启动），跳过复制但仍删除 legacy。
+	var newRuleCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_rules").Scan(&newRuleCount); err != nil {
+		return err
+	}
+	if newRuleCount == 0 {
+		if err := tx.exec(`INSERT INTO automation_rules (
+	id, workspace_id, scope_type, scope_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+)
+SELECT
+	id, workspace_id, 'project', project_id, name, description, enabled,
+	trigger_type, trigger_config_json, condition_json, action_type, action_config_json, context_config_json,
+	instruction_template, system_prompt,
+	created_by_actor_type, created_by_user_id, created_by_token_id, created_by_token_name, created_by_token_prefix,
+	created_at, modified_at
+FROM project_automation_rules`); err != nil {
+			return fmt.Errorf("automation scope migration: backfill rules: %w", err)
+		}
+	}
+	var newDeliveryCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_deliveries").Scan(&newDeliveryCount); err != nil {
+		return err
+	}
+	if newDeliveryCount == 0 {
+		if err := tx.exec(`INSERT INTO automation_deliveries (
+	id, workspace_id, rule_scope_type, rule_scope_id, project_id, rule_id, trigger_type, event_id, event_type,
+	dedupe_key, replay_of_delivery_id, api_key_config_key, allowed_hosts_config_key, max_attempts,
+	status, resolved_url, rendered_method, rendered_headers_json,
+	request_body_json, request_body_preview, request_body_hash,
+	response_status_code, response_body_preview, provider_request_id, usage_json,
+	attempt_count, next_attempt_at, claim_expires_at, last_attempt_at, last_error,
+	created_at, modified_at
+)
+SELECT
+	d.id, d.workspace_id, 'project', d.project_id, d.project_id, d.rule_id, d.trigger_type, d.event_id, d.event_type,
+	d.dedupe_key, NULL, '', '', 0,
+	d.status, d.resolved_url, d.rendered_method, d.rendered_headers_json,
+	d.request_body_json, d.request_body_preview, d.request_body_hash,
+	d.response_status_code, d.response_body_preview, d.provider_request_id, d.usage_json,
+	d.attempt_count, d.next_attempt_at, d.claim_expires_at, d.last_attempt_at, d.last_error,
+	d.created_at, d.modified_at
+FROM project_automation_deliveries d`); err != nil {
+			return fmt.Errorf("automation scope migration: backfill deliveries: %w", err)
+		}
+	}
+	// 校验 legacy -> 新表行数一致（仅当本次复制时；如果新表已有数据，跳过校验避免误报）。
+	if newRuleCount == 0 {
+		if err := assertAutomationLegacyMigrationCountsFromLegacy(tx); err != nil {
+			return err
+		}
+	}
+	// 删除 legacy 表，保证下次启动进入 fresh 分支。
+	if err := tx.exec("DROP TABLE project_automation_deliveries"); err != nil {
+		return fmt.Errorf("automation scope migration: drop legacy deliveries: %w", err)
+	}
+	if err := tx.exec("DROP TABLE project_automation_rules"); err != nil {
+		return fmt.Errorf("automation scope migration: drop legacy rules: %w", err)
+	}
+	return nil
+}
+
+// assertAutomationLegacyMigrationCountsFromLegacy 与 assertAutomationLegacyMigrationCounts
+// 类似，但 legacy 表名没有 _legacy_scope 后缀（AutoMigrate 路径下保留原名）。
+func assertAutomationLegacyMigrationCountsFromLegacy(tx m5MigrationTx) error {
+	var legacyRuleCount, newRuleCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM project_automation_rules").Scan(&legacyRuleCount); err != nil {
+		return err
+	}
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_rules").Scan(&newRuleCount); err != nil {
+		return err
+	}
+	if legacyRuleCount != newRuleCount {
+		return fmt.Errorf("automation scope migration: rule count mismatch legacy=%d new=%d", legacyRuleCount, newRuleCount)
+	}
+	var legacyDeliveryCount, newDeliveryCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM project_automation_deliveries").Scan(&legacyDeliveryCount); err != nil {
+		return err
+	}
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_deliveries").Scan(&newDeliveryCount); err != nil {
+		return err
+	}
+	if legacyDeliveryCount != newDeliveryCount {
+		return fmt.Errorf("automation scope migration: delivery count mismatch legacy=%d new=%d", legacyDeliveryCount, newDeliveryCount)
+	}
+	var ruleDiffCount int64
+	if err := tx.queryRow(`SELECT COUNT(*) FROM (
+		SELECT id FROM project_automation_rules EXCEPT SELECT id FROM automation_rules
+		UNION
+		SELECT id FROM automation_rules EXCEPT SELECT id FROM project_automation_rules
+	)`).Scan(&ruleDiffCount); err != nil {
+		return err
+	}
+	if ruleDiffCount != 0 {
+		return fmt.Errorf("automation scope migration: rule primary key set changed, diff=%d", ruleDiffCount)
+	}
+	var deliveryDiffCount int64
+	if err := tx.queryRow(`SELECT COUNT(*) FROM (
+		SELECT id FROM project_automation_deliveries EXCEPT SELECT id FROM automation_deliveries
+		UNION
+		SELECT id FROM automation_deliveries EXCEPT SELECT id FROM project_automation_deliveries
+	)`).Scan(&deliveryDiffCount); err != nil {
+		return err
+	}
+	if deliveryDiffCount != 0 {
+		return fmt.Errorf("automation scope migration: delivery primary key set changed, diff=%d", deliveryDiffCount)
+	}
+	return nil
+}
+
+// createAutomationScopeSchemaSQLite 显式创建通用 automation_* 表。
+// 字段集合与 AutomationRule/AutomationDelivery GORM tag 严格对齐，保证 AutoMigrate
+// 在此基础上只会补建索引，不会再次重建表。
+func createAutomationScopeSchemaSQLite(tx m5MigrationTx) error {
+	statements := []string{
+		`CREATE TABLE automation_rules (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL,
+	scope_type TEXT NOT NULL DEFAULT 'project',
+	scope_id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	enabled NUMERIC NOT NULL DEFAULT TRUE,
+	trigger_type TEXT NOT NULL,
+	trigger_config_json TEXT NOT NULL DEFAULT '{}',
+	condition_json TEXT NOT NULL DEFAULT '{}',
+	action_type TEXT NOT NULL DEFAULT 'openai_compatible',
+	action_config_json TEXT NOT NULL DEFAULT '{}',
+	context_config_json TEXT NOT NULL DEFAULT '{}',
+	instruction_template TEXT NOT NULL DEFAULT '',
+	system_prompt TEXT NOT NULL DEFAULT '',
+	created_by_actor_type TEXT NOT NULL DEFAULT 'user',
+	created_by_user_id TEXT,
+	created_by_token_id TEXT,
+	created_by_token_name TEXT,
+	created_by_token_prefix TEXT,
+	created_at INTEGER NOT NULL,
+	modified_at INTEGER NOT NULL
+)`,
+		`CREATE TABLE automation_deliveries (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL,
+	rule_scope_type TEXT NOT NULL DEFAULT 'project',
+	rule_scope_id TEXT NOT NULL,
+	project_id TEXT,
+	rule_id TEXT NOT NULL,
+	trigger_type TEXT NOT NULL,
+	event_id TEXT NOT NULL DEFAULT '',
+	event_type TEXT NOT NULL DEFAULT '',
+	dedupe_key TEXT NOT NULL,
+	replay_of_delivery_id TEXT,
+	api_key_config_key TEXT NOT NULL DEFAULT '',
+	allowed_hosts_config_key TEXT NOT NULL DEFAULT '',
+	max_attempts INTEGER NOT NULL DEFAULT 0,
+	status TEXT NOT NULL,
+	resolved_url TEXT NOT NULL DEFAULT '',
+	rendered_method TEXT NOT NULL DEFAULT 'POST',
+	rendered_headers_json TEXT NOT NULL DEFAULT '{}',
+	request_body_json TEXT NOT NULL DEFAULT '',
+	request_body_preview TEXT NOT NULL DEFAULT '',
+	request_body_hash TEXT NOT NULL DEFAULT '',
+	response_status_code INTEGER,
+	response_body_preview TEXT NOT NULL DEFAULT '',
+	provider_request_id TEXT NOT NULL DEFAULT '',
+	usage_json TEXT NOT NULL DEFAULT '{}',
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	next_attempt_at INTEGER,
+	claim_expires_at INTEGER,
+	last_attempt_at INTEGER,
+	last_error TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	modified_at INTEGER NOT NULL
+)`,
+		"CREATE INDEX IF NOT EXISTS idx_automation_rules_scope ON automation_rules(workspace_id, scope_type, scope_id)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_rules_ws_scope_name ON automation_rules(workspace_id, scope_type, scope_id, name)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_rules_lookup ON automation_rules(workspace_id, scope_type, scope_id, enabled, trigger_type)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_deliveries_scope ON automation_deliveries(workspace_id, rule_scope_type, rule_scope_id, project_id)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_deliveries_due ON automation_deliveries(status, next_attempt_at)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_deliveries_dedupe_key ON automation_deliveries(dedupe_key)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_deliveries_rule_id ON automation_deliveries(rule_id)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_deliveries_replay_of ON automation_deliveries(replay_of_delivery_id)",
+		"CREATE INDEX IF NOT EXISTS idx_automation_deliveries_event ON automation_deliveries(event_id, event_type)",
+	}
+	for _, stmt := range statements {
+		if err := tx.exec(stmt); err != nil {
+			return fmt.Errorf("automation scope migration: create schema: %w", err)
+		}
+	}
+	return nil
+}
+
+// assertAutomationScopeTablesExist 在 meta 已写但表结构损坏时报错，
+// 提示运维需要从备份恢复，而不是默默继续。
+func assertAutomationScopeTablesExist(tx m5MigrationTx) error {
+	for _, table := range []string{"automation_rules", "automation_deliveries"} {
+		exists, err := tableExists(tx, table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("automation scope migration: meta marked applied but table %s missing", table)
+		}
+	}
+	return nil
+}
+
+// assertAutomationLegacyMigrationCounts 在 legacy 表数据复制完后，
+// 校验新旧表的行数与主键集合完全一致，防止迁移丢数据。
+func assertAutomationLegacyMigrationCounts(tx m5MigrationTx) error {
+	var legacyRuleCount, newRuleCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM project_automation_rules_legacy_scope").Scan(&legacyRuleCount); err != nil {
+		return err
+	}
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_rules").Scan(&newRuleCount); err != nil {
+		return err
+	}
+	if legacyRuleCount != newRuleCount {
+		return fmt.Errorf("automation scope migration: rule count mismatch legacy=%d new=%d", legacyRuleCount, newRuleCount)
+	}
+	var legacyDeliveryCount, newDeliveryCount int64
+	if err := tx.queryRow("SELECT COUNT(*) FROM project_automation_deliveries_legacy_scope").Scan(&legacyDeliveryCount); err != nil {
+		return err
+	}
+	if err := tx.queryRow("SELECT COUNT(*) FROM automation_deliveries").Scan(&newDeliveryCount); err != nil {
+		return err
+	}
+	if legacyDeliveryCount != newDeliveryCount {
+		return fmt.Errorf("automation scope migration: delivery count mismatch legacy=%d new=%d", legacyDeliveryCount, newDeliveryCount)
+	}
+
+	// 主键集合对称差：只在 legacy 或只在新表的 id 数量。SQLite 不支持 FULL OUTER JOIN，
+	// 用 (legacy EXCEPT new) UNION (new EXCEPT legacy) 等价表达。
+	var ruleDiffCount int64
+	if err := tx.queryRow(`SELECT COUNT(*) FROM (
+		SELECT id FROM project_automation_rules_legacy_scope
+		EXCEPT
+		SELECT id FROM automation_rules
+		UNION
+		SELECT id FROM automation_rules
+		EXCEPT
+		SELECT id FROM project_automation_rules_legacy_scope
+	)`).Scan(&ruleDiffCount); err != nil {
+		return err
+	}
+	if ruleDiffCount != 0 {
+		return fmt.Errorf("automation scope migration: rule primary key set changed, diff=%d", ruleDiffCount)
+	}
+	var deliveryDiffCount int64
+	if err := tx.queryRow(`SELECT COUNT(*) FROM (
+		SELECT id FROM project_automation_deliveries_legacy_scope
+		EXCEPT
+		SELECT id FROM automation_deliveries
+		UNION
+		SELECT id FROM automation_deliveries
+		EXCEPT
+		SELECT id FROM project_automation_deliveries_legacy_scope
+	)`).Scan(&deliveryDiffCount); err != nil {
+		return err
+	}
+	if deliveryDiffCount != 0 {
+		return fmt.Errorf("automation scope migration: delivery primary key set changed, diff=%d", deliveryDiffCount)
+	}
+	return nil
+}
+
+// verifyAutomationScopeSchemaSQLite 在 AutoMigrate 后做一次轻量校验，
+// 保证通用 scope 索引存在；不通过即视为迁移失败。
+func (s *Store) verifyAutomationScopeSchemaSQLite() error {
+	if !s.db.Migrator().HasTable(&AutomationRule{}) {
+		return fmt.Errorf("automation scope migration: automation_rules missing after AutoMigrate")
+	}
+	if !s.db.Migrator().HasTable(&AutomationDelivery{}) {
+		return fmt.Errorf("automation scope migration: automation_deliveries missing after AutoMigrate")
+	}
+	return nil
 }

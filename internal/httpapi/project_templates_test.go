@@ -340,8 +340,8 @@ func TestProjectTemplateAutomationCandidateReturnsJSONActorInfo(t *testing.T) {
 	}
 	enabled := true
 	tokenID, tokenName, tokenPrefix := "token-1", "部署机器人", "xuanchu_tat_1234"
-	if err := storage.NewProjectAutomationRuleRepository(fixture.server.store.DB()).Create(storage.ProjectAutomationRule{
-		ID: "token-rule", WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "Token 规则", Enabled: &enabled,
+	if err := storage.NewProjectAutomationRuleRepository(fixture.server.store.DB()).Create(storage.AutomationRule{
+		ID: "token-rule", WorkspaceID: project.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: project.ID, Name: "Token 规则", Enabled: &enabled,
 		TriggerType: "event", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
 		CreatedByActorType: auth.TokenTypeTenantAccess, CreatedByTokenID: &tokenID, CreatedByTokenName: &tokenName, CreatedByTokenPrefix: &tokenPrefix,
 		CreatedAt: 1, ModifiedAt: 1,

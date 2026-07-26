@@ -450,7 +450,7 @@ func (s *Service) listProjectTemplateAutomationCandidates(input AutomationCandid
 	items := make([]AutomationCandidateView, 0, len(page.Items))
 	for _, row := range page.Items {
 		items = append(items, AutomationCandidateView{
-			Ref: row.ID, ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, Description: row.Description,
+			Ref: row.ID, ID: row.ID, ProjectID: automationProjectIDFromScope(row), Name: row.Name, Description: row.Description,
 			Enabled: row.Enabled != nil && *row.Enabled, TriggerType: row.TriggerType,
 			CreatedBy: actorInfoFromColumns(projectTemplateAutomationActorColumns(row), valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt,
 		})

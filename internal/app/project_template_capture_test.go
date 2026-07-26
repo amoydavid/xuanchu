@@ -662,7 +662,7 @@ func TestCaptureAutomationClosesConfigDependenciesAndCopiesSecret(t *testing.T) 
 	}
 	enabled := true
 	rule := storage.ProjectAutomationRule{
-		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "自动巡检", Enabled: &enabled,
+		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: project.ID, Name: "自动巡检", Enabled: &enabled,
 		TriggerType: "schedule", TriggerConfigJSON: `{"schedule_type":"daily_at","schedule_value":"09:00","timezone":"Asia/Shanghai"}`,
 		ConditionJSON: `{"max_tasks":10}`, ActionType: ProjectAutomationActionOpenAI,
 		ActionConfigJSON:  `{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model","allowed_hosts_config_key":"agent.provider.allowed_hosts","temperature":0.2}`,
@@ -865,7 +865,7 @@ func TestCaptureAutomationMapsTypedDefinitionAndIgnoresEnabled(t *testing.T) {
 	svc, project := captureFixture(t)
 	enabled := true
 	rule := storage.ProjectAutomationRule{
-		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "自动巡检", Enabled: &enabled,
+		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: project.ID, Name: "自动巡检", Enabled: &enabled,
 		TriggerType: "schedule", TriggerConfigJSON: `{"schedule_type":"daily_at","schedule_value":"09:00","timezone":"Asia/Shanghai"}`,
 		ConditionJSON: `{"max_tasks":10}`, ActionType: ProjectAutomationActionOpenAI,
 		ActionConfigJSON:  `{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model","temperature":0.2}`,
@@ -1183,7 +1183,7 @@ func TestCaptureSourceHashNormalizesHydratedUsersAndAutomationJSON(t *testing.T)
 	}
 	enabled := true
 	rule := storage.ProjectAutomationRule{
-		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, Name: "稳定自动化", Enabled: &enabled,
+		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: project.ID, Name: "稳定自动化", Enabled: &enabled,
 		TriggerType: "schedule", TriggerConfigJSON: `{"schedule_value":"09:00","schedule_type":"daily_at","timezone":"Asia/Shanghai"}`,
 		ConditionJSON: `{"max_tasks":10,"task_filter":"status:pending"}`, ActionType: ProjectAutomationActionOpenAI,
 		ActionConfigJSON:  `{"temperature":0.2,"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model"}`,

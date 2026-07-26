@@ -81,8 +81,8 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ruleRepo := storage.NewProjectAutomationRuleRepository(s.store.DB())
-	deliveryRepo := storage.NewProjectAutomationDeliveryRepository(s.store.DB())
+	ruleRepo := storage.NewAutomationRuleRepository(s.store.DB())
+	deliveryRepo := storage.NewAutomationDeliveryRepository(s.store.DB())
 	rules, err := ruleRepo.ListEnabled()
 	if err != nil {
 		return ProjectAutomationSchedulerRunResult{}, err
@@ -111,7 +111,7 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 		if err != nil {
 			continue
 		}
-		key := fmt.Sprintf("%s:%s:%s:%s", rule.WorkspaceID, rule.ProjectID, rule.ID, dedupe)
+		key := fmt.Sprintf("schedule:%s:%s:%s:%s", rule.ScopeType, rule.ScopeID, rule.ID, dedupe)
 		exists, err := deliveryRepo.ExistsByDedupeKey(key)
 		if err != nil {
 			return result, err
@@ -124,7 +124,7 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 		if err != nil {
 			return result, err
 		}
-		if err := deliveryRepo.Enqueue([]storage.ProjectAutomationDelivery{delivery}); err != nil {
+		if err := deliveryRepo.Enqueue([]storage.AutomationDelivery{delivery}); err != nil {
 			return result, err
 		}
 		result.DeliveriesEnqueued++
@@ -163,7 +163,7 @@ func (s *Service) EnqueueProjectAutomationForEvents(events []HookEvent) error {
 		if event.ProjectID == nil || event.EventID == "" {
 			continue
 		}
-		rules, err := s.projectAutomationRuleRepo.List(s.workspaceID, event.ProjectID, false)
+		rules, err := s.projectAutomationRuleRepo.ListScope(s.workspaceID, storage.AutomationScopeProject, *event.ProjectID, false)
 		if err != nil {
 			return err
 		}
@@ -179,12 +179,12 @@ func (s *Service) EnqueueProjectAutomationForEvents(events []HookEvent) error {
 			if condition.OnlyAddedAssignees && event.EventType == "task.assigned" && automationEventListLen(event.Data["added_assignees"]) == 0 {
 				continue
 			}
-			key := rule.WorkspaceID + ":" + rule.ProjectID + ":" + rule.ID + ":" + event.EventID
+			key := fmt.Sprintf("event:%s:%s:%s:%s", rule.ScopeType, rule.ScopeID, rule.ID, event.EventID)
 			delivery, err := s.buildProjectAutomationDelivery(rule, ProjectAutomationTriggerEvent, event.EventID, event.EventType, key, event.OccurredAt, &event)
 			if err != nil {
 				return err
 			}
-			if err := s.projectAutomationDeliveryRepo.Enqueue([]storage.ProjectAutomationDelivery{delivery}); err != nil {
+			if err := s.projectAutomationDeliveryRepo.Enqueue([]storage.AutomationDelivery{delivery}); err != nil {
 				return err
 			}
 		}
@@ -204,20 +204,24 @@ func automationEventListLen(value any) int {
 }
 
 // buildProjectAutomationDelivery 渲染规则并构造投递记录，不包含 secret 明文。
-func (s *Service) buildProjectAutomationDelivery(rule storage.ProjectAutomationRule, triggerType string, eventID string, eventType string, dedupeKey string, now int64, event *HookEvent) (storage.ProjectAutomationDelivery, error) {
-	projectRow, err := s.ResolveProject(rule.ProjectID)
+// 仅支持 Project scope 规则；Workspace scope 规则的渲染由 automation_runtime.go 负责。
+func (s *Service) buildProjectAutomationDelivery(rule storage.AutomationRule, triggerType string, eventID string, eventType string, dedupeKey string, now int64, event *HookEvent) (storage.AutomationDelivery, error) {
+	if rule.ScopeType != storage.AutomationScopeProject {
+		return storage.AutomationDelivery{}, RuntimeError{Code: "automation_scope_invalid", Message: "only project scope rules can be rendered here"}
+	}
+	projectRow, err := s.ResolveProject(rule.ScopeID)
 	if err != nil {
-		return storage.ProjectAutomationDelivery{}, err
+		return storage.AutomationDelivery{}, err
 	}
 	projectView, err := s.projectViewForRow(projectRow)
 	if err != nil {
-		return storage.ProjectAutomationDelivery{}, err
+		return storage.AutomationDelivery{}, err
 	}
 	input := projectAutomationRuleAddInputFromRow(rule)
 	deliveryID := uuid.NewString()
 	rendered, err := s.renderProjectAutomationRequest(projectView, rule.ID, input, triggerType, deliveryID, event)
 	if err != nil {
-		return storage.ProjectAutomationDelivery{}, err
+		return storage.AutomationDelivery{}, err
 	}
 	maskedHeaders := make(map[string][]string, len(rendered.MaskedHeaders))
 	for key, value := range rendered.MaskedHeaders {
@@ -225,27 +229,37 @@ func (s *Service) buildProjectAutomationDelivery(rule storage.ProjectAutomationR
 	}
 	headersJSON, err := json.Marshal(maskedHeaders)
 	if err != nil {
-		return storage.ProjectAutomationDelivery{}, err
+		return storage.AutomationDelivery{}, err
 	}
-	return storage.ProjectAutomationDelivery{
-		ID:                  deliveryID,
-		WorkspaceID:         rule.WorkspaceID,
-		ProjectID:           rule.ProjectID,
-		RuleID:              rule.ID,
-		TriggerType:         triggerType,
-		EventID:             eventID,
-		EventType:           eventType,
-		DedupeKey:           dedupeKey,
-		Status:              storage.DeliveryStatusQueued,
-		ResolvedURL:         rendered.URL,
-		RenderedMethod:      rendered.Method,
-		RenderedHeadersJSON: string(headersJSON),
-		RequestBodyJSON:     rendered.BodyJSON,
-		RequestBodyPreview:  rendered.BodyPreview,
-		RequestBodyHash:     rendered.BodyHash,
-		UsageJSON:           "{}",
-		CreatedAt:           now,
-		ModifiedAt:          now,
+	projectID := rule.ScopeID
+	maxAttempts := input.Action.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	return storage.AutomationDelivery{
+		ID:                    deliveryID,
+		WorkspaceID:           rule.WorkspaceID,
+		RuleScopeType:         rule.ScopeType,
+		RuleScopeID:           rule.ScopeID,
+		ProjectID:             &projectID,
+		RuleID:                rule.ID,
+		TriggerType:           triggerType,
+		EventID:               eventID,
+		EventType:             eventType,
+		DedupeKey:             dedupeKey,
+		APIKeyConfigKey:       input.Action.APIKeyConfigKey,
+		AllowedHostsConfigKey: input.Action.AllowedHostsConfigKey,
+		MaxAttempts:           maxAttempts,
+		Status:                storage.DeliveryStatusQueued,
+		ResolvedURL:           rendered.URL,
+		RenderedMethod:        rendered.Method,
+		RenderedHeadersJSON:   string(headersJSON),
+		RequestBodyJSON:       rendered.BodyJSON,
+		RequestBodyPreview:    rendered.BodyPreview,
+		RequestBodyHash:       rendered.BodyHash,
+		UsageJSON:             "{}",
+		CreatedAt:             now,
+		ModifiedAt:            now,
 	}, nil
 }
 
@@ -265,17 +279,17 @@ func (s *Service) TestProjectAutomationRule(projectRef string, ruleID string) (P
 	if err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationDeliveryView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
 	}
 	now := s.clock.Unix()
 	// 测试投递使用唯一 dedupe_key，避免与正式投递冲突。
-	key := fmt.Sprintf("%s:%s:%s:test:%d", row.WorkspaceID, row.ProjectID, row.ID, now)
+	key := fmt.Sprintf("test:%s:%s:%s:%d", row.ScopeType, row.ScopeID, row.ID, now)
 	delivery, err := s.buildProjectAutomationDelivery(row, ProjectAutomationTriggerManual, "", "", key, now, nil)
 	if err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
-	if err := s.projectAutomationDeliveryRepo.Enqueue([]storage.ProjectAutomationDelivery{delivery}); err != nil {
+	if err := s.projectAutomationDeliveryRepo.Enqueue([]storage.AutomationDelivery{delivery}); err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
 	return projectAutomationDeliveryViewFromRow(delivery), nil

@@ -62,6 +62,7 @@
 | v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
 | v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed/inherit/prompt；模板标识默认来源 slug，同标识保存追加版本 |
+| v0.6.4 | 规划中 | Workspace Agent 自动化：复用 Project Automation，支持 `project.created`、自然语言编排、MCP 回写和跨项目运行记录 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -733,6 +734,31 @@ docs/superpowers/plans/2026-07-23-workspace-custom-fields-implementation.md
 ```text
 docs/superpowers/specs/2026-07-26-project-template-config-inputs-design.md
 docs/superpowers/plans/2026-07-26-project-template-config-inputs-implementation.md
+```
+
+## v0.6.4：Workspace Agent 自动化
+
+**状态：规划中。**
+
+把现有 Project Automation 泛化为 `workspace | project` 两种 scope，在 Web Console「管理」分组增加顶层「自动化」入口。Workspace 规则复用 OpenAI-compatible Agent Provider、自然语言指令、上下文预览、dispatcher、重试/replay 和 Delivery 运行记录，不新增用户脚本、Setup Action、工作流 DSL 或 Yaoguang 专用 action。
+
+首个事件场景是 `project.created`：空项目或模板项目的 Project、config、Task、Series 和 Project Automation 全部在同一事务中写完后，匹配 Workspace 规则并原子生成冻结的 Automation Delivery。Agent 获得脱敏的 Workspace、Project、初始 project config 和事件上下文，自行调用已配置工具，并通过现有 MCP `project_config_set` 回写知识库 ID 等业务结果；Agent Provider HTTP 2xx 只代表调用成功，Project config 和 Audit 才是回写事实。
+
+核心范围：
+
+- 领域/storage 泛化为统一 `AutomationRule` / `AutomationDelivery`，历史 Project 规则和 Delivery 完整迁移。
+- Workspace event 首版只开放 `project.created`；Workspace schedule 复用统一 cron 能力，Agent 通过 MCP 查询 Project。
+- Delivery 作为 transactional outbox 和运行记录，消除 Project 已提交但 event enqueue 失败的窗口，保持 at-least-once 和冻结请求语义。
+- Workspace Provider 配置只从 Workspace scope 解析；Project config 只作为业务上下文，secret 永不进入 prompt/preview/Delivery/Audit/日志。
+- Workspace/Project Automation 控制台统一使用安全 Provider config facade；API 只返回 `api_key_set`，不回显密钥，也不扩大通用 Workspace Config HTTP 的 key allowlist。
+- Workspace 规则读写复用 `workspace + hook` 双权限；Project 规则继续使用 `project + hook`。
+- `/automations` 提供「规则 / 运行记录」两个 tab；Project 详情的「自动化」tab 保持不变，深层路由继续高亮「项目」。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-07-26-workspace-agent-automation-design.md
+docs/superpowers/plans/2026-07-26-workspace-agent-automation-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

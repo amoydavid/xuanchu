@@ -523,7 +523,7 @@ func TestProjectTemplateInstantiateCreatesFreshGraphWithoutHistory(t *testing.T)
 		t.Fatalf("occurrence count = %d, err=%v", occurrenceCount, err)
 	}
 
-	rules, err := f.owner.projectAutomationRuleRepo.List(f.owner.workspaceID, &got.Project.ID, true)
+	rules, err := f.owner.projectAutomationRuleRepo.ListScope(f.owner.workspaceID, storage.AutomationScopeProject, got.Project.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}

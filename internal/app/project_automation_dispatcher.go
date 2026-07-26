@@ -63,7 +63,7 @@ func (d *ProjectAutomationDispatcher) RunOnce(ctx context.Context) (ProjectAutom
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	repo := storage.NewProjectAutomationDeliveryRepository(d.store.DB())
+	repo := storage.NewAutomationDeliveryRepository(d.store.DB())
 	now := d.clock.Unix()
 	rows, err := repo.ClaimDue(now, now+120, d.batchSize)
 	if err != nil {
@@ -130,8 +130,14 @@ func (d *ProjectAutomationDispatcher) Run(ctx context.Context, interval time.Dur
 	}
 }
 
-func (d *ProjectAutomationDispatcher) maxAttemptsFor(row storage.ProjectAutomationDelivery) int {
-	ruleRepo := storage.NewProjectAutomationRuleRepository(d.store.DB())
+// maxAttemptsFor 优先使用 Delivery 冻结值；只有 frozen=0（旧记录）才回退到当前 Rule。
+// dispatcher 不依赖 Rule 是基本契约，但 legacy 数据迁移时 max_attempts 被回填为 0，
+// 此处保留回退路径避免历史投递被立刻 dead-letter。
+func (d *ProjectAutomationDispatcher) maxAttemptsFor(row storage.AutomationDelivery) int {
+	if row.MaxAttempts > 0 {
+		return row.MaxAttempts
+	}
+	ruleRepo := storage.NewAutomationRuleRepository(d.store.DB())
 	rule, err := ruleRepo.GetByID(row.RuleID)
 	if err != nil {
 		return 5
@@ -143,16 +149,11 @@ func (d *ProjectAutomationDispatcher) maxAttemptsFor(row storage.ProjectAutomati
 	return input.Action.MaxAttempts
 }
 
-// send 执行 HTTP 投递，重新读取当前 secret config 生成真实 Authorization。
-func (d *ProjectAutomationDispatcher) send(ctx context.Context, row storage.ProjectAutomationDelivery) (int, string, string, string, error) {
-	ruleRepo := storage.NewProjectAutomationRuleRepository(d.store.DB())
-	rule, err := ruleRepo.GetByID(row.RuleID)
-	if err != nil {
-		return 0, "", "", "{}", err
-	}
+// send 执行 HTTP 投递，按 Delivery 冻结的 scope 和 secret config key 重新读取明文。
+// dispatcher 不再读取当前 Rule，因此 Rule 被修改或删除后仍能投递。
+func (d *ProjectAutomationDispatcher) send(ctx context.Context, row storage.AutomationDelivery) (int, string, string, string, error) {
 	svc := d.serviceFactory(row.WorkspaceID)
-	input := projectAutomationRuleAddInputFromRow(rule)
-	_, apiKey, _, err := svc.resolveProjectAutomationProviderConfig(row.ProjectID, input.Action)
+	apiKey, err := svc.resolveAutomationDeliveryAPIKey(row)
 	if err != nil {
 		return 0, "", "", "{}", err
 	}

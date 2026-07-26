@@ -124,10 +124,11 @@ func (s *Service) addProjectAutomationRuleLocked(project storage.Project, input 
 		return ProjectAutomationRuleView{}, err
 	}
 	now := s.clock.Unix()
-	row := storage.ProjectAutomationRule{
+	row := storage.AutomationRule{
 		ID:                  input.presetID,
 		WorkspaceID:         s.workspaceID,
-		ProjectID:           project.ID,
+		ScopeType:           storage.AutomationScopeProject,
+		ScopeID:             project.ID,
 		Name:                normalized.Name,
 		Description:         normalized.Description,
 		Enabled:             &normalized.Enabled,
@@ -170,7 +171,7 @@ func (s *Service) ListProjectAutomationRules(projectRef string, includeDisabled 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.projectAutomationRuleRepo.List(s.workspaceID, &project.ID, includeDisabled)
+	rows, err := s.projectAutomationRuleRepo.ListScope(s.workspaceID, storage.AutomationScopeProject, project.ID, includeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ func (s *Service) ProjectAutomationRuleInfo(projectRef string, ruleID string) (P
 	if err != nil {
 		return ProjectAutomationRuleView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationRuleView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
 	}
 	return s.projectAutomationRuleViewFromRow(row)
@@ -220,7 +221,7 @@ func (s *Service) ModifyProjectAutomationRule(projectRef string, ruleID string, 
 	if err != nil {
 		return ProjectAutomationRuleView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationRuleView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
 	}
 	next := projectAutomationRuleAddInputFromRow(row)
@@ -303,7 +304,7 @@ func (s *Service) DeleteProjectAutomationRule(projectRef string, ruleID string) 
 	if err != nil {
 		return err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
 	}
 	return s.projectAutomationRuleRepo.Delete(ruleID)
@@ -380,7 +381,7 @@ func normalizeProjectAutomationAddInput(input ProjectAutomationRuleAddInput) (Pr
 	return input, nil
 }
 
-func projectAutomationRuleAddInputFromRow(row storage.ProjectAutomationRule) ProjectAutomationRuleAddInput {
+func projectAutomationRuleAddInputFromRow(row storage.AutomationRule) ProjectAutomationRuleAddInput {
 	return ProjectAutomationRuleAddInput{
 		Name:                row.Name,
 		Description:         row.Description,
@@ -431,7 +432,7 @@ func decodeProjectAutomationContextConfig(raw string) ProjectAutomationContextCo
 	return cfg
 }
 
-func (s *Service) projectAutomationRuleViewFromRow(row storage.ProjectAutomationRule) (ProjectAutomationRuleView, error) {
+func (s *Service) projectAutomationRuleViewFromRow(row storage.AutomationRule) (ProjectAutomationRuleView, error) {
 	users, err := s.resolveUserInfos([]string{valueOrEmpty(row.CreatedByUserID)})
 	if err != nil {
 		return ProjectAutomationRuleView{}, err
@@ -444,7 +445,7 @@ func (s *Service) projectAutomationRuleViewFromRow(row storage.ProjectAutomation
 	return ProjectAutomationRuleView{
 		ID:                  row.ID,
 		WorkspaceID:         row.WorkspaceID,
-		ProjectID:           row.ProjectID,
+		ProjectID:           automationProjectIDFromScope(row),
 		Name:                row.Name,
 		Description:         row.Description,
 		Enabled:             input.Enabled,
@@ -460,6 +461,15 @@ func (s *Service) projectAutomationRuleViewFromRow(row storage.ProjectAutomation
 		CreatedAt:           row.CreatedAt,
 		ModifiedAt:          row.ModifiedAt,
 	}, nil
+}
+
+// automationProjectIDFromScope 返回 Project scope 规则的 project_id；非 Project scope 返回空。
+// 保留兼容老 API 中 ProjectAutomationRuleView.ProjectID 字段。
+func automationProjectIDFromScope(row storage.AutomationRule) string {
+	if row.ScopeType == storage.AutomationScopeProject {
+		return row.ScopeID
+	}
+	return ""
 }
 
 func valueOrEmpty(value *string) string {

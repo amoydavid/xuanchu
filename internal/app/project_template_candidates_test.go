@@ -85,8 +85,8 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 
 	enabled := true
 	actorID := svc.Runtime().ActorUserID
-	if err := storage.NewProjectAutomationRuleRepository(svc.store.DB()).Create(storage.ProjectAutomationRule{
-		ID: "candidate-automation", WorkspaceID: source.WorkspaceID, ProjectID: source.ID, Name: "发布巡检", Enabled: &enabled,
+	if err := storage.NewProjectAutomationRuleRepository(svc.store.DB()).Create(storage.AutomationRule{
+		ID: "candidate-automation", WorkspaceID: source.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: source.ID, Name: "发布巡检", Enabled: &enabled,
 		TriggerType: "schedule", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
 		CreatedByActorType: "user", CreatedByUserID: &actorID, CreatedAt: 1, ModifiedAt: 1,
 	}); err != nil {
@@ -189,8 +189,8 @@ func TestProjectTemplateAutomationCandidatePreservesTokenActor(t *testing.T) {
 	svc, source, _ := projectTemplateCandidateFixture(t)
 	enabled := true
 	tokenID, tokenName, tokenPrefix := "token-1", "部署机器人", "xuanchu_tat_1234"
-	if err := storage.NewProjectAutomationRuleRepository(svc.store.DB()).Create(storage.ProjectAutomationRule{
-		ID: "candidate-token-automation", WorkspaceID: source.WorkspaceID, ProjectID: source.ID, Name: "Token 创建的规则", Enabled: &enabled,
+	if err := storage.NewProjectAutomationRuleRepository(svc.store.DB()).Create(storage.AutomationRule{
+		ID: "candidate-token-automation", WorkspaceID: source.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: source.ID, Name: "Token 创建的规则", Enabled: &enabled,
 		TriggerType: "event", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`,
 		CreatedByActorType: auth.TokenTypeTenantAccess, CreatedByTokenID: &tokenID, CreatedByTokenName: &tokenName, CreatedByTokenPrefix: &tokenPrefix,
 		CreatedAt: 1, ModifiedAt: 1,
@@ -352,10 +352,10 @@ func TestCandidateSelectionReturnsCanonicalExplicitRefsHashAndRejectsLimit(t *te
 	}
 
 	enabled := true
-	rules := make([]storage.ProjectAutomationRule, 0, 201)
+	rules := make([]storage.AutomationRule, 0, 201)
 	for i := 0; i < 201; i++ {
-		rules = append(rules, storage.ProjectAutomationRule{
-			ID: fmt.Sprintf("selection-rule-%03d", i), WorkspaceID: source.WorkspaceID, ProjectID: source.ID, Name: fmt.Sprintf("rule-%03d", i), Enabled: &enabled,
+		rules = append(rules, storage.AutomationRule{
+			ID: fmt.Sprintf("selection-rule-%03d", i), WorkspaceID: source.WorkspaceID, ScopeType: storage.AutomationScopeProject, ScopeID: source.ID, Name: fmt.Sprintf("rule-%03d", i), Enabled: &enabled,
 			TriggerType: "event", TriggerConfigJSON: `{}`, ConditionJSON: `{}`, ActionConfigJSON: `{}`, ContextConfigJSON: `{}`, CreatedByActorType: "user", CreatedAt: int64(i), ModifiedAt: int64(i),
 		})
 	}

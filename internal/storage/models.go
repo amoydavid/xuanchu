@@ -467,14 +467,18 @@ type NotificationDelivery struct {
 	ModifiedAt                  int64 `gorm:"not null"`
 }
 
-type ProjectAutomationRule struct {
+// AutomationRule 是 workspace/project 两级 scope 的自动化规则统一模型。
+// scope_id 在 workspace scope 时等于 workspace_id，在 project scope 时等于
+// project_id，保证 SQLite/PostgreSQL 上 unique 约束行为一致。
+type AutomationRule struct {
 	ID                   string  `gorm:"primaryKey"`
-	WorkspaceID          string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:1;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:1"`
-	ProjectID            string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:2;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:2"`
-	Name                 string  `gorm:"not null;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:3"`
+	WorkspaceID          string  `gorm:"not null;index:idx_automation_rules_scope,priority:1;uniqueIndex:idx_automation_rules_ws_scope_name,priority:1"`
+	ScopeType            string  `gorm:"not null;default:'project';index:idx_automation_rules_scope,priority:2;uniqueIndex:idx_automation_rules_ws_scope_name,priority:2"`
+	ScopeID              string  `gorm:"not null;index:idx_automation_rules_scope,priority:3;uniqueIndex:idx_automation_rules_ws_scope_name,priority:3"`
+	Name                 string  `gorm:"not null;uniqueIndex:idx_automation_rules_ws_scope_name,priority:4"`
 	Description          string  `gorm:"not null;default:''"`
-	Enabled              *bool   `gorm:"not null;default:true;index"`
-	TriggerType          string  `gorm:"not null;index"`
+	Enabled              *bool   `gorm:"not null;default:true;index:idx_automation_rules_lookup,priority:4"`
+	TriggerType          string  `gorm:"not null;index:idx_automation_rules_lookup,priority:5"`
 	TriggerConfigJSON    string  `gorm:"not null;default:'{}'"`
 	ConditionJSON        string  `gorm:"not null;default:'{}'"`
 	ActionType           string  `gorm:"not null;default:'openai_compatible';index"`
@@ -491,34 +495,58 @@ type ProjectAutomationRule struct {
 	ModifiedAt           int64 `gorm:"not null"`
 }
 
-type ProjectAutomationDelivery struct {
-	ID                  string `gorm:"primaryKey"`
-	WorkspaceID         string `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:1"`
-	ProjectID           string `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:2"`
-	RuleID              string `gorm:"not null;index"`
-	TriggerType         string `gorm:"not null;index"`
-	EventID             string `gorm:"not null;default:'';index"`
-	EventType           string `gorm:"not null;default:'';index"`
-	DedupeKey           string `gorm:"not null;uniqueIndex"`
-	Status              string `gorm:"not null;index:idx_project_automation_deliveries_due,priority:1"`
-	ResolvedURL         string `gorm:"not null;default:''"`
-	RenderedMethod      string `gorm:"not null;default:'POST'"`
-	RenderedHeadersJSON string `gorm:"not null;default:'{}'"`
-	RequestBodyJSON     string `gorm:"not null;default:''"`
-	RequestBodyPreview  string `gorm:"not null;default:''"`
-	RequestBodyHash     string `gorm:"not null;default:''"`
-	ResponseStatusCode  *int
-	ResponseBodyPreview string `gorm:"not null;default:''"`
-	ProviderRequestID   string `gorm:"not null;default:''"`
-	UsageJSON           string `gorm:"not null;default:'{}'"`
-	AttemptCount        int    `gorm:"not null;default:0"`
-	NextAttemptAt       *int64 `gorm:"index:idx_project_automation_deliveries_due,priority:2"`
-	ClaimExpiresAt      *int64 `gorm:"index"`
-	LastAttemptAt       *int64
-	LastError           string `gorm:"not null;default:''"`
-	CreatedAt           int64  `gorm:"not null;index"`
-	ModifiedAt          int64  `gorm:"not null"`
+// TableName 固定为通用 automation_rules，避免 GORM 复数化为 automation_rule。
+func (AutomationRule) TableName() string { return "automation_rules" }
+
+// AutomationDelivery 同时承担事件匹配结果、transactional outbox 和运行记录。
+// RuleScopeType/RuleScopeID/ProjectID 在落库时冻结，dispatcher 不再读取当前 Rule。
+type AutomationDelivery struct {
+	ID                    string  `gorm:"primaryKey"`
+	WorkspaceID           string  `gorm:"not null;index:idx_automation_deliveries_scope,priority:1"`
+	RuleScopeType         string  `gorm:"not null;default:'project';index:idx_automation_deliveries_scope,priority:2"`
+	RuleScopeID           string  `gorm:"not null;index:idx_automation_deliveries_scope,priority:3"`
+	ProjectID             *string `gorm:"index:idx_automation_deliveries_scope,priority:4"`
+	RuleID                string  `gorm:"not null;index"`
+	TriggerType           string  `gorm:"not null;index"`
+	EventID               string  `gorm:"not null;default:'';index"`
+	EventType             string  `gorm:"not null;default:'';index"`
+	DedupeKey             string  `gorm:"not null;uniqueIndex"`
+	ReplayOfDeliveryID    *string `gorm:"index"`
+	APIKeyConfigKey       string  `gorm:"not null;default:''"`
+	AllowedHostsConfigKey string  `gorm:"not null;default:''"`
+	MaxAttempts           int     `gorm:"not null;default:0"`
+	Status                string  `gorm:"not null;index:idx_automation_deliveries_due,priority:1"`
+	ResolvedURL           string  `gorm:"not null;default:''"`
+	RenderedMethod        string  `gorm:"not null;default:'POST'"`
+	RenderedHeadersJSON   string  `gorm:"not null;default:'{}'"`
+	RequestBodyJSON       string  `gorm:"not null;default:''"`
+	RequestBodyPreview    string  `gorm:"not null;default:''"`
+	RequestBodyHash       string  `gorm:"not null;default:''"`
+	ResponseStatusCode    *int
+	ResponseBodyPreview   string `gorm:"not null;default:''"`
+	ProviderRequestID     string `gorm:"not null;default:''"`
+	UsageJSON             string `gorm:"not null;default:'{}'"`
+	AttemptCount          int    `gorm:"not null;default:0"`
+	NextAttemptAt         *int64 `gorm:"index:idx_automation_deliveries_due,priority:2"`
+	ClaimExpiresAt        *int64 `gorm:"index"`
+	LastAttemptAt         *int64
+	LastError             string `gorm:"not null;default:''"`
+	CreatedAt             int64  `gorm:"not null;index"`
+	ModifiedAt            int64  `gorm:"not null"`
 }
+
+// TableName 固定为通用 automation_deliveries。
+func (AutomationDelivery) TableName() string { return "automation_deliveries" }
+
+// ProjectAutomationRule 是 AutomationRule 的兼容别名。
+//
+// 旧调用方仍按 Project scope 语义使用 ProjectAutomationRule/ProjectAutomationDelivery。
+// storage 内部统一使用 AutomationRule/AutomationDelivery；本别名只是过渡桥接，Task 2
+// 会把 App 层迁到通用 model 并删除这些别名。
+type ProjectAutomationRule = AutomationRule
+
+// ProjectAutomationDelivery 是 AutomationDelivery 的兼容别名。
+type ProjectAutomationDelivery = AutomationDelivery
 
 type UserExternalID struct {
 	ID         string `gorm:"primaryKey"`

@@ -766,7 +766,7 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 		return captureSource{}, captureError("project_template_selection_invalid", "one or more selected automation rules do not exist")
 	}
 	for _, row := range automations {
-		if row.ProjectID != project.ID {
+		if row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 			return captureSource{}, captureError("project_template_selection_invalid", "selected automation rule is outside source project")
 		}
 	}
@@ -1199,7 +1199,7 @@ func normalizedCaptureSourceFingerprint(source captureSource) (captureSourceFing
 			return captureSourceFingerprint{}, err
 		}
 		fingerprint.Automations = append(fingerprint.Automations, captureAutomationFingerprint{
-			ID: row.ID, WorkspaceID: row.WorkspaceID, ProjectID: row.ProjectID, Enabled: row.Enabled == nil || *row.Enabled, Definition: definition,
+			ID: row.ID, WorkspaceID: row.WorkspaceID, ProjectID: automationProjectIDFromScope(row), Enabled: row.Enabled == nil || *row.Enabled, Definition: definition,
 			CreatedByActorType: row.CreatedByActorType, CreatedByUserID: row.CreatedByUserID, CreatedByTokenID: row.CreatedByTokenID,
 			CreatedByTokenName: row.CreatedByTokenName, CreatedByTokenPrefix: row.CreatedByTokenPrefix, CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt,
 		})

@@ -2,6 +2,9 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
+
+	"github.com/google/uuid"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
@@ -16,28 +19,28 @@ type ProjectAutomationDeliveryListInput struct {
 
 // ProjectAutomationDeliveryView 是对外暴露的投递记录视图。
 type ProjectAutomationDeliveryView struct {
-	ID                  string                 `json:"id"`
-	WorkspaceID         string                 `json:"workspace_id"`
-	ProjectID           string                 `json:"project_id"`
-	RuleID              string                 `json:"rule_id"`
-	TriggerType         string                 `json:"trigger_type"`
-	EventID             string                 `json:"event_id"`
-	EventType           string                 `json:"event_type"`
-	Status              string                 `json:"status"`
-	ResolvedURL         string                 `json:"resolved_url"`
-	RenderedMethod      string                 `json:"rendered_method"`
-	RenderedHeaders     map[string][]string    `json:"rendered_headers"`
-	RequestBodyPreview  string                 `json:"request_body_preview"`
-	RequestBodyHash     string                 `json:"request_body_hash"`
-	ResponseStatusCode  *int                   `json:"response_status_code"`
-	ResponseBodyPreview string                 `json:"response_body_preview"`
-	ProviderRequestID   string                 `json:"provider_request_id"`
-	Usage               map[string]any         `json:"usage"`
-	AttemptCount        int                    `json:"attempt_count"`
-	NextAttemptAt       *int64                 `json:"next_attempt_at"`
-	LastError           string                 `json:"last_error"`
-	CreatedAt           int64                  `json:"created_at"`
-	ModifiedAt          int64                  `json:"modified_at"`
+	ID                  string              `json:"id"`
+	WorkspaceID         string              `json:"workspace_id"`
+	ProjectID           string              `json:"project_id"`
+	RuleID              string              `json:"rule_id"`
+	TriggerType         string              `json:"trigger_type"`
+	EventID             string              `json:"event_id"`
+	EventType           string              `json:"event_type"`
+	Status              string              `json:"status"`
+	ResolvedURL         string              `json:"resolved_url"`
+	RenderedMethod      string              `json:"rendered_method"`
+	RenderedHeaders     map[string][]string `json:"rendered_headers"`
+	RequestBodyPreview  string              `json:"request_body_preview"`
+	RequestBodyHash     string              `json:"request_body_hash"`
+	ResponseStatusCode  *int                `json:"response_status_code"`
+	ResponseBodyPreview string              `json:"response_body_preview"`
+	ProviderRequestID   string              `json:"provider_request_id"`
+	Usage               map[string]any      `json:"usage"`
+	AttemptCount        int                 `json:"attempt_count"`
+	NextAttemptAt       *int64              `json:"next_attempt_at"`
+	LastError           string              `json:"last_error"`
+	CreatedAt           int64               `json:"created_at"`
+	ModifiedAt          int64               `json:"modified_at"`
 }
 
 // ListProjectAutomationDeliveries 列出项目投递记录。
@@ -49,7 +52,8 @@ func (s *Service) ListProjectAutomationDeliveries(projectRef string, input Proje
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.projectAutomationDeliveryRepo.List(storage.ProjectAutomationDeliveryListOptions{WorkspaceID: s.workspaceID, ProjectID: &project.ID, RuleID: input.RuleID, Status: input.Status, Limit: input.Limit, Offset: input.Offset})
+	projectID := project.ID
+	rows, err := s.projectAutomationDeliveryRepo.List(storage.AutomationDeliveryListOptions{WorkspaceID: s.workspaceID, ProjectID: &projectID, RuleID: input.RuleID, Status: input.Status, Limit: input.Limit, Offset: input.Offset})
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +77,7 @@ func (s *Service) ProjectAutomationDeliveryInfo(projectRef string, deliveryID st
 	if err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ProjectID == nil || *row.ProjectID != project.ID {
 		return ProjectAutomationDeliveryView{}, RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}
 	}
 	return projectAutomationDeliveryViewFromRow(row), nil
@@ -95,20 +99,25 @@ func (s *Service) ReplayProjectAutomationDelivery(projectRef string, deliveryID 
 	if err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
-	if row.WorkspaceID != s.workspaceID || row.ProjectID != project.ID {
+	if row.WorkspaceID != s.workspaceID || row.ProjectID == nil || *row.ProjectID != project.ID {
 		return ProjectAutomationDeliveryView{}, RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}
 	}
-	if err := s.projectAutomationDeliveryRepo.Requeue(deliveryID, s.clock.Unix()); err != nil {
-		return ProjectAutomationDeliveryView{}, err
-	}
-	requeued, err := s.projectAutomationDeliveryRepo.GetByID(deliveryID)
+	replayed, err := s.replayAutomationDelivery(row, s.clock.Unix())
 	if err != nil {
 		return ProjectAutomationDeliveryView{}, err
 	}
-	return projectAutomationDeliveryViewFromRow(requeued), nil
+	return projectAutomationDeliveryViewFromRow(replayed), nil
 }
 
-func projectAutomationDeliveryViewFromRow(row storage.ProjectAutomationDelivery) ProjectAutomationDeliveryView {
+// replayAutomationDelivery 复用 CreateReplay 生成一条新 queued Delivery，
+// dedupe key 使用原 ID+timestamp 保证唯一。原记录不变。
+func (s *Service) replayAutomationDelivery(original storage.AutomationDelivery, now int64) (storage.AutomationDelivery, error) {
+	newID := uuid.NewString()
+	newDedupe := fmt.Sprintf("replay:%s:%s:%d", original.ID, newID, now)
+	return s.projectAutomationDeliveryRepo.CreateReplay(original, newID, newDedupe, now)
+}
+
+func projectAutomationDeliveryViewFromRow(row storage.AutomationDelivery) ProjectAutomationDeliveryView {
 	headers := map[string][]string{}
 	if row.RenderedHeadersJSON != "" {
 		_ = json.Unmarshal([]byte(row.RenderedHeadersJSON), &headers)
@@ -117,10 +126,14 @@ func projectAutomationDeliveryViewFromRow(row storage.ProjectAutomationDelivery)
 	if row.UsageJSON != "" {
 		_ = json.Unmarshal([]byte(row.UsageJSON), &usage)
 	}
+	projectID := ""
+	if row.ProjectID != nil {
+		projectID = *row.ProjectID
+	}
 	return ProjectAutomationDeliveryView{
 		ID:                  row.ID,
 		WorkspaceID:         row.WorkspaceID,
-		ProjectID:           row.ProjectID,
+		ProjectID:           projectID,
 		RuleID:              row.RuleID,
 		TriggerType:         row.TriggerType,
 		EventID:             row.EventID,
