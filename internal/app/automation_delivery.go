@@ -139,10 +139,11 @@ func (s *Service) AutomationDeliveryInfo(scope AutomationScope, deliveryID strin
 		return AutomationDeliveryView{}, RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}
 	}
 	view := s.automationDeliveryViewFromRow(row)
-	if err := s.fillAutomationDeliveryProjects([]AutomationDeliveryView{view}); err != nil {
+	views := []AutomationDeliveryView{view}
+	if err := s.fillAutomationDeliveryProjects(views); err != nil {
 		return AutomationDeliveryView{}, err
 	}
-	return view, nil
+	return views[0], nil
 }
 
 // ReplayAutomationDelivery 重新投递一条 Delivery。
@@ -179,7 +180,8 @@ func (s *Service) ReplayAutomationDelivery(scope AutomationScope, deliveryID str
 		return AutomationDeliveryView{}, err
 	}
 	view := s.automationDeliveryViewFromRow(replayed)
-	if err := s.fillAutomationDeliveryProjects([]AutomationDeliveryView{view}); err != nil {
+	views := []AutomationDeliveryView{view}
+	if err := s.fillAutomationDeliveryProjects(views); err != nil {
 		return AutomationDeliveryView{}, err
 	}
 	if err := s.appendAuditEntry(AuditEntry{
@@ -196,7 +198,7 @@ func (s *Service) ReplayAutomationDelivery(scope AutomationScope, deliveryID str
 	}); err != nil {
 		return AutomationDeliveryView{}, err
 	}
-	return view, nil
+	return views[0], nil
 }
 
 // automationDeliveryViewFromRow 把 storage 行转 view；project_id 为 nil 时返回空字符串。
