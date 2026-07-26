@@ -75,6 +75,8 @@ func tenantCapabilityForPermission(p Permission) (string, bool) {
 		return auth.ScopeContextWrite, true
 	case PermissionWorkspaceRead:
 		return auth.ScopeWorkspaceRead, true
+	case PermissionWorkspaceModify:
+		return auth.ScopeWorkspaceWrite, true
 	case PermissionSsoConfigRead:
 		return auth.ScopeWorkspaceRead, true
 	case PermissionSsoConfigWrite:
