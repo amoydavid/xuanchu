@@ -181,7 +181,11 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	}
 
 	create := openAPIOperation(t, paths, "/api/v1/project-templates", "post")
-	createCapture := openAPIRequestSchema(t, create)["properties"].(map[string]any)["capture"].(map[string]any)
+	createSchema := openAPIRequestSchema(t, create)
+	if openAPISchemaRequired(createSchema, "key") {
+		t.Error("template key must be optional because it defaults to the source project slug")
+	}
+	createCapture := createSchema["properties"].(map[string]any)["capture"].(map[string]any)
 	selection := createCapture["properties"].(map[string]any)["selection"].(map[string]any)
 	for _, name := range []string{"config_keys", "task_refs", "series_refs", "automation_rule_ids"} {
 		if !openAPISchemaRequired(selection, name) {
@@ -193,6 +197,12 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	}
 	if _, ok := createCapture["properties"].(map[string]any)["config_policies"]; !ok {
 		t.Error("capture request schema missing config_policies")
+	}
+	policies := createCapture["properties"].(map[string]any)["config_policies"].(map[string]any)
+	strategy := policies["items"].(map[string]any)["properties"].(map[string]any)["strategy"].(map[string]any)
+	strategyJSON, _ := json.Marshal(strategy["enum"])
+	if !strings.Contains(string(strategyJSON), `"inherit"`) {
+		t.Fatalf("capture strategy enum missing inherit: %s", strategyJSON)
 	}
 	snapshotCapture := openAPIRequestSchema(t, openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}/snapshots", "post"))
 	if !openAPISchemaRequired(snapshotCapture, "expected_source_hash") {

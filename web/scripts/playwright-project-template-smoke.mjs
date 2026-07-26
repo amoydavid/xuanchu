@@ -47,6 +47,7 @@ try {
     await runMobileSmoke(browser, fixture)
     await removeFixtureMember(fixture)
     await runInstantiationSmoke(browser, fixture)
+    await runVersioningSmoke()
   } finally {
     await browser.close()
   }
@@ -133,6 +134,13 @@ async function prepareRuntime() {
       "label:启用复核",
       "description:是否启用人工复核",
     ],
+    [
+      "template.workspace_region",
+      "type:string",
+      "scopes:workspace,project",
+      "label:工作区区域",
+      "description:未设置项目值时沿用工作区配置",
+    ],
   ]) {
     await runCommand(
       binary,
@@ -172,6 +180,20 @@ async function prepareRuntime() {
       projectRoot
     )
   }
+  await runCommand(
+    binary,
+    [
+      "--db",
+      database,
+      "--workspace",
+      "local",
+      "config",
+      "set",
+      "template.workspace_region",
+      "cn-shared",
+    ],
+    projectRoot
+  )
   const raw = await runCommand(
     binary,
     [
@@ -275,12 +297,18 @@ async function seedFixture() {
   const enableReview = configCandidates.items.find(
     (item) => item.key === "template.enable_review"
   )
+  const workspaceRegion = configCandidates.items.find(
+    (item) => item.key === "template.workspace_region"
+  )
   if (
     configCandidates.total < 13 ||
     !configKeys.has("template.release_region") ||
     !configKeys.has("template.enable_review") ||
+    !configKeys.has("template.workspace_region") ||
     releaseRegion?.can_fixed !== false ||
-    enableReview?.can_fixed !== false
+    enableReview?.can_fixed !== false ||
+    workspaceRegion?.can_fixed !== false ||
+    workspaceRegion?.effective_source !== "workspace"
   ) {
     throw new Error(
       `fixture config candidates do not include prompt-only definitions: ${JSON.stringify(configCandidates)}`
@@ -301,7 +329,17 @@ async function runDesktopSmoke(browser, fixture) {
   try {
     await openCaptureWizard(page)
     const dialog = page.getByRole("dialog", { name: "保存项目模板" })
-    await dialog.getByLabel("稳定 Key").fill("launch-template")
+    const templateKey = dialog.getByLabel("模板标识（可选）")
+    if ((await templateKey.inputValue()) !== "") {
+      throw new Error(
+        "template key must start empty so the server can default it"
+      )
+    }
+    if (!(await templateKey.getAttribute("placeholder"))?.includes("source")) {
+      throw new Error(
+        "template key placeholder did not explain the source slug default"
+      )
+    }
     await dialog.getByLabel("模板名称").fill("发布流程模板")
     await dialog.getByLabel("说明").fill("真实 server 端到端模板")
     await dialog.getByRole("button", { name: /下一步/ }).click()
@@ -345,6 +383,7 @@ async function runDesktopSmoke(browser, fixture) {
       ["agent.provider.model", "agent.provider.model"],
       ["template.release_region", "发布区域"],
       ["template.enable_review", "启用复核"],
+      ["template.workspace_region", "工作区区域"],
     ]) {
       await configSearch.fill(query)
       await ensureChecked(dialog.getByRole("checkbox", { name: label }))
@@ -368,6 +407,13 @@ async function runDesktopSmoke(browser, fixture) {
       "prompt",
       false
     )
+    const inheritedRegion = selectedConfigItem(
+      selectedDrawer,
+      "template.workspace_region"
+    ).getByLabel("创建策略")
+    if ((await inheritedRegion.inputValue()) !== "inherit") {
+      throw new Error("config without a project row did not default to inherit")
+    }
     await activateWithPointer(dialog.getByRole("tab", { name: /自动化/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "模板自动化" }))
     await dialog.getByRole("button", { name: /^已选 / }).click()
@@ -395,7 +441,7 @@ async function runDesktopSmoke(browser, fixture) {
     await expectVisibleText(dialog, "没有阻断问题")
     await expectVisibleText(
       dialog,
-      "固定配置 3 · 创建时填写：必填 2、选填 1"
+      "固定配置 3 · 继承配置 1 · 创建时填写：必填 2、选填 1"
     )
     await dialog.getByRole("button", { name: "返回" }).click()
     await activateWithPointer(dialog.getByRole("tab", { name: /配置/ }))
@@ -403,8 +449,13 @@ async function runDesktopSmoke(browser, fixture) {
       selectedDrawer,
       "agent.provider.api_key"
     ).getByRole("checkbox", { name: "必填（自动化依赖）" })
-    if (!(await lockedSecret.isChecked()) || !(await lockedSecret.isDisabled())) {
-      throw new Error("automation-dependent prompt secret was not locked required")
+    if (
+      !(await lockedSecret.isChecked()) ||
+      !(await lockedSecret.isDisabled())
+    ) {
+      throw new Error(
+        "automation-dependent prompt secret was not locked required"
+      )
     }
     await dialog.getByRole("button", { name: /下一步/ }).click()
     await dialog.getByRole("button", { name: /下一步/ }).click()
@@ -426,6 +477,7 @@ async function runDesktopSmoke(browser, fixture) {
     )
     if (
       templates.total !== 1 ||
+      templates.items[0]?.key !== "source" ||
       templates.items[0]?.current_snapshot?.version !== 1
     ) {
       throw new Error(
@@ -459,6 +511,20 @@ async function runDesktopSmoke(browser, fixture) {
     ) {
       throw new Error(
         `template config input descriptors are wrong: ${JSON.stringify(descriptors)}`
+      )
+    }
+    const detail = await apiJSON(
+      "GET",
+      "/api/v1/project-templates/source?workspace=local"
+    )
+    if (
+      !detail.snapshot?.configs?.some(
+        (item) =>
+          item.key === "template.workspace_region" && item.mode === "inherit"
+      )
+    ) {
+      throw new Error(
+        `template did not persist inherit config: ${JSON.stringify(detail)}`
       )
     }
     if (fixture.blocker.uuid === fixture.dependent.uuid) {
@@ -627,7 +693,9 @@ async function runInstantiationSmoke(browser) {
       "GET",
       "/api/v1/projects/newlaunch/config/effective?workspace=local"
     )
-    const configByKey = new Map(effectiveConfigs.map((item) => [item.key, item]))
+    const configByKey = new Map(
+      effectiveConfigs.map((item) => [item.key, item])
+    )
     if (
       configByKey.get("template.release_region")?.source !== "project" ||
       configByKey.get("template.release_region")?.value !== "cn-east-1"
@@ -639,6 +707,28 @@ async function runInstantiationSmoke(browser) {
     if (configByKey.get("template.enable_review")?.source !== "missing") {
       throw new Error(
         `blank optional prompt created a project row: ${JSON.stringify(configByKey.get("template.enable_review"))}`
+      )
+    }
+    if (
+      configByKey.get("template.workspace_region")?.source !== "workspace" ||
+      configByKey.get("template.workspace_region")?.value !== "cn-shared"
+    ) {
+      throw new Error(
+        `inherit config did not resolve from workspace: ${JSON.stringify(configByKey.get("template.workspace_region"))}`
+      )
+    }
+    const explicitConfigs = await apiJSON(
+      "GET",
+      "/api/v1/projects/newlaunch/config?workspace=local"
+    )
+    if (
+      Object.prototype.hasOwnProperty.call(
+        explicitConfigs,
+        "template.workspace_region"
+      )
+    ) {
+      throw new Error(
+        `inherit config created a project row: ${JSON.stringify(explicitConfigs)}`
       )
     }
     if (configByKey.get("agent.provider.api_key")?.source !== "project") {
@@ -673,6 +763,57 @@ async function runInstantiationSmoke(browser) {
     })
   } finally {
     await page.close()
+  }
+}
+
+async function runVersioningSmoke() {
+  const preview = await apiJSON(
+    "POST",
+    "/api/v1/project-templates/capture-preview?workspace=local",
+    {
+      source_project: "source",
+      anchor_date: "2026-07-20",
+      selection: {
+        config_keys: [],
+        task_refs: [],
+        series_refs: [],
+        automation_rule_ids: [],
+      },
+    }
+  )
+  const saved = await apiJSON(
+    "POST",
+    "/api/v1/project-templates?workspace=local",
+    {
+      name: "模板来源项目（最新版）",
+      description: "同 slug 保存应追加版本",
+      capture: {
+        source_project: "source",
+        anchor_date: "2026-07-20",
+        selection: {
+          config_keys: [],
+          task_refs: [],
+          series_refs: [],
+          automation_rule_ids: [],
+        },
+        expected_source_hash: preview.source_hash,
+      },
+    }
+  )
+  const templates = await apiJSON(
+    "GET",
+    "/api/v1/project-templates?workspace=local&status=all"
+  )
+  if (
+    saved.template.key !== "source" ||
+    saved.template.current_snapshot?.version !== 2 ||
+    templates.total !== 1 ||
+    templates.items[0]?.name !== "模板来源项目（最新版）" ||
+    templates.items[0]?.current_snapshot?.version !== 2
+  ) {
+    throw new Error(
+      `same-slug save did not advance one template: ${JSON.stringify({ saved, templates })}`
+    )
   }
 }
 

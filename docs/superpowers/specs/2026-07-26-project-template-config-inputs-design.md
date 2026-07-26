@@ -12,11 +12,12 @@
 
 本功能不是给 Project 增加另一套字段系统，也不是把所有 `ConfigDefinition.required` 强制塞进项目创建页。它是在某个不可变 Template Snapshot 中，为已经选择的 project config 增加“实例化时如何取得值”的规则。
 
-每个被模板选中的 config 只能采用一种策略：
+每个被模板选中的 config 只能采用一种底层策略。产品界面始终提供“创建时无需填写”和“创建项目时填写”两个选择；前者根据来源项目是否存在显式值，分别保存为 `fixed` 或 `inherit`：
 
 | 策略 | 产品含义 | 新项目中的 project config row |
 |---|---|---|
 | `fixed` | 使用模板保存的值，保持当前行为 | 一定创建 |
+| `inherit` | 不保存来源值，创建时沿用 workspace/default/missing | 不创建 |
 | `prompt` + `required=true` | 创建者本次必须显式填写 | 校验通过后创建 |
 | `prompt` + `required=false` | 创建页展示选填项 | 填写时创建；留空时不创建 |
 
@@ -29,6 +30,7 @@
 - `ConfigDefinition.required` 继续表示全局配置完整性提示；它不自动等于模板表单必填，也不自动改变普通项目创建行为。
 - 表单控件、类型、枚举、secret 属性、默认 label 和说明来自实例化时当前 workspace 的 `ConfigDefinition`；Snapshot 不复制 definition。
 - 所有输入都由 App 层按当前 definition 归一化和校验，Web/CLI/MCP 不自行决定合法性。
+- 来源项目没有显式 config row 时也必须允许选择“创建时无需填写”；系统以 `inherit` 保存，不能把 workspace/default 冻结进 Snapshot，也不能把缺失伪装成空字符串。
 - prompt 输入统一使用 `config_inputs`；不再把非 secret 输入塞进现有 `secret_inputs`。
 - secret 输入不进入 Snapshot、公开响应、Preview、审计、日志或错误；浏览器提交结束后清空本地 secret state。
 - 从模板创建仍是一笔事务：任何必填项缺失或 config 不合法时，一个 Project row 都不能留下。
@@ -95,7 +97,7 @@ configs PK(workspace_id, scope, scope_id, key)
 
 ## 3. 目标
 
-1. 模板作者可以对每个已选 project config 指定 `fixed` 或 `prompt`；没有源项目显式值的 project-scoped definition 也可以直接声明为 prompt。
+1. 模板作者可以对每个已选 project config 选择“创建时无需填写”或 `prompt`；没有源项目显式值时，前者保存为 `inherit`，有显式值时保存为 `fixed`。
 2. `prompt` 可以设为必填或选填。
 3. 创建者在从模板创建的同一向导内看到按当前 ConfigDefinition 生成的 typed form。
 4. 必填 prompt 必须由本次请求显式提交，不能被继承值或 default 隐式满足。
@@ -125,6 +127,7 @@ configs PK(workspace_id, scope, scope_id, key)
 |---|---|
 | Config Policy / 配置策略 | Snapshot 对某个 config key 的取值规则 |
 | Fixed Config / 固定配置 | Snapshot 保存值，实例化时直接写入新项目 |
+| Inherited Config / 继承配置 | Snapshot 只保存 key，实例化时不写 project row，沿用当前 workspace/default/missing |
 | Prompt Config / 创建时填写配置 | Snapshot 只保存输入要求，不保存来源项目值 |
 | Required Prompt / 必填项 | 本次实例化请求必须显式提交非空、合法值 |
 | Optional Prompt / 选填项 | 创建页展示，但允许不提交；不提交时不写 project row |
@@ -176,7 +179,7 @@ type SnapshotV2 struct {
 ```go
 type ConfigBlueprintV2 struct {
     Key              string         `json:"key"`
-    Mode             string         `json:"mode"` // literal|secret_copy|prompt
+    Mode             string         `json:"mode"` // literal|secret_copy|inherit|prompt
     Value            *string        `json:"value,omitempty"`
     SecretCiphertext *string        `json:"secret_ciphertext,omitempty"`
     Prompt           *ConfigPromptV2 `json:"prompt,omitempty"`
@@ -193,6 +196,7 @@ type ConfigPromptV2 struct {
 |---|---|---|---|
 | `literal` | 必须存在 | 必须为空 | 必须为空 |
 | `secret_copy` | 必须为空 | 必须存在且非空 | 必须为空 |
+| `inherit` | 必须为空 | 必须为空 | 必须为空 |
 | `prompt` | 必须为空 | 必须为空 | 必须存在 |
 
 同一 Snapshot 内 config key 必须唯一。`prompt.required=false` 是有效值，不能因为 Go 零值在 codec 中丢失整个 `prompt` 对象。
@@ -253,8 +257,8 @@ type ConfigCandidateView struct {
 }
 ```
 
-- `has_project_value=true`：可以选 fixed 或 prompt。
-- `has_project_value=false`：只能选 prompt；不能把 workspace/default 值复制为 fixed。
+- `has_project_value=true`：界面的“创建时无需填写”映射为 fixed，也可以选 prompt。
+- `has_project_value=false`：界面的“创建时无需填写”映射为 inherit，也可以选 prompt；不能把 workspace/default 值复制为 fixed。
 - 候选响应只返回 effective source，不返回 effective value。
 - secret 只返回是否已配置的安全状态，不返回值。
 - 现有 `q/mode/refs/limit/offset` 继续使用稳定分页；`mode` 支持 `all|fixed_available|prompt_available|secret|non_secret`，旧 `literal|secret` filter 做兼容映射。
@@ -268,7 +272,7 @@ type ConfigCandidateView struct {
 ```go
 type CaptureConfigPolicyInput struct {
     Key      string `json:"key"`
-    Strategy string `json:"strategy"` // fixed|prompt
+    Strategy string `json:"strategy"` // fixed|inherit|prompt
     Required bool   `json:"required,omitempty"`
 }
 
@@ -282,9 +286,9 @@ type CaptureInput struct {
 
 - `config_policies[].key` 必须属于最终 `selection.config_keys`，不能给未选 config 配规则。
 - 同一 key 不能重复。
-- `strategy=fixed` 时 `required` 必须为 false。
+- `strategy=fixed|inherit` 时 `required` 必须为 false。
 - `strategy=prompt` 时才允许 required true/false。
-- 未提供 policy 的已选 key 默认 `fixed`，兼容旧 Web/API 调用方。
+- 未提供 policy 的已选 key：来源项目有显式值时默认 `fixed`，没有显式值时默认 `inherit`。因此所有调用方都可以安全选择任意 project-scoped definition，而不会被迫生成创建表单字段。
 - 服务端完成 automation config 依赖闭包后，再验证最终 selection 与 policy。
 
 ### 8.3 Fixed
@@ -296,7 +300,15 @@ type CaptureInput struct {
 - secret：使用 `[security].config_secret_key` 加密为 `secret_copy`。
 - fixed secret 没有可用加密 key 时 Capture 阻断。
 
-### 8.4 Prompt
+### 8.4 Inherit
+
+- key 不得存在来源 Project 显式 config row；有显式值的“创建时无需填写”应保存为 fixed，避免同一用户动作产生不确定语义。
+- Snapshot 只保存 `key + mode=inherit`，不得保存 workspace 值、schema default、空字符串或 secret 密文。
+- Capture 时必须确认当前 ConfigDefinition 存在并允许 project scope；definition 指纹进入 `source_hash`。
+- 实例化时不创建 project config row。当前 workspace/default 能解析出合法值时继续使用该值；都没有时保持 `missing`，普通项目仍允许创建。
+- 如果已选 Automation 依赖该 key，最终 Automation Preview 仍使用实例化时的 effective config 校验；无法解析有效值时阻断整个创建事务。不能为了让 Automation 通过而把 inherit 偷换成 prompt required。
+
+### 8.5 Prompt
 
 - Snapshot 不保存来源项目的该 config 值，普通值和 secret 都不得进入 `value/secret_ciphertext`。
 - Capture 时必须确认当前 ConfigDefinition 存在并允许 project scope。
@@ -306,18 +318,19 @@ type CaptureInput struct {
 - 即使源 Project 当前值为空字符串，只要其 row 存在并被选择，也可以改成 prompt；来源值不会成为表单默认值。
 - 表单不预填源项目值，避免复制项目特有标识，也避免 secret 泄漏。
 
-### 8.5 Automation 依赖
+### 8.6 Automation 依赖
 
-选择 Automation 后，服务端仍按现有规则闭包显式 project config 依赖并锁定 key。模板作者可以把被锁定 key 从 fixed 改为 prompt，但：
+选择 Automation 后，服务端仍按现有规则闭包显式 project config 依赖并锁定 key。模板作者可以把被锁定 key 保存为 fixed、inherit 或 prompt，但：
 
 - 被 automation 依赖的 prompt 必须 `required=true`。
+- inherit 只有在实例化时能从当前 workspace/default 解析出满足 Automation contract 的有效值时才能通过 Preview；否则阻断。
 - Web 禁用其“选填”开关并说明“自动化依赖此配置”。
 - 后端独立验证，不能信任 Web 锁定状态。
 - 取消所有依赖该 key 的 automation 后，才能改回选填或移除该 config。
 
 原因是当前 Instantiate Preview 会验证 automation provider/config contract。允许依赖字段选填只会把“选填”变成最终仍被 automation 阻断的假选项。
 
-### 8.6 Source hash 与 Snapshot hash
+### 8.7 Source hash 与 Snapshot hash
 
 - `source_hash` 继续描述源项目选择内容及其并发漂移，不把 UI policy 当作源数据；对没有源 row 的 prompt，还要覆盖当前 definition 指纹，避免 Capture Preview 与保存之间的 schema 漂移。
 - `config_policies` 必须参与最终 Snapshot JSON，因此自然参与 canonical `snapshot_hash`。
@@ -359,6 +372,13 @@ required prompt 不调用 effective config resolver 来满足自身要求。即�
 
 optional prompt 留空时不写 row，但后续 Automation 校验和项目 effective config 仍可按既有顺序读取 workspace/default。由于 automation 依赖 prompt 已被强制 required，这里不会出现产品文案与阻断行为矛盾。
 
+对每个 `mode=inherit`：
+
+1. 读取当前 ConfigDefinition 并校验仍允许 project scope。
+2. 不接受 `config_inputs` 或 `secret_inputs`，也不写 project config row。
+3. 按既有 effective config 解析顺序读取 workspace/default/missing；合法的继承值提供给后续 Automation contract 校验。
+4. 没有有效值时普通模板仍可创建项目；只有实际依赖该值的 Automation 等组件可以阻断。
+
 ### 9.3 输入白名单
 
 - `config_inputs` 只能包含目标 Snapshot 的 prompt key。
@@ -372,6 +392,7 @@ optional prompt 留空时不写 row，但后续 Automation 校验和项目 effec
 | Snapshot 规则 | Definition.required | 创建时行为 |
 |---|---:|---|
 | fixed | 任意 | 写模板值 |
+| inherit | 任意 | 不写 project row，沿用 workspace/default/missing |
 | prompt required | 任意 | 必须显式填写 |
 | prompt optional | false | 可跳过 |
 | prompt optional | true | 仍可跳过；创建后 effective config 若缺失，继续显示现有 `missing_required` |
@@ -552,11 +573,13 @@ Web 继续复用现有 Capture/Instantiate Sheet，遵循 [DESIGN.md](../../../D
 
 交互：
 
-- 有源项目显式值的新选 config 默认 `fixed`，保持既有 Capture 行为；没有显式值的候选默认 `prompt`，且不展示不可用的 fixed 选项。
+- 每个 config 都展示“创建时无需填写”和“创建项目时填写”。
+- 有源项目显式值时，“创建时无需填写”保存为 fixed，文案说明会复制当前项目值；没有显式值时保存为 inherit，文案说明会沿用 workspace/default 且不会创建 project row。
+- 没有显式值的候选默认 inherit，不能因为 `can_fixed=false` 隐藏“创建时无需填写”。
 - 切到 prompt 后出现“必填”开关。
 - automation 依赖 key 切到 prompt 时自动设为 required，并禁用取消。
 - secret fixed 文案明确“加密复制”；secret prompt 不显示来源值。
-- Preview 摘要按“固定配置 / 创建时填写（必填 N、选填 N）”区分，不只显示一个 config 总数。
+- Preview 摘要按“固定配置 / 继承配置 / 创建时填写（必填 N、选填 N）”区分，不只显示一个 config 总数。
 
 ### 12.2 从模板创建：项目信息与配置同页
 
@@ -627,10 +650,11 @@ Snapshot 详情的 config 区展示：
 
 ```text
 固定配置 2
+继承配置 1
 创建时填写 3 · 必填 2 · 选填 1
 ```
 
-逐项只展示 key、label、type、required 和 fixed/prompt。fixed secret 显示“加密保存”，不显示密文；fixed 非 secret 是否展示值继续沿用现有详情权限和安全策略，本功能不扩大 reveal。
+逐项只展示 key、label、type、required 和 fixed/inherit/prompt。fixed secret 显示“加密保存”，inherit 显示“沿用 workspace/default”，不显示任何继承值；fixed 非 secret 是否展示值继续沿用现有详情权限和安全策略，本功能不扩大 reveal。
 
 ### 12.4 移动端与可访问性
 
@@ -645,7 +669,7 @@ Snapshot 详情的 config 区展示：
 建议复用现有文件边界：
 
 - `internal/projecttemplate`：v2 struct、strict codec、升级、canonical hash、纯规则校验。
-- `internal/app/project_template_capture.go`：解析 `config_policies`，从源 config 生成 fixed/prompt blueprint。
+- `internal/app/project_template_capture.go`：解析 `config_policies`，从源 config 生成 fixed/inherit/prompt blueprint。
 - `internal/app/project_template_instantiate.go`：生成 form descriptor、白名单校验、归一化、Preview issue 和事务计划。
 - `internal/storage`：继续保存 opaque SnapshotJSON；不解释 prompt。
 - HTTP/CLI/MCP/Web：只做 DTO 与展示，不复制业务校验。
@@ -741,7 +765,7 @@ HTTP 状态继续沿用现有 project-template error mapping；校验问题必�
 
 ### 17.2 协议
 
-- Capture 未传 `config_policies` 时全部按 fixed，避免旧 Web/API 客户端突然生成必填项。
+- Capture 未传 `config_policies` 时按来源 row 自动选择 fixed/inherit，避免旧 Web/API 客户端突然生成必填项。
 - Instantiate 未传 `config_inputs` 时，v1 行为完全不变；v2 required prompt 返回稳定缺失错误。
 - `secret_inputs` 暂不删除，只为 v1 legacy Snapshot 服务。
 - list 新增字段是向后兼容扩展；现有 `required_secret_keys` 暂保留。
@@ -755,7 +779,7 @@ HTTP 状态继续沿用现有 project-template error mapping；校验问题必�
 
 ### 18.1 `internal/projecttemplate`
 
-- v2 literal/secret_copy/prompt required/prompt optional round-trip。
+- v2 literal/secret_copy/inherit/prompt required/prompt optional round-trip。
 - mode/value/ciphertext/prompt 非法组合全部拒绝。
 - config key 重复拒绝。
 - unknown field、trailing JSON、未知 schema 拒绝。
@@ -772,8 +796,8 @@ HTTP 状态继续沿用现有 project-template error mapping；校验问题必�
 
 ### 18.3 App Capture
 
-- policy 未传默认 fixed。
-- 没有源 project row 的 definition 可以保存为 prompt，但不能保存为 fixed。
+- policy 未传时按来源 row 自动选择 fixed/inherit。
+- 没有源 project row 的 definition 可以保存为 inherit 或 prompt，但不能保存为 fixed。
 - 普通/secret fixed 保持现状。
 - prompt 不把源值写入 Snapshot、view、audit。
 - required/optional 正确进入 v2。
@@ -807,7 +831,7 @@ HTTP 状态继续沿用现有 project-template error mapping；校验问题必�
 
 ### 18.6 Web
 
-- Capture 默认 fixed，切换 prompt 后 required 可编辑。
+- Capture 默认“创建时无需填写”：有显式 row 为 fixed，无显式 row 为 inherit；切换 prompt 后 required 可编辑。
 - automation 依赖 prompt 的 required 不可取消。
 - typed 控件按 definition 正确渲染。
 - required 前端提示与服务端 issue 对齐。
@@ -844,8 +868,26 @@ pnpm --dir web run smoke:project-template
 8. list/detail/preview/audit/log/error 不回显输入值，secret 边界不退化。
 9. Snapshot hash 漂移或任一校验失败时不产生半成品 Project。
 10. SQLite/PostgreSQL、零 CGO 测试和完整 Web 验证全部通过。
+11. 没有来源 project row 的 config 仍可选择“创建时无需填写”，Snapshot 保存 inherit，实例化不产生 project row。
+12. 模板 key 留空时使用来源 Project slug；同 key 再次保存只追加同一 Template 的新 Snapshot，列表仍只有一项。
 
-## 20. 实施切片建议
+## 20. 模板标识默认值与同标识保存
+
+本轮同时锁定“另存为模板”的稳定标识规则：
+
+- Create/Save 请求中的 `key` 允许省略或传空白；App 层使用最终解析出的来源 Project `slug` 作为默认 key。不能只在 Web 预填，否则 HTTP 调用方和并发保存仍会分叉。
+- 显式 key 仍须符合 `^[a-z][a-z0-9-]{2,31}$`；默认来源 slug 使用 Project 已有的合法 slug，不再单独要求用户重复填写。
+- workspace 内不存在该 key：创建一条 Template 和 Snapshot v1。
+- workspace 内已存在 active Template：锁定同一 Template，更新 name/description 为本次表单值，并追加不可变 Snapshot vN+1；`current_snapshot_id` 指向新版本。若内容 hash 与 current 完全相同，则只更新元数据并保持当前版本，按幂等成功处理。
+- 列表仍只返回一条 Template 与 current Snapshot，因此用户只看到同 key 最新版本；历史 Snapshot 继续可审计，不做物理覆盖或查询时去重。
+- workspace 内同 key Template 已 archived 时返回 `project_template_archived`，不静默复活；用户必须先显式重新激活。
+- 同 key 并发保存必须通过 Template 行锁和既有 Snapshot version/hash 唯一约束串行化，不能重新引入 key conflict，也不能产生两个 Template。
+
+Web 表单把字段名称改为“模板标识（可选）”，placeholder 明确“留空使用项目 slug：<slug>”；不再以非空 key 作为进入下一步的条件。保存完成后的缓存失效使用响应中的最终 key，不能使用空输入。
+
+真实 Playwright E2E 必须额外覆盖：清空模板标识后保存得到来源项目 slug；从同一来源再次保存后 Template 总数仍为 1、current version 前进且列表只显示最新版本；无显式 project row 的 config 可以保持“创建时无需填写”，实例化后不产生 project row。
+
+## 21. 实施切片建议
 
 本节只定义依赖顺序，不代替 implementation plan：
 

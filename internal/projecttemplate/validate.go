@@ -43,11 +43,12 @@ func validateSnapshot(snapshot Snapshot, limits Limits) error {
 				return invalid("config keys must be unique")
 			}
 			configKeys[config.Key] = struct{}{}
-			if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "prompt" {
+			if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "inherit" && config.Mode != "prompt" {
 				return invalid("config key or mode is invalid")
 			}
 			if (config.Mode == "literal" && (config.Value == nil || config.SecretCiphertext != nil || config.Prompt != nil)) ||
 				(config.Mode == "secret_copy" && (config.Value != nil || config.SecretCiphertext == nil || strings.TrimSpace(*config.SecretCiphertext) == "" || config.Prompt != nil)) ||
+				(config.Mode == "inherit" && (config.Value != nil || config.SecretCiphertext != nil || config.Prompt != nil)) ||
 				(config.Mode == "prompt" && (config.Value != nil || config.SecretCiphertext != nil || config.Prompt == nil)) {
 				return invalid("config value does not match mode")
 			}

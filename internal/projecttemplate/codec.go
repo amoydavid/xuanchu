@@ -265,7 +265,7 @@ func ToV2(in Snapshot) (SnapshotV2, error) {
 		Series: make([]SeriesBlueprintV2, 0, len(in.Series)), Automations: make([]AutomationBlueprintV2, 0, len(in.Automations)),
 	}
 	for _, config := range in.Configs {
-		if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "prompt" {
+		if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "inherit" && config.Mode != "prompt" {
 			return SnapshotV2{}, invalid("current config mode cannot be encoded as v2")
 		}
 		out.Configs = append(out.Configs, ConfigBlueprintV2{

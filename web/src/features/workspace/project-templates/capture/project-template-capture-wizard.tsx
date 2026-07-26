@@ -106,7 +106,7 @@ function ProjectTemplateCaptureWizardSession({
   const [selection, setSelection] =
     useState<CandidateSelectionStore>(emptySelection)
   const [selectedOpen, setSelectedOpen] = useState(false)
-  const [keyValue, setKeyValue] = useState(sourceProject.slug)
+  const [keyValue, setKeyValue] = useState("")
   const [name, setName] = useState(sourceProject.name)
   const [description, setDescription] = useState("")
   const [anchorDate, setAnchorDate] = useState(today)
@@ -114,7 +114,9 @@ function ProjectTemplateCaptureWizardSession({
   const [requiredConfigKeys, setRequiredConfigKeys] = useState<Set<string>>(
     () => new Set()
   )
-  const [configPolicies, setConfigPolicies] = useState<Record<string, CaptureConfigPolicy>>({})
+  const [configPolicies, setConfigPolicies] = useState<
+    Record<string, CaptureConfigPolicy>
+  >({})
   const [resolution, setResolution] = useState<CaptureResolution>({})
   const [previewDirty, setPreviewDirty] = useState(false)
   const [pending, setPending] = useState(false)
@@ -138,7 +140,7 @@ function ProjectTemplateCaptureWizardSession({
   const blockingIssues = preview?.blocking_issues ?? []
   const canAdvance =
     step === 0
-      ? mode === "append" || Boolean(keyValue.trim() && name.trim())
+      ? mode === "append" || Boolean(name.trim())
       : step === 1
         ? true
         : step === 2
@@ -270,8 +272,7 @@ function ProjectTemplateCaptureWizardSession({
                 ? "由已选自动化依赖"
                 : "由服务端归一化选择",
             secret:
-              config?.mode === "secret_copy" ||
-              config?.mode === "secret_input",
+              config?.mode === "secret_copy" || config?.mode === "secret_input",
           }
         )
       }
@@ -339,17 +340,29 @@ function ProjectTemplateCaptureWizardSession({
   ])
 
   const save = useCallback(async () => {
-    if (!canSave || !preview || pendingRef.current || defaultsPendingRef.current) return
+    if (
+      !canSave ||
+      !preview ||
+      pendingRef.current ||
+      defaultsPendingRef.current
+    )
+      return
     pendingRef.current = true
     setPending(true)
     setError(undefined)
     const capture: CaptureInput = {
-      ...captureInput(selection, sourceProject.slug, anchorDate, resolution, configPolicies),
+      ...captureInput(
+        selection,
+        sourceProject.slug,
+        anchorDate,
+        resolution,
+        configPolicies
+      ),
       expected_source_hash: preview.source_hash,
     }
     try {
       if (mode === "create") {
-        await createProjectTemplate(workspaceSlug, {
+        const saved = await createProjectTemplate(workspaceSlug, {
           key: keyValue.trim(),
           name: name.trim(),
           description: description.trim() || undefined,
@@ -357,7 +370,7 @@ function ProjectTemplateCaptureWizardSession({
         })
         await invalidateProjectTemplateMutation(queryClient, workspaceSlug, {
           kind: "create",
-          ref: keyValue.trim(),
+          ref: saved.template.key,
         })
       } else {
         await appendProjectTemplateSnapshot(
@@ -440,7 +453,9 @@ function ProjectTemplateCaptureWizardSession({
     const nextSelection = { ...selectionRef.current, [kind]: next }
     replaceSelection(nextSelection)
     if (kind === "config") {
-      setConfigPolicies((current) => syncConfigPolicies(current, next, requiredConfigKeys))
+      setConfigPolicies((current) =>
+        syncConfigPolicies(current, next, requiredConfigKeys)
+      )
     }
     if (kind === "automation") setRequiredConfigKeys(new Set())
     setResolution((current) => sanitizeResolution(current, nextSelection))
@@ -449,7 +464,7 @@ function ProjectTemplateCaptureWizardSession({
   }
 
   function removeSelection(kind: CandidateKind, ref: string) {
-	if (kind === "config" && requiredConfigKeys.has(ref)) return
+    if (kind === "config" && requiredConfigKeys.has(ref)) return
     const next = new Map(selection[kind])
     next.delete(ref)
     updateSelection(kind, next)
@@ -473,7 +488,7 @@ function ProjectTemplateCaptureWizardSession({
   function clearAllSelection() {
     const next = emptySelection()
     replaceSelection(next)
-	setRequiredConfigKeys(new Set())
+    setRequiredConfigKeys(new Set())
     setConfigPolicies({})
     setResolution((current) => sanitizeResolution(current, next))
     setPreview(undefined)
@@ -487,7 +502,9 @@ function ProjectTemplateCaptureWizardSession({
     if (sameSelectionMap(selectionRef.current[kind], next)) return
     replaceSelection({ ...selectionRef.current, [kind]: next })
     if (kind === "config") {
-      setConfigPolicies((current) => syncConfigPolicies(current, next, requiredConfigKeys))
+      setConfigPolicies((current) =>
+        syncConfigPolicies(current, next, requiredConfigKeys)
+      )
     }
   }
 
@@ -623,7 +640,9 @@ function ProjectTemplateCaptureWizardSession({
                       <div hidden={activeKind !== kind}>
                         <CandidatePicker
                           kind={kind}
-                          lockedRefs={kind === "config" ? requiredConfigKeys : undefined}
+                          lockedRefs={
+                            kind === "config" ? requiredConfigKeys : undefined
+                          }
                           onChange={(next) => updateSelection(kind, next)}
                           onLimitError={setLimitError}
                           onSummariesChange={(next) =>
@@ -645,7 +664,10 @@ function ProjectTemplateCaptureWizardSession({
                 onClearAll={clearAllSelection}
                 onRemove={removeSelection}
                 onConfigPolicyChange={(policy) => {
-                  setConfigPolicies((current) => ({ ...current, [policy.key]: policy }))
+                  setConfigPolicies((current) => ({
+                    ...current,
+                    [policy.key]: policy,
+                  }))
                   setPreview(undefined)
                   setPreviewDirty(false)
                 }}
@@ -660,7 +682,10 @@ function ProjectTemplateCaptureWizardSession({
                 onOpenChange={setSelectedOpen}
                 onRemove={removeSelection}
                 onConfigPolicyChange={(policy) => {
-                  setConfigPolicies((current) => ({ ...current, [policy.key]: policy }))
+                  setConfigPolicies((current) => ({
+                    ...current,
+                    [policy.key]: policy,
+                  }))
                   setPreview(undefined)
                   setPreviewDirty(false)
                 }}
@@ -672,20 +697,20 @@ function ProjectTemplateCaptureWizardSession({
           ) : step === 2 ? (
             <PreviewStep
               onAddResolution={addResolution}
-                onSelectTask={(ref, parentSourceRef) => {
-                  const next = new Map(selection.task)
-                  next.set(ref, { ref, label: ref, secondary: "由冲突处理补选" })
-                  updateSelection("task", next)
-                  if (parentSourceRef) {
-                    setResolution((current) => ({
-                      ...current,
-                      drop_parent_task_refs:
-                        current.drop_parent_task_refs?.filter(
-                          (source) => source !== parentSourceRef
-                        ) ?? [],
-                    }))
-                  }
-                }}
+              onSelectTask={(ref, parentSourceRef) => {
+                const next = new Map(selection.task)
+                next.set(ref, { ref, label: ref, secondary: "由冲突处理补选" })
+                updateSelection("task", next)
+                if (parentSourceRef) {
+                  setResolution((current) => ({
+                    ...current,
+                    drop_parent_task_refs:
+                      current.drop_parent_task_refs?.filter(
+                        (source) => source !== parentSourceRef
+                      ) ?? [],
+                  }))
+                }
+              }}
               preview={preview}
               previewDirty={previewDirty}
               firstIssueRef={firstIssueRef}
@@ -723,10 +748,10 @@ function ProjectTemplateCaptureWizardSession({
               下一步 <ChevronRight />
             </Button>
           ) : step === 2 && !preview ? (
-              <Button
-                disabled={pending || defaultsPending}
-                onClick={() => void runPreview()}
-              >
+            <Button
+              disabled={pending || defaultsPending}
+              onClick={() => void runPreview()}
+            >
               {pending ? <Loader2 className="animate-spin" /> : null}生成预览
             </Button>
           ) : step === 2 ? (
@@ -790,10 +815,11 @@ function MetadataStep({
       {mode === "create" ? (
         <>
           <div className="space-y-2">
-            <Label htmlFor="capture-key">稳定 Key</Label>
+            <Label htmlFor="capture-key">模板标识（可选）</Label>
             <Input
               id="capture-key"
               onChange={(e) => onKeyChange(e.target.value)}
+              placeholder={`留空使用项目 slug：${sourceProject.slug}`}
               value={keyValue}
             />
           </div>
@@ -854,7 +880,9 @@ function PreviewStep({
       </div>
     )
   }
-  const configSummary = summarizeCapturedConfigs(preview.snapshot?.configs ?? [])
+  const configSummary = summarizeCapturedConfigs(
+    preview.snapshot?.configs ?? []
+  )
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-5 sm:p-8">
       <dl className="grid grid-cols-4 gap-px border bg-border">
@@ -868,7 +896,8 @@ function PreviewStep({
         ))}
       </dl>
       <p className="text-xs text-muted-foreground">
-        固定配置 {configSummary.fixed} · 创建时填写：必填 {configSummary.required}、选填 {configSummary.optional}
+        固定配置 {configSummary.fixed} · 继承配置 {configSummary.inherit} ·
+        创建时填写：必填 {configSummary.required}、选填 {configSummary.optional}
       </p>
       {previewDirty ? (
         <Alert>
@@ -922,12 +951,13 @@ function PreviewStep({
 function summarizeCapturedConfigs(configs: ProjectTemplateConfig[]) {
   return configs.reduce(
     (counts, config) => {
-      if (config.mode !== "prompt") counts.fixed += 1
+      if (config.mode === "inherit") counts.inherit += 1
+      else if (config.mode !== "prompt") counts.fixed += 1
       else if (config.prompt?.required) counts.required += 1
       else counts.optional += 1
       return counts
     },
-    { fixed: 0, required: 0, optional: 0 }
+    { fixed: 0, inherit: 0, required: 0, optional: 0 }
   )
 }
 
@@ -1226,15 +1256,16 @@ function syncConfigPolicies(
   for (const [key, summary] of selected) {
     const existing = current[key]
     if (existing) {
-      next[key] = existing.strategy === "prompt" && locked.has(key)
-        ? { key, strategy: "prompt", required: true }
-        : existing
+      next[key] =
+        existing.strategy === "prompt" && locked.has(key)
+          ? { key, strategy: "prompt", required: true }
+          : existing
       continue
     }
     const canFixed = summary.configCanFixed !== false
     next[key] = canFixed
       ? { key, strategy: "fixed" }
-      : { key, strategy: "prompt", required: locked.has(key) }
+      : { key, strategy: "inherit" }
   }
   return next
 }

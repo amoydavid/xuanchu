@@ -750,8 +750,8 @@ func projectTemplateRequestOpenAPISchema(route humaRoute) *huma.Schema {
 	switch {
 	case route.Path == "/api/v1/project-templates" && route.Method == http.MethodPost:
 		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
-			"key": {Type: "string", Pattern: `^[a-z][a-z0-9-]{2,31}$`}, "name": stringField(), "description": stringField(), "capture": projectTemplateCaptureRequestOpenAPISchema(true),
-		}, Required: []string{"key", "name", "capture"}}
+			"key": {Type: "string", Pattern: `^(?:[a-z][a-z0-9-]{2,31})?$`}, "name": stringField(), "description": stringField(), "capture": projectTemplateCaptureRequestOpenAPISchema(true),
+		}, Required: []string{"name", "capture"}}
 	case route.Path == "/api/v1/project-templates/{templateRef}" && route.Method == http.MethodPatch:
 		return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{"name": stringField(), "description": stringField()}}
 	case strings.HasSuffix(route.Path, "/instantiate-preview"):
@@ -791,7 +791,7 @@ func projectTemplateCaptureRequestOpenAPISchema(requireHash bool) *huma.Schema {
 		}, Required: []string{"source_series_ref", "first_due"}}},
 	}}
 	configPolicies := &huma.Schema{Type: "array", Items: &huma.Schema{Type: "object", AdditionalProperties: false, Properties: map[string]*huma.Schema{
-		"key": {Type: "string"}, "strategy": {Type: "string", Enum: []any{"fixed", "prompt"}}, "required": {Type: "boolean"},
+		"key": {Type: "string"}, "strategy": {Type: "string", Enum: []any{"fixed", "inherit", "prompt"}}, "required": {Type: "boolean"},
 	}, Required: []string{"key", "strategy"}}}
 	schema := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"source_project": {Type: "string"}, "anchor_date": {Type: "string", Format: "date"}, "selection": selection,
@@ -1185,7 +1185,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/template-candidates/automations", Tag: "Project Templates", Summary: "List bounded automation candidates for a project template capture.", Handler: s.handleProjectTemplateAutomationCandidates},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/template-candidates/resolve-selection", Tag: "Project Templates", Summary: "Resolve a candidate filter to explicit stable references.", Handler: s.handleProjectTemplateResolveSelection},
 		{Method: http.MethodPost, Path: "/api/v1/project-templates/capture-preview", Tag: "Project Templates", Summary: "Preview a project template capture.", Handler: s.handleProjectTemplateCapturePreview},
-		{Method: http.MethodPost, Path: "/api/v1/project-templates", Tag: "Project Templates", Summary: "Create a project template and its first snapshot.", Handler: s.handleProjectTemplateCreate, Status: http.StatusCreated},
+		{Method: http.MethodPost, Path: "/api/v1/project-templates", Tag: "Project Templates", Summary: "Save a project template, creating it or appending its current snapshot.", Handler: s.handleProjectTemplateCreate, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/project-templates", Tag: "Project Templates", Summary: "List project template metadata.", Handler: s.handleProjectTemplateList},
 		{Method: http.MethodGet, Path: "/api/v1/project-templates/{templateRef}", Tag: "Project Templates", Summary: "Get project template detail and a selected snapshot.", Handler: s.handleProjectTemplateInfo},
 		{Method: http.MethodPatch, Path: "/api/v1/project-templates/{templateRef}", Tag: "Project Templates", Summary: "Modify project template metadata.", Handler: s.handleProjectTemplateModify},

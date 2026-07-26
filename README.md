@@ -141,7 +141,9 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 ### 项目模板
 
-项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project config 和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。每个 config 可以固定使用当前项目值，也可以声明为创建时必填或选填；没有源项目显式值、但允许 project scope 的 ConfigDefinition 只能选择创建时填写。选择 automation 时，它依赖的配置会自动加入并锁定；若改为创建时填写，则必须为必填。固定的项目级 secret 会加密写入快照，prompt secret 只在创建请求中短暂出现，界面和接口均不回显其值。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」根据 current Snapshot 的 `config_inputs` 描述生成 typed form，并同时处理失效成员替换，在一个事务中创建 planning Project。必填 prompt 必须由本次请求显式填写，workspace 继承值或 default 不能代替；选填 prompt 留空时不创建 project config row。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
+项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project config 和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。每个 config 都可以选择“创建时无需填写”或声明为创建时必填/选填：来源项目有显式值时，前者把当前值固定进 Snapshot；没有显式值时保存 `inherit`，新项目不写 project config row，继续沿用实例化时的 workspace/default/missing。选择 automation 时，它依赖的配置会自动加入并锁定；prompt 必须为必填，inherit 则必须在实例化 Preview 时能解析出满足 Automation contract 的有效值。固定的项目级 secret 会加密写入快照，prompt secret 只在创建请求中短暂出现，界面和接口均不回显其值。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。
+
+“模板标识”可以留空，服务端默认使用来源 Project slug。再次保存 workspace 内同标识的 active 模板不会报冲突或创建重复列表项，而是在同一 Template 下追加不可变 Snapshot 并把 current 指向最新版本；历史版本仍保留用于审计。已归档的同标识模板不会静默复活，必须先显式重新激活。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」根据 current Snapshot 的 `config_inputs` 描述生成 typed form，并同时处理失效成员替换，在一个事务中创建 planning Project。必填 prompt 必须由本次请求显式填写，workspace 继承值或 default 不能代替；选填 prompt 留空时不创建 project config row。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
 
 CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 Capture、Preview、详情、归档或版本治理。先用 list 取得 current Snapshot ID/hash：
 
@@ -219,7 +221,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 go test ./tests/integration -count=1
 ```
 
-项目模板的真实浏览器 E2E 使用生产 Web 构建、真实 `xuanchu server` 和临时 SQLite，覆盖桌面/移动端 Capture、配置策略、required/optional typed form、secret 输入、成员替换与原子实例化；脚本结束后会关闭服务并确认端口释放：
+项目模板的真实浏览器 E2E 使用生产 Web 构建、真实 `xuanchu server` 和临时 SQLite，覆盖桌面/移动端 Capture、fixed/inherit/prompt 配置策略、空模板标识默认来源 slug、同标识追加版本、required/optional typed form、secret 输入、成员替换与原子实例化；脚本结束后会关闭服务并确认端口释放：
 
 ```bash
 pnpm --dir web run smoke:project-template
@@ -589,7 +591,7 @@ DELETE /api/v1/udas/estimate?workspace=dajee
 {"title":"评审方案","project":"demo","udas":{"estimate":"3"}}
 ```
 
-Project Template 继续使用 `xuanchu.project-template-snapshot/v1`，只保存所选 Task / TaskSeries 的 UDA blueprint。模板不会复制 Workspace definition；实例化 Preview 会按目标 Workspace 当前 definition 校验，缺失、type 不匹配或 value 不兼容都会阻止创建。
+Project Template 的 current schema 使用 `xuanchu.project-template-snapshot/v2`，只保存所选 Task / TaskSeries 的 UDA blueprint，不复制 Workspace definition；实例化 Preview 会按目标 Workspace 当前 definition 校验，缺失、type 不匹配或 value 不兼容都会阻止创建。历史 v1 Snapshot 继续兼容读取。
 
 `.taskrc` 的作用是**迁移和兼容性导入**：Xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。Xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
 

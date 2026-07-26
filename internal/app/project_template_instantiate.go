@@ -931,6 +931,17 @@ func (s *Service) planInstantiateConfigs(
 			applied++
 			continue
 		}
+		if blueprint.Mode == "inherit" {
+			value, source, _, resolveErr := s.prospectiveProjectConfigValue(blueprint.Key, projectValues)
+			if resolveErr != nil {
+				issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "value", "inherited config is incompatible with current config schema"))
+				continue
+			}
+			if source == "workspace" || source == "default" {
+				effectiveValues[blueprint.Key] = value
+			}
+			continue
+		}
 		if blueprint.Mode == "secret_copy" {
 			if !def.Secret {
 				issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "mode", "copied secret no longer matches the current config schema"))

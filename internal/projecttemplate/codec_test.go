@@ -59,6 +59,7 @@ func fixtureSnapshotV2() SnapshotV2 {
 		Configs: []ConfigBlueprintV2{
 			{Key: " agent.base_url ", Mode: "literal", Value: &literal},
 			{Key: " agent.api_key ", Mode: "secret_copy", SecretCiphertext: &secret},
+			{Key: " agent.model ", Mode: "inherit"},
 			{Key: " feishu.chat_id ", Mode: "prompt", Prompt: &ConfigPromptV2{Required: true}},
 			{Key: " ads.account_id ", Mode: "prompt", Prompt: &ConfigPromptV2{Required: false}},
 		},
@@ -78,15 +79,15 @@ func TestCodecV2RoundTripAndHashIncludesPromptRequirement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Schema != SnapshotSchemaV2 || len(decoded.Configs) != 4 {
+	if decoded.Schema != SnapshotSchemaV2 || len(decoded.Configs) != 5 {
 		t.Fatalf("decoded = %#v", decoded)
 	}
-	if decoded.Configs[3].Prompt == nil || !decoded.Configs[3].Prompt.Required {
-		t.Fatalf("required prompt = %#v", decoded.Configs[3])
+	if decoded.Configs[4].Prompt == nil || !decoded.Configs[4].Prompt.Required {
+		t.Fatalf("required prompt = %#v", decoded.Configs[4])
 	}
 
 	optional := fixtureSnapshotV2()
-	optional.Configs[2].Prompt.Required = false
+	optional.Configs[3].Prompt.Required = false
 	_, optionalHash, err := EncodeV2(optional, DefaultLimits)
 	if err != nil {
 		t.Fatal(err)
@@ -114,6 +115,8 @@ func TestEncodeV2RejectsInvalidConfigModeFields(t *testing.T) {
 		{name: "secret copy without ciphertext", edit: func(c *ConfigBlueprintV2) { c.SecretCiphertext = nil }},
 		{name: "prompt with value", edit: func(c *ConfigBlueprintV2) { c.Value = &value }},
 		{name: "prompt without descriptor", edit: func(c *ConfigBlueprintV2) { c.Prompt = nil }},
+		{name: "inherit with value", edit: func(c *ConfigBlueprintV2) { c.Mode, c.Value = "inherit", &value }},
+		{name: "inherit with prompt", edit: func(c *ConfigBlueprintV2) { c.Mode, c.Value, c.Prompt = "inherit", nil, &ConfigPromptV2{} }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -123,6 +126,8 @@ func TestEncodeV2RejectsInvalidConfigModeFields(t *testing.T) {
 			case "secret copy without ciphertext":
 				index = 1
 			case "prompt with value", "prompt without descriptor":
+				index = 3
+			case "inherit with value", "inherit with prompt":
 				index = 2
 			}
 			test.edit(&snapshot.Configs[index])

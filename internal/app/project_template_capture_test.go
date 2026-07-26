@@ -342,19 +342,34 @@ func TestCaptureConfigPoliciesWriteSnapshotV2WithoutPromptSourceValues(t *testin
 	}
 }
 
-func TestCaptureConfigPoliciesRejectInvalidOrMissingFixedSource(t *testing.T) {
+func TestCaptureConfigPoliciesDefaultMissingSourceToInheritAndRejectInvalidFixed(t *testing.T) {
 	svc, project := captureFixture(t)
 	if err := svc.ConfigSchemaSet(ConfigSchemaInput{Key: "capture.prompt_only", ValueType: "string", AllowedScopes: []string{"project"}}); err != nil {
 		t.Fatal(err)
 	}
 	base := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{ConfigKeys: []string{"capture.prompt_only"}})
+	for _, policies := range [][]CaptureConfigPolicyInput{
+		nil,
+		{{Key: "capture.prompt_only", Strategy: "inherit"}},
+	} {
+		input := base
+		input.ConfigPolicies = policies
+		preview, err := svc.PreviewProjectTemplateCapture(input)
+		if err != nil {
+			t.Fatalf("policies=%#v error=%v", policies, err)
+		}
+		if len(preview.Snapshot.Configs) != 1 || preview.Snapshot.Configs[0].Mode != "inherit" {
+			t.Fatalf("policies=%#v configs=%#v", policies, preview.Snapshot.Configs)
+		}
+	}
 	tests := []struct {
 		name     string
 		policies []CaptureConfigPolicyInput
 	}{
-		{name: "missing policy defaults to unavailable fixed"},
 		{name: "fixed cannot be required", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "fixed", Required: true}}},
-		{name: "unknown strategy", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "inherit"}}},
+		{name: "fixed requires explicit source", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "fixed"}}},
+		{name: "inherit cannot be required", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "inherit", Required: true}}},
+		{name: "unknown strategy", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "reuse"}}},
 		{name: "duplicate", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "prompt"}, {Key: "capture.prompt_only", Strategy: "prompt"}}},
 		{name: "unselected", policies: []CaptureConfigPolicyInput{{Key: "another.key", Strategy: "prompt"}}},
 	}
@@ -367,6 +382,75 @@ func TestCaptureConfigPoliciesRejectInvalidOrMissingFixedSource(t *testing.T) {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+}
+
+func TestCreateProjectTemplateDefaultsKeyAndVersionsSameKey(t *testing.T) {
+	svc, project := captureFixture(t)
+	row := seedCaptureTask(t, svc, project, "第一版", 1)
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{TaskRefs: []string{row.UUID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Name: "来源模板", Description: "第一版", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Template.Key != project.Slug || created.Template.CurrentSnapshot == nil || created.Template.CurrentSnapshot.Version != 1 {
+		t.Fatalf("created = %#v", created.Template)
+	}
+
+	row.Title, row.Modified = "第二版", row.Modified+1
+	if err := svc.repo.Update(row); err != nil {
+		t.Fatal(err)
+	}
+	preview, err = svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	updated, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: project.Slug, Name: "最新模板", Description: "第二版", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Template.ID != created.Template.ID || updated.Template.Name != "最新模板" || updated.Template.Description != "第二版" || updated.Template.CurrentSnapshot == nil || updated.Template.CurrentSnapshot.Version != 2 {
+		t.Fatalf("updated = %#v", updated.Template)
+	}
+	page, err := svc.ListProjectTemplates("all", "", 20, 0)
+	if err != nil || page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("page = %#v err=%v", page, err)
+	}
+}
+
+func TestCreateProjectTemplateConcurrentSameKeyKeepsOneTemplate(t *testing.T) {
+	svc, project := captureFixture(t)
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, name := range []string{"并发模板 A", "并发模板 B"} {
+		name := name
+		go func() {
+			<-start
+			_, createErr := svc.CreateProjectTemplate(CreateTemplateInput{Key: "same-key", Name: name, Capture: input})
+			results <- createErr
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatalf("concurrent save error = %v", err)
+		}
+	}
+	page, err := svc.ListProjectTemplates("all", "", 20, 0)
+	if err != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].CurrentSnapshot == nil || page.Items[0].CurrentSnapshot.Version != 1 {
+		t.Fatalf("page = %#v err=%v", page, err)
 	}
 }
 
@@ -1017,6 +1101,9 @@ func TestProjectTemplateSnapshotAppendRejectsArchivedStateReadUnderTransactionLo
 	}
 	if _, err := svc.ArchiveProjectTemplate(created.Template.ID); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: created.Template.Key, Name: "不应静默复活", Capture: input}); runtimeCode(err) != "project_template_archived" {
+		t.Fatalf("save archived error = %v", err)
 	}
 	if err := svc.store.Transaction(func(txStore *storage.Store) error {
 		txSvc, err := svc.withStore(txStore)

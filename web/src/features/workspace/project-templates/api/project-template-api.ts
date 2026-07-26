@@ -312,12 +312,12 @@ export type CaptureInput = {
 
 export type CaptureConfigPolicy = {
   key: string
-  strategy: "fixed" | "prompt"
+  strategy: "fixed" | "inherit" | "prompt"
   required?: boolean
 }
 
 export type CreateProjectTemplateInput = {
-  key: string
+  key?: string
   name: string
   description?: string
   capture: CaptureInput

@@ -66,6 +66,96 @@ func instantiatePromptSnapshot() projecttemplate.SnapshotV2 {
 	}
 }
 
+func TestProjectTemplateInstantiateV2InheritDoesNotWriteProjectRows(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	defaultValue := "default-value"
+	for _, definition := range []ConfigSchemaInput{
+		{Key: "inherit.workspace", ValueType: "string", AllowedScopes: []string{"workspace", "project"}},
+		{Key: "inherit.default", ValueType: "string", AllowedScopes: []string{"project"}, DefaultValue: &defaultValue},
+		{Key: "inherit.missing", ValueType: "string", AllowedScopes: []string{"project"}},
+	} {
+		if err := f.owner.ConfigSchemaSet(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.owner.SetConfig("inherit.workspace", "workspace-value"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := projecttemplate.SnapshotV2{
+		Schema: projecttemplate.SnapshotSchemaV2, AnchorDate: "2026-07-20",
+		Project: projecttemplate.ProjectBlueprintV2{Description: "继承配置项目"},
+		Configs: []projecttemplate.ConfigBlueprintV2{
+			{Key: "inherit.workspace", Mode: "inherit"},
+			{Key: "inherit.default", Mode: "inherit"},
+			{Key: "inherit.missing", Mode: "inherit"},
+		},
+		Tasks: []projecttemplate.TaskBlueprintV2{}, Series: []projecttemplate.SeriesBlueprintV2{}, Automations: []projecttemplate.AutomationBlueprintV2{},
+	}
+	seedProjectTemplateV2(t, f.owner, "inherit-v2", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "inherit-v2", "inheritv2")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("inherit-v2", input)
+	if err != nil || len(preview.Issues) != 0 || len(preview.ConfigInputs) != 0 {
+		t.Fatalf("preview = %#v err=%v", preview, err)
+	}
+	created, err := f.owner.InstantiateCurrentProjectTemplate("inherit-v2", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"inherit.workspace", "inherit.default", "inherit.missing"} {
+		if _, ok, getErr := f.owner.configRepo.Get(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: created.Project.ID, Key: key}); getErr != nil || ok {
+			t.Fatalf("inherit row %s exists=%t err=%v", key, ok, getErr)
+		}
+	}
+}
+
+func TestProjectTemplateInstantiateV2InheritAutomationRequiresEffectiveValue(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	for key, value := range map[string]string{
+		"agent.provider.base_url":      "https://agent.example.test",
+		"agent.provider.api_key":       "workspace-secret",
+		"agent.provider.allowed_hosts": `["agent.example.test"]`,
+	} {
+		if err := f.owner.SetConfig(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := projecttemplate.SnapshotV2{
+		Schema: projecttemplate.SnapshotSchemaV2, AnchorDate: "2026-07-20",
+		Project: projecttemplate.ProjectBlueprintV2{Description: "继承自动化配置"},
+		Configs: []projecttemplate.ConfigBlueprintV2{
+			{Key: "agent.provider.base_url", Mode: "inherit"},
+			{Key: "agent.provider.api_key", Mode: "inherit"},
+			{Key: "agent.provider.allowed_hosts", Mode: "inherit"},
+		},
+		Tasks: []projecttemplate.TaskBlueprintV2{}, Series: []projecttemplate.SeriesBlueprintV2{},
+		Automations: []projecttemplate.AutomationBlueprintV2{{
+			Ref: "automation-1", Name: "继承配置自动化", TriggerType: "schedule",
+			TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+			Action: projecttemplate.AutomationActionV1{
+				Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key",
+				ModelConfigKey: "agent.provider.model", AllowedHostsConfigKey: "agent.provider.allowed_hosts", ModelOverride: "gpt-test",
+			},
+			Context: projecttemplate.AutomationContextV1{Include: []string{"project"}}, InstructionTemplate: "检查项目",
+		}},
+	}
+	seedProjectTemplateV2(t, f.owner, "inherit-automation", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "inherit-automation", "inhauto")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("inherit-automation", input)
+	if err != nil || len(preview.Issues) != 0 {
+		t.Fatalf("valid inherit preview = %#v err=%v", preview, err)
+	}
+	if err := f.owner.UnsetConfig("agent.provider.api_key"); err != nil {
+		t.Fatal(err)
+	}
+	preview, err = f.owner.PreviewProjectTemplateInstantiation("inherit-automation", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_automation_invalid") {
+		t.Fatalf("missing inherited automation config issues = %#v", preview.Issues)
+	}
+}
+
 func TestProjectTemplateInstantiateV2PromptRequiresExplicitInputsAndWritesOnlyProvidedRows(t *testing.T) {
 	f := newProjectTemplateFixture(t)
 	for _, definition := range []ConfigSchemaInput{

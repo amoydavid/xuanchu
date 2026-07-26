@@ -90,7 +90,9 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 function renderCaptureWizard(
-  props: Partial<React.ComponentProps<typeof ProjectTemplateCaptureWizard>> = {},
+  props: Partial<
+    React.ComponentProps<typeof ProjectTemplateCaptureWizard>
+  > = {},
   options: { strictMode?: boolean } = {}
 ) {
   return render(
@@ -302,7 +304,9 @@ describe("ProjectTemplateCaptureWizard", () => {
   it("sends only explicit arrays and preview source hash", async () => {
     renderCaptureWizard()
     await enterSelectionStep()
-    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "准备上线" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
 
@@ -336,7 +340,7 @@ describe("ProjectTemplateCaptureWizard", () => {
     expect(JSON.stringify(saveBody)).not.toMatch(/filter|query/)
   })
 
-  it("defaults prompt-only config to prompt and submits required policy", async () => {
+  it("keeps create-without-input available for config without a project row", async () => {
     const candidate: api.ConfigCandidate = {
       ref: "launch.region",
       key: "launch.region",
@@ -350,37 +354,59 @@ describe("ProjectTemplateCaptureWizard", () => {
       warning_count: 0,
     }
     vi.mocked(api.listProjectTemplateConfigCandidates).mockResolvedValue({
-      items: [candidate], total: 1, limit: 50, offset: 0,
+      items: [candidate],
+      total: 1,
+      limit: 50,
+      offset: 0,
     })
     vi.mocked(api.previewProjectTemplateSnapshotCapture).mockResolvedValue({
       ...preview,
-      selection: { ...preview.selection, task_refs: [], config_keys: [candidate.key] },
+      selection: {
+        ...preview.selection,
+        task_refs: [],
+        config_keys: [candidate.key],
+      },
       counts: { ...preview.counts, tasks: 0, configs: 1 },
       snapshot: {
         ...preview.snapshot!,
-        configs: [{ key: candidate.key, mode: "prompt", prompt: { required: true } }],
+        configs: [{ key: candidate.key, mode: "inherit" }],
       },
     })
     renderCaptureWizard()
     await enterSelectionStep()
     await userEvent.click(screen.getByRole("tab", { name: /配置/ }))
-    await userEvent.click(await screen.findByRole("checkbox", { name: "发布区域" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "发布区域" })
+    )
 
     const strategy = screen.getByLabelText("创建策略") as HTMLSelectElement
-    expect(strategy.value).toBe("prompt")
-    expect(within(strategy).queryByRole("option", { name: "使用当前项目值" })).toBeNull()
-    await userEvent.click(screen.getByRole("checkbox", { name: "必填" }))
+    expect(strategy.value).toBe("inherit")
+    expect(
+      within(strategy).getByRole("option", { name: /创建时无需填写/ })
+    ).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
-    expect(await screen.findByText("固定配置 0 · 创建时填写：必填 1、选填 0")).toBeTruthy()
+    expect(
+      await screen.findByText(
+        "固定配置 0 · 继承配置 1 · 创建时填写：必填 0、选填 0"
+      )
+    ).toBeTruthy()
 
     expect(api.previewProjectTemplateSnapshotCapture).toHaveBeenCalledWith(
       "acme",
       "launch-template",
       expect.objectContaining({
-        config_policies: [{ key: "launch.region", strategy: "prompt", required: true }],
+        config_policies: [{ key: "launch.region", strategy: "inherit" }],
       })
     )
+  })
+
+  it("allows an empty template key because the server defaults to the project slug", async () => {
+    renderCaptureWizard({ mode: "create", templateRef: undefined })
+    const keyInput = screen.getByLabelText("模板标识（可选）")
+    await userEvent.clear(keyInput)
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    expect(await screen.findByRole("tab", { name: /^任务/ })).toBeTruthy()
   })
 
   it("locks automation-dependent prompt config as required after preview", async () => {
@@ -409,41 +435,66 @@ describe("ProjectTemplateCaptureWizard", () => {
       warning_count: 0,
     }
     vi.mocked(api.listProjectTemplateConfigCandidates).mockResolvedValue({
-      items: [config], total: 1, limit: 50, offset: 0,
+      items: [config],
+      total: 1,
+      limit: 50,
+      offset: 0,
     })
     vi.mocked(api.listProjectTemplateAutomationCandidates).mockResolvedValue({
-      items: [automation], total: 1, limit: 50, offset: 0,
+      items: [automation],
+      total: 1,
+      limit: 50,
+      offset: 0,
     })
     vi.mocked(api.previewProjectTemplateSnapshotCapture).mockResolvedValue({
       ...preview,
       selection: {
-        task_refs: [], series_refs: [], config_keys: [config.key], automation_rule_ids: [automation.id],
+        task_refs: [],
+        series_refs: [],
+        config_keys: [config.key],
+        automation_rule_ids: [automation.id],
       },
       required_config_keys: [config.key],
       counts: { tasks: 0, series: 0, configs: 1, automations: 1 },
       snapshot: {
         ...preview.snapshot!,
-        configs: [{ key: config.key, mode: "prompt", prompt: { required: true } }],
+        configs: [
+          { key: config.key, mode: "prompt", prompt: { required: true } },
+        ],
       },
     })
 
     renderCaptureWizard()
     await enterSelectionStep()
     await userEvent.click(screen.getByRole("tab", { name: /^配置/ }))
-    await userEvent.click(await screen.findByRole("checkbox", { name: "模型密钥" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "模型密钥" })
+    )
     await userEvent.selectOptions(screen.getByLabelText("创建策略"), "prompt")
-    expect(screen.getByRole("checkbox", { name: "必填" }).getAttribute("data-state")).toBe("unchecked")
+    expect(
+      screen.getByRole("checkbox", { name: "必填" }).getAttribute("data-state")
+    ).toBe("unchecked")
     await userEvent.click(screen.getByRole("tab", { name: /^自动化/ }))
-    await userEvent.click(await screen.findByRole("checkbox", { name: "发布巡检" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "发布巡检" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
     await userEvent.click(screen.getByRole("button", { name: "返回" }))
     await userEvent.click(screen.getByRole("tab", { name: /^配置/ }))
 
-    const required = screen.getByRole("checkbox", { name: "必填（自动化依赖）" })
+    const required = screen.getByRole("checkbox", {
+      name: "必填（自动化依赖）",
+    })
     expect(required.getAttribute("data-state")).toBe("checked")
     expect((required as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "移除 模型密钥" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "移除 模型密钥",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
 
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "刷新预览" }))
@@ -451,7 +502,9 @@ describe("ProjectTemplateCaptureWizard", () => {
       "acme",
       "launch-template",
       expect.objectContaining({
-        config_policies: [{ key: config.key, strategy: "prompt", required: true }],
+        config_policies: [
+          { key: config.key, strategy: "prompt", required: true },
+        ],
       })
     )
   })
@@ -639,10 +692,14 @@ describe("ProjectTemplateCaptureWizard", () => {
       .mockResolvedValueOnce(preview)
     renderCaptureWizard()
     await enterSelectionStep()
-    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "准备上线" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
-    await userEvent.click(screen.getByRole("button", { name: "移除父任务关系" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "移除父任务关系" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "重新预览" }))
     await userEvent.click(screen.getByRole("button", { name: "补选引用任务" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
@@ -670,7 +727,9 @@ describe("ProjectTemplateCaptureWizard", () => {
       .mockResolvedValueOnce(preview)
     renderCaptureWizard()
     await enterSelectionStep()
-    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "准备上线" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
     await userEvent.click(screen.getByRole("button", { name: "清除 due 日期" }))
@@ -730,35 +789,33 @@ describe("ProjectTemplateCaptureWizard", () => {
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
 
     expect(
-      (screen.getByRole("button", {
-        name: "确认循环排期",
-      }) as HTMLButtonElement).disabled
+      (
+        screen.getByRole("button", {
+          name: "确认循环排期",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     await userEvent.type(screen.getByLabelText("循环首次到期日偏移"), "2")
     await userEvent.type(screen.getByLabelText("循环首次到期时间"), "10:30")
     expect(
-      (screen.getByRole("button", {
-        name: "确认循环排期",
-      }) as HTMLButtonElement).disabled
+      (
+        screen.getByRole("button", {
+          name: "确认循环排期",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     await userEvent.clear(screen.getByLabelText("循环首次到期时间"))
-    await userEvent.type(
-      screen.getByLabelText("循环首次到期时间"),
-      "24:00:00"
-    )
+    await userEvent.type(screen.getByLabelText("循环首次到期时间"), "24:00:00")
     expect(
-      (screen.getByRole("button", {
-        name: "确认循环排期",
-      }) as HTMLButtonElement).disabled
+      (
+        screen.getByRole("button", {
+          name: "确认循环排期",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     await userEvent.clear(screen.getByLabelText("循环首次到期时间"))
-    await userEvent.type(
-      screen.getByLabelText("循环首次到期时间"),
-      "10:30:00"
-    )
-    await userEvent.click(
-      screen.getByRole("button", { name: "确认循环排期" })
-    )
+    await userEvent.type(screen.getByLabelText("循环首次到期时间"), "10:30:00")
+    await userEvent.click(screen.getByRole("button", { name: "确认循环排期" }))
     await userEvent.click(screen.getByRole("button", { name: "重新预览" }))
     expect(api.previewProjectTemplateSnapshotCapture).toHaveBeenLastCalledWith(
       "acme",
@@ -831,7 +888,9 @@ describe("ProjectTemplateCaptureWizard", () => {
     expect(
       await screen.findByRole("button", { name: "已选 3 项" })
     ).toBeTruthy()
-    expect(api.resolveProjectTemplateCandidateSelection).toHaveBeenCalledTimes(6)
+    expect(api.resolveProjectTemplateCandidateSelection).toHaveBeenCalledTimes(
+      6
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     const previewButton = screen.getByRole("button", { name: "生成预览" })
     expect((previewButton as HTMLButtonElement).disabled).toBe(false)
@@ -930,7 +989,11 @@ describe("ProjectTemplateCaptureWizard", () => {
         .disabled
     ).toBe(true)
 
-    pending.resolve({ refs: ["pending-task"], total: 1, source_hash: "pending" })
+    pending.resolve({
+      refs: ["pending-task"],
+      total: 1,
+      source_hash: "pending",
+    })
     waiting.resolve({ refs: [], total: 0, source_hash: "waiting" })
     active.resolve({ refs: [], total: 0, source_hash: "active" })
 
@@ -1061,7 +1124,8 @@ describe("ProjectTemplateCaptureWizard", () => {
           }
         }
         return {
-          items: options.offset === 50 ? [{ ...taskZ, title: taskZTitle }] : [taskA],
+          items:
+            options.offset === 50 ? [{ ...taskZ, title: taskZTitle }] : [taskA],
           total: 1001,
           limit: 50,
           offset: options.offset ?? 0,
@@ -1089,9 +1153,9 @@ describe("ProjectTemplateCaptureWizard", () => {
     ).toBeTruthy()
     await waitFor(() =>
       expect(
-        vi.mocked(api.listProjectTemplateTaskCandidates).mock.calls.some(
-          (call) => call[2].refs?.includes("task-z")
-        )
+        vi
+          .mocked(api.listProjectTemplateTaskCandidates)
+          .mock.calls.some((call) => call[2].refs?.includes("task-z"))
       ).toBe(true)
     )
     await userEvent.click(screen.getByRole("button", { name: "已选 1 项" }))
@@ -1122,9 +1186,7 @@ describe("ProjectTemplateCaptureWizard", () => {
           return { items: [taskZ], total: 1001, limit: 50, offset: 50 }
         }
         return {
-          items: [
-            drifted ? { ...taskA, title: "当前页已更新" } : taskA,
-          ],
+          items: [drifted ? { ...taskA, title: "当前页已更新" } : taskA],
           total: 1001,
           limit: 50,
           offset: 0,
@@ -1139,9 +1201,13 @@ describe("ProjectTemplateCaptureWizard", () => {
     )
     renderCaptureWizard()
     await enterSelectionStep()
-    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "准备上线" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一页" }))
-    await userEvent.click(await screen.findByRole("checkbox", { name: "上线复盘" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "上线复盘" })
+    )
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
     await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
     await userEvent.click(screen.getByRole("button", { name: "下一步" }))
@@ -1278,7 +1344,9 @@ describe("ProjectTemplateCaptureWizard", () => {
       await screen.findByText("来源项目已变化，请检查选择后重新预览。")
     ).toBeTruthy()
     expect(screen.getByRole("button", { name: "已选 1 项" })).toBeTruthy()
-    expect(api.listProjectTemplateTaskCandidates.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(
+      api.listProjectTemplateTaskCandidates.mock.calls.length
+    ).toBeGreaterThanOrEqual(2)
   })
 
   it("renders a full-screen mobile selected sheet backed by the same store", async () => {

@@ -39,7 +39,7 @@
 | 入口边界 | Web Console 负责完整治理；CLI/MCP 只提供 list/instantiate |
 | 普通任务 | 保存为初始化 blueprint；创建新项目时生成新的开放任务 |
 | Series | 保存当前有效定义；创建时生成新的 active Series 和一条初始 RuleVersion |
-| Config | 只保存用户选择的 project 显式值；不冻结 workspace 继承值/default |
+| Config | 显式 project 值保存为 fixed；没有显式值时可保存 inherit 标记，但不冻结 workspace/default |
 | Secret | Snapshot 永不保存 secret 值；只保存占位要求 |
 | Automation | 只保存规则定义；新项目中的规则一律 disabled |
 | 引用 | Snapshot 使用本地 ref；创建时统一分配新 ID 并重建引用 |
@@ -183,7 +183,8 @@ archived_at           BIGINT NULL
 约束：
 
 - `UNIQUE(workspace_id, key)`。
-- `key` 是稳定查找键，规范为 3–32 位小写 ASCII 字母、数字和连字符，必须以字母开头。
+- `key` 是稳定查找键，规范为 3–32 位小写 ASCII 字母、数字和连字符，必须以字母开头。保存请求允许留空，由 App 层默认取来源 Project slug。
+- 再次保存 workspace 内相同 key 不创建第二条 Template，而是在原 active Template 下追加 Snapshot 并更新 current；列表因此天然只展示该 key 的最新版本。
 - `name` 是可修改展示名，允许中文，不承担稳定引用职责。
 - Modify 只允许修改 name/description；key 创建后不可修改。
 - `status` 只允许 `active|archived`。
@@ -213,7 +214,7 @@ created_at            BIGINT NOT NULL
 - `UNIQUE(template_id, version)`。
 - `UNIQUE(template_id, snapshot_hash)`，同一模板不重复追加完全相同的 Snapshot。
 - `workspace_id` 必须与 Template 和 source Project 一致。
-- Snapshot 一经写入不可更新；更新模板只能追加新 version。
+- Snapshot 一经写入不可更新；更新模板只能追加新 version。产品所称“覆盖同 slug 模板”指更新 current 指针，不物理覆盖历史 Snapshot。
 - `snapshot_json` 在 SQLite/PostgreSQL 均保存为 TEXT。JSON 是否合法、属于哪个 schema、字段是否完整全部由 Go codec 判断。
 - `snapshot_hash` 为 canonical JSON 字节的 SHA-256 小写十六进制值。
 - Template 与 Snapshot 使用 `RESTRICT` 关系；产品不提供硬删除。

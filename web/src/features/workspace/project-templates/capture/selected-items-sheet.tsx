@@ -13,7 +13,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 
-import type { CandidateKind, CaptureConfigPolicy } from "../api/project-template-api"
+import type {
+  CandidateKind,
+  CaptureConfigPolicy,
+} from "../api/project-template-api"
 import type {
   CandidateSummary,
   CandidateSelectionStore,
@@ -87,14 +90,19 @@ export function SelectedItemsDrawer({
   selection,
 }: Pick<
   SelectedItemsSheetProps,
-  "configPolicies" | "lockedConfigKeys" | "onClearAll" | "onConfigPolicyChange" | "onRemove" | "selection"
+  | "configPolicies"
+  | "lockedConfigKeys"
+  | "onClearAll"
+  | "onConfigPolicyChange"
+  | "onRemove"
+  | "selection"
 >) {
   const [q, setQ] = useState("")
   const items = useMemo(() => selectedItems(selection, q), [q, selection])
   return (
     <aside
       aria-label="已选内容"
-      className="rounded-lg sticky top-4 hidden max-h-[calc(100vh-8rem)] min-h-0 flex-col border bg-background lg:flex"
+      className="sticky top-4 hidden max-h-[calc(100vh-8rem)] min-h-0 flex-col rounded-lg border bg-background lg:flex"
     >
       <div className="border-b px-3 py-2">
         <div className="text-sm font-medium">已选内容</div>
@@ -155,74 +163,102 @@ function SelectedItemsPanel({
         ) : (
           <ul className="divide-y">
             {items.map((item) => {
-              const policy = item.kind === "config" ? configPolicies[item.ref] : undefined
-              const promptLocked = item.kind === "config" && lockedConfigKeys.has(item.ref) && policy?.strategy === "prompt"
+              const policy =
+                item.kind === "config" ? configPolicies[item.ref] : undefined
+              const promptLocked =
+                item.kind === "config" &&
+                lockedConfigKeys.has(item.ref) &&
+                policy?.strategy === "prompt"
               return (
-              <li
-                className="flex items-start gap-2 p-3"
-                key={`${item.kind}:${item.ref}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">
-                    {item.label}
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <Badge variant="outline">{kindLabel[item.kind]}</Badge>
-                    <span className="truncate font-mono text-[10px] text-muted-foreground">
-                      {item.ref}
-                    </span>
-                  </div>
-                  {item.kind === "config" && lockedConfigKeys.has(item.ref) ? (
-					  <div className="mt-1 text-[11px] text-muted-foreground">由已选自动化依赖，取消自动化后才可移除</div>
-                  ) : null}
-                  {item.kind === "config" && policy ? (
-                    <div className="mt-3 space-y-2">
-                      <label className="block text-xs font-medium" htmlFor={`config-policy-${item.ref}`}>
-                        创建策略
-                      </label>
-                      <select
-                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                        id={`config-policy-${item.ref}`}
-                        onChange={(event) => {
-                          const strategy = event.target.value as CaptureConfigPolicy["strategy"]
-                          onConfigPolicyChange({
-                            key: item.ref,
-                            strategy,
-                            required: strategy === "prompt" ? (promptLocked || policy.required) : undefined,
-                          })
-                        }}
-                        value={policy.strategy}
-                      >
-                        {item.configCanFixed ? (
-                          <option value="fixed">{item.secret ? "使用当前项目值（加密复制）" : "使用当前项目值"}</option>
-                        ) : null}
-                        <option value="prompt">创建项目时填写</option>
-                      </select>
-                      {policy.strategy === "prompt" ? (
-                        <label className="flex items-center gap-2 text-xs">
-                          <Checkbox
-                            checked={promptLocked || Boolean(policy.required)}
-                            disabled={promptLocked}
-                            onCheckedChange={(checked) =>
-                              onConfigPolicyChange({ key: item.ref, strategy: "prompt", required: checked === true })
-                            }
-                          />
-                          {promptLocked ? "必填（自动化依赖）" : "必填"}
-                        </label>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <Button
-                  aria-label={`移除 ${item.label}`}
-				  disabled={item.kind === "config" && lockedConfigKeys.has(item.ref)}
-                  onClick={() => onRemove(item.kind, item.ref)}
-                  size="icon-sm"
-                  variant="ghost"
+                <li
+                  className="flex items-start gap-2 p-3"
+                  key={`${item.kind}:${item.ref}`}
                 >
-                  <X />
-                </Button>
-              </li>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">
+                      {item.label}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Badge variant="outline">{kindLabel[item.kind]}</Badge>
+                      <span className="truncate font-mono text-[10px] text-muted-foreground">
+                        {item.ref}
+                      </span>
+                    </div>
+                    {item.kind === "config" &&
+                    lockedConfigKeys.has(item.ref) ? (
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        由已选自动化依赖，取消自动化后才可移除
+                      </div>
+                    ) : null}
+                    {item.kind === "config" && policy ? (
+                      <div className="mt-3 space-y-2">
+                        <label
+                          className="block text-xs font-medium"
+                          htmlFor={`config-policy-${item.ref}`}
+                        >
+                          创建策略
+                        </label>
+                        <select
+                          className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          id={`config-policy-${item.ref}`}
+                          onChange={(event) => {
+                            const strategy = event.target
+                              .value as CaptureConfigPolicy["strategy"]
+                            onConfigPolicyChange({
+                              key: item.ref,
+                              strategy,
+                              required:
+                                strategy === "prompt"
+                                  ? promptLocked || policy.required
+                                  : undefined,
+                            })
+                          }}
+                          value={policy.strategy}
+                        >
+                          {item.configCanFixed ? (
+                            <option value="fixed">
+                              {item.secret
+                                ? "创建时无需填写（加密复制当前值）"
+                                : "创建时无需填写（使用当前项目值）"}
+                            </option>
+                          ) : (
+                            <option value="inherit">
+                              创建时无需填写（沿用 workspace/default）
+                            </option>
+                          )}
+                          <option value="prompt">创建项目时填写</option>
+                        </select>
+                        {policy.strategy === "prompt" ? (
+                          <label className="flex items-center gap-2 text-xs">
+                            <Checkbox
+                              checked={promptLocked || Boolean(policy.required)}
+                              disabled={promptLocked}
+                              onCheckedChange={(checked) =>
+                                onConfigPolicyChange({
+                                  key: item.ref,
+                                  strategy: "prompt",
+                                  required: checked === true,
+                                })
+                              }
+                            />
+                            {promptLocked ? "必填（自动化依赖）" : "必填"}
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  <Button
+                    aria-label={`移除 ${item.label}`}
+                    disabled={
+                      item.kind === "config" && lockedConfigKeys.has(item.ref)
+                    }
+                    onClick={() => onRemove(item.kind, item.ref)}
+                    size="icon-sm"
+                    variant="ghost"
+                  >
+                    <X />
+                  </Button>
+                </li>
               )
             })}
           </ul>

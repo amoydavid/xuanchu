@@ -61,6 +61,74 @@ func TestProjectTemplateWorkspaceIsExplicit(t *testing.T) {
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "workspace_required")
 }
 
+func TestProjectTemplateSaveDefaultsKeyAndVersionsExistingTemplate(t *testing.T) {
+	fixture := newHTTPProjectTemplateFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local", TokenSecretKey: fixture.server.secretKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddProject(app.AddProjectInput{Slug: "ops", Name: "运维"}); err != nil {
+		t.Fatal(err)
+	}
+	previewBody := `{"source_project":"ops","anchor_date":"2026-07-20","selection":{"config_keys":[],"task_refs":[],"series_refs":[],"automation_rule_ids":[]}}`
+	previewRequest := func() string {
+		rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/project-templates/capture-preview?workspace=local", previewBody, authHeader(fixture.token))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("preview status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var envelope struct {
+			Data struct {
+				SourceHash string `json:"source_hash"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		return envelope.Data.SourceHash
+	}
+	save := func(name, description, hash string, includeKey bool) projectTemplateDetailResponse {
+		body := map[string]any{
+			"name": name, "description": description,
+			"capture": map[string]any{
+				"source_project": "ops", "anchor_date": "2026-07-20", "expected_source_hash": hash,
+				"selection": map[string]any{"config_keys": []string{}, "task_refs": []string{}, "series_refs": []string{}, "automation_rule_ids": []string{}},
+			},
+		}
+		if includeKey {
+			body["key"] = "ops"
+		}
+		raw, _ := json.Marshal(body)
+		rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/project-templates?workspace=local", string(raw), authHeader(fixture.token))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("save status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var envelope struct {
+			Data projectTemplateDetailResponse `json:"data"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		return envelope.Data
+	}
+
+	first := save("运维模板", "第一版", previewRequest(), false)
+	if first.Template.Key != "ops" || first.Template.CurrentSnapshot == nil || first.Template.CurrentSnapshot.Version != 1 {
+		t.Fatalf("first = %#v", first.Template)
+	}
+	description := "来源项目第二版"
+	if err := svc.ModifyProject("ops", app.ModifyProjectInput{Description: &description}); err != nil {
+		t.Fatal(err)
+	}
+	second := save("最新运维模板", "第二版", previewRequest(), true)
+	if second.Template.ID != first.Template.ID || second.Template.Name != "最新运维模板" || second.Template.CurrentSnapshot == nil || second.Template.CurrentSnapshot.Version != 2 {
+		t.Fatalf("second = %#v", second.Template)
+	}
+	list := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/project-templates?workspace=local&status=all", authHeader(fixture.token))
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"total":1`) {
+		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
+	}
+}
+
 func TestProjectTemplateResponsesNeverExposeRawSnapshotOrSecrets(t *testing.T) {
 	fixture := newHTTPProjectTemplateFixture(t)
 	created := seedHTTPProjectTemplate(t, fixture)

@@ -61,7 +61,7 @@
 | v0.6.0 | 已完成 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
 | v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
-| v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed、创建时必填与创建时选填，统一 typed `config_inputs` |
+| v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed/inherit/prompt；模板标识默认来源 slug，同标识保存追加版本 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -718,11 +718,12 @@ docs/superpowers/plans/2026-07-23-workspace-custom-fields-implementation.md
 
 **状态：已完成。**
 
-在 `xuanchu.project-template-snapshot/v2` 中为每个已选 project config 固化取值策略：`fixed`、创建时必填 prompt 或创建时选填 prompt。规则属于不可变 Snapshot 并进入 canonical hash，不新增模板子表或数据库列；v1 Snapshot 的 literal、secret_copy、secret_input 语义继续兼容。
+在 `xuanchu.project-template-snapshot/v2` 中为每个已选 project config 固化取值策略：`fixed`、`inherit`、创建时必填 prompt 或创建时选填 prompt。Web 对所有 config 都提供“创建时无需填写”：来源项目有显式 row 时映射为 fixed，没有显式 row 时映射为 inherit；inherit 不冻结 workspace/default，也不在新项目写 config row。规则属于不可变 Snapshot 并进入 canonical hash，不新增模板子表或数据库列；v1 Snapshot 的 literal、secret_copy、secret_input 语义继续兼容。
 
-- Capture 候选从 project-scoped ConfigDefinition 出发：有源项目显式 row 的字段可 fixed 或 prompt，无显式 row 的字段只能 prompt；automation 依赖的 prompt 强制必填。
+- Capture 候选从 project-scoped ConfigDefinition 出发：所有字段都可选择“创建时无需填写”或 prompt；有源项目显式 row 时前者映射为 fixed，无显式 row 时映射为 inherit；automation 依赖的 prompt 强制必填。
 - list/Preview 根据当前 ConfigDefinition 返回 label、description、type、enum、required、secret 和 status descriptor，不返回来源值、default 或 secret。
 - Web Console 在创建流程中复用 typed config 控件；HTTP、CLI、Remote、MCP 统一通过 `config_inputs` 提交普通与 secret prompt，`secret_inputs` 只保留给 v1 legacy Snapshot。
+- 模板标识允许留空并由 App 层默认使用来源 Project slug；同 workspace 再次保存相同标识时复用既有 active Template、更新元数据并追加 current Snapshot，历史版本不物理覆盖，列表始终只有一个同标识入口。
 - required prompt 必须由本次请求显式填写，不能被 workspace 继承值或 default 满足；optional 留空不创建 project config row，但 Snapshot 只要包含 config 就继续要求 config 写权限。
 - 项目、config、Task、Series 和 automation 继续在同一事务中创建；任何 schema 漂移、hash 漂移或后续写入失败都不留下半成品。secret 不进入 Snapshot 明文、Preview、响应、审计、日志或错误。
 - 新 binary 默认写 v2；旧 binary 遇到 v2 current Snapshot 必须明确拒绝实例化，回滚需要恢复支持 v2 的 binary。

@@ -179,57 +179,140 @@ func (s *Service) PreviewProjectTemplateCapture(input CaptureInput) (CapturePrev
 }
 
 func (s *Service) CreateProjectTemplate(input CreateTemplateInput) (ProjectTemplateView, error) {
-	key := strings.TrimSpace(input.Key)
-	if !projectTemplateKeyPattern.MatchString(key) {
-		return ProjectTemplateView{}, captureError("project_template_key_invalid", "template key must match ^[a-z][a-z0-9-]{2,31}$")
+	if err := s.rejectProjectTemplateProjectScope(); err != nil {
+		return ProjectTemplateView{}, err
 	}
+	if err := s.Require(PermissionProjectManage); err != nil {
+		return ProjectTemplateView{}, err
+	}
+	key := strings.TrimSpace(input.Key)
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return ProjectTemplateView{}, captureError("project_template_invalid_name", "template name is required")
 	}
 	description := strings.TrimSpace(input.Description)
-	now := s.clock.Unix()
-	templateID, snapshotID := uuid.NewString(), uuid.NewString()
-	err := s.withProjectTemplateCaptureAudit(func(tx *Service) ([]AuditEntry, error) {
-		if err := tx.beginProjectTemplateCaptureWrite(); err != nil {
-			return nil, err
-		}
-		if _, err := tx.lockProjectTemplateCaptureSource(input.Capture.SourceProjectRef); err != nil {
-			return nil, err
-		}
-		plan, err := tx.capturePlanForWrite(input.Capture)
+	if key == "" {
+		sourceProject, err := s.ResolveProject(input.Capture.SourceProjectRef)
 		if err != nil {
-			return nil, err
+			return ProjectTemplateView{}, err
 		}
-		if err := tx.lockProjectTemplateCaptureRows(plan.Source); err != nil {
-			return nil, err
-		}
-		actor := tx.runtime.actorColumns()
-		template := storage.ProjectTemplate{
-			ID: templateID, WorkspaceID: tx.workspaceID, Key: key, Name: name, Description: description, Status: "active",
-			CreatedByActorType: actor.Type, CreatedByUserID: actor.UserID, CreatedByTokenID: actor.TokenID,
-			CreatedByTokenName: actor.TokenName, CreatedByTokenPrefix: actor.TokenPrefix, CreatedAt: now, ModifiedAt: now,
-		}
-		if err := tx.projectTemplateRepo.Create(template); err != nil {
-			if errors.Is(err, storage.ErrProjectTemplateKeyConflict) {
-				return nil, captureError("project_template_key_conflict", fmt.Sprintf("template key %q already exists", key))
-			}
-			return nil, err
-		}
-		snapshot, err := tx.projectTemplateRepo.AppendSnapshotLocked(tx.workspaceID, templateID, captureSnapshotRow(snapshotID, templateID, plan, actor, now))
-		if err != nil {
-			return nil, err
-		}
-		payload := captureAuditPayload(templateID, snapshot, plan)
-		return []AuditEntry{
-			{Action: "project_template.create", WorkspaceID: &tx.workspaceID, TargetType: "project_template", TargetID: templateID, Payload: payload},
-			{Action: "project_template.snapshot.create", WorkspaceID: &tx.workspaceID, TargetType: "project_template_snapshot", TargetID: snapshot.ID, Payload: payload},
-		}, nil
-	})
-	if err != nil {
-		return ProjectTemplateView{}, err
+		key = sourceProject.Slug
 	}
-	return s.ProjectTemplateInfo(templateID, nil)
+	if !projectTemplateKeyPattern.MatchString(key) {
+		return ProjectTemplateView{}, captureError("project_template_key_invalid", "template key must match ^[a-z][a-z0-9-]{2,31}$")
+	}
+	now := s.clock.Unix()
+	var templateID string
+	for attempt := 0; attempt < 2; attempt++ {
+		templateID = ""
+		err := s.withProjectTemplateCaptureAudit(func(tx *Service) ([]AuditEntry, error) {
+			if err := tx.beginProjectTemplateCaptureWrite(); err != nil {
+				return nil, err
+			}
+			sourceLocked := false
+			if tx.store.Dialect() == "sqlite" {
+				if _, err := tx.lockProjectTemplateCaptureSource(input.Capture.SourceProjectRef); err != nil {
+					return nil, err
+				}
+				sourceLocked = true
+			}
+			existing, getErr := tx.projectTemplateRepo.GetByRef(tx.workspaceID, key)
+			if getErr != nil && !errors.Is(getErr, storage.ErrNotFound) {
+				return nil, getErr
+			}
+			var locked *storage.ProjectTemplate
+			if getErr == nil {
+				row, err := tx.projectTemplateRepo.LockByRef(tx.workspaceID, existing.ID)
+				if err != nil {
+					return nil, err
+				}
+				if row.Status == "archived" {
+					return nil, captureError("project_template_archived", "archived template cannot accept snapshots")
+				}
+				locked = &row
+			}
+			if !sourceLocked {
+				if _, err := tx.lockProjectTemplateCaptureSource(input.Capture.SourceProjectRef); err != nil {
+					return nil, err
+				}
+			}
+			plan, err := tx.capturePlanForWrite(input.Capture)
+			if err != nil {
+				return nil, err
+			}
+			if err := tx.lockProjectTemplateCaptureRows(plan.Source); err != nil {
+				return nil, err
+			}
+			actor := tx.runtime.actorColumns()
+			if locked == nil {
+				templateID = uuid.NewString()
+				template := storage.ProjectTemplate{
+					ID: templateID, WorkspaceID: tx.workspaceID, Key: key, Name: name, Description: description, Status: "active",
+					CreatedByActorType: actor.Type, CreatedByUserID: actor.UserID, CreatedByTokenID: actor.TokenID,
+					CreatedByTokenName: actor.TokenName, CreatedByTokenPrefix: actor.TokenPrefix, CreatedAt: now, ModifiedAt: now,
+				}
+				if err := tx.projectTemplateRepo.Create(template); err != nil {
+					return nil, err
+				}
+				snapshotID := uuid.NewString()
+				snapshot, err := tx.projectTemplateRepo.AppendSnapshotLocked(tx.workspaceID, templateID, captureSnapshotRow(snapshotID, templateID, plan, actor, now))
+				if err != nil {
+					return nil, err
+				}
+				payload := captureAuditPayload(templateID, snapshot, plan)
+				return []AuditEntry{
+					{Action: "project_template.create", WorkspaceID: &tx.workspaceID, TargetType: "project_template", TargetID: templateID, Payload: payload},
+					{Action: "project_template.snapshot.create", WorkspaceID: &tx.workspaceID, TargetType: "project_template_snapshot", TargetID: snapshot.ID, Payload: payload},
+				}, nil
+			}
+
+			templateID = locked.ID
+			metadataChanged := locked.Name != name || locked.Description != description
+			if metadataChanged {
+				if err := tx.projectTemplateRepo.UpdateMetadata(tx.workspaceID, locked.ID, name, description, now); err != nil {
+					return nil, err
+				}
+			}
+			entries := []AuditEntry{}
+			if metadataChanged {
+				entries = append(entries, AuditEntry{
+					Action: "project_template.modify", WorkspaceID: &tx.workspaceID, TargetType: "project_template", TargetID: locked.ID,
+					Payload: map[string]any{"name_before": locked.Name, "name_after": name, "description_before": locked.Description, "description_after": description},
+				})
+			}
+			versions, err := tx.projectTemplateRepo.ListSnapshots(tx.workspaceID, locked.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, version := range versions {
+				if version.SnapshotHash != plan.SnapshotHash {
+					continue
+				}
+				if locked.CurrentSnapshotID != nil && version.ID == *locked.CurrentSnapshotID {
+					return entries, nil
+				}
+				return nil, captureError("project_template_snapshot_invalid", "snapshot duplicates a historical non-current version")
+			}
+			snapshotID := uuid.NewString()
+			snapshot, err := tx.projectTemplateRepo.AppendSnapshotLocked(tx.workspaceID, locked.ID, captureSnapshotRow(snapshotID, locked.ID, plan, actor, now))
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, AuditEntry{
+				Action: "project_template.snapshot.create", WorkspaceID: &tx.workspaceID,
+				TargetType: "project_template_snapshot", TargetID: snapshot.ID, Payload: captureAuditPayload(locked.ID, snapshot, plan),
+			})
+			return entries, nil
+		})
+		if errors.Is(err, storage.ErrProjectTemplateKeyConflict) && attempt == 0 {
+			continue
+		}
+		if err != nil {
+			return ProjectTemplateView{}, err
+		}
+		return s.ProjectTemplateInfo(templateID, nil)
+	}
+	return ProjectTemplateView{}, captureError("project_template_concurrency_conflict", "template was saved concurrently; retry the request")
 }
 
 func (s *Service) CreateProjectTemplateSnapshot(templateRef string, input CaptureInput) (ProjectTemplateView, error) {
@@ -771,11 +854,11 @@ func normalizeCaptureConfigPolicies(inputs []CaptureConfigPolicyInput, configs [
 		if _, duplicate := policies[input.Key]; duplicate {
 			return nil, captureError("project_template_config_policy_invalid", "config policy key is duplicated")
 		}
-		if input.Strategy != "fixed" && input.Strategy != "prompt" {
-			return nil, captureError("project_template_config_policy_invalid", "config policy strategy must be fixed or prompt")
+		if input.Strategy != "fixed" && input.Strategy != "inherit" && input.Strategy != "prompt" {
+			return nil, captureError("project_template_config_policy_invalid", "config policy strategy must be fixed, inherit, or prompt")
 		}
-		if input.Strategy == "fixed" && input.Required {
-			return nil, captureError("project_template_config_policy_invalid", "fixed config cannot be marked required")
+		if input.Strategy != "prompt" && input.Required {
+			return nil, captureError("project_template_config_policy_invalid", "only prompt config can be marked required")
 		}
 		if input.Strategy == "prompt" && required[input.Key] && !input.Required {
 			return nil, captureError("project_template_config_policy_invalid", "automation dependency prompt must be required")
@@ -785,11 +868,18 @@ func normalizeCaptureConfigPolicies(inputs []CaptureConfigPolicyInput, configs [
 	for key, config := range selected {
 		policy, ok := policies[key]
 		if !ok {
-			policy = CaptureConfigPolicyInput{Key: key, Strategy: "fixed"}
+			strategy := "inherit"
+			if config.HasProjectValue {
+				strategy = "fixed"
+			}
+			policy = CaptureConfigPolicyInput{Key: key, Strategy: strategy}
 			policies[key] = policy
 		}
 		if policy.Strategy == "fixed" && !config.HasProjectValue {
 			return nil, captureError("project_template_config_policy_invalid", "fixed config requires an explicit source project value")
+		}
+		if policy.Strategy == "inherit" && config.HasProjectValue {
+			return nil, captureError("project_template_config_policy_invalid", "inherit config requires the source project value to be unset")
 		}
 	}
 	return policies, nil
@@ -1154,6 +1244,10 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprint{
 				Key: item.Definition.Key, Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: policy.Required},
 			})
+			continue
+		}
+		if policy.Strategy == "inherit" {
+			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprint{Key: item.Definition.Key, Mode: "inherit"})
 			continue
 		}
 		if item.Definition.Secret {
