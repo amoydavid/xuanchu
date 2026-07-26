@@ -13,6 +13,13 @@
         "description": "source user ID to target user ID; null removes the assignee",
         "type": "object"
       },
+      "config_inputs": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "values for prompt config fields declared by the current snapshot; values are never returned",
+        "type": "object"
+      },
       "description": {
         "description": "optional description override for the new project",
         "type": [

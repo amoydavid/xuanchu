@@ -108,6 +108,36 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 	}
 }
 
+func TestProjectTemplateConfigCandidatesExposePromptAvailabilityWithoutValues(t *testing.T) {
+	svc, source, _ := projectTemplateCandidateFixture(t)
+	defs := storage.NewConfigDefinitionRepository(svc.store.DB())
+	for _, definition := range []storage.ConfigDefinition{
+		{WorkspaceID: source.WorkspaceID, Key: "launch.fixed", ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "固定配置", CreatedAt: 1, ModifiedAt: 1},
+		{WorkspaceID: source.WorkspaceID, Key: "launch.prompt", ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "创建时填写", Secret: true, CreatedAt: 1, ModifiedAt: 1},
+	} {
+		if err := defs.Set(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := storage.NewConfigRepository(svc.store.DB()).Set(storage.ConfigKey{WorkspaceID: source.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: source.ID, Key: "launch.fixed"}, "must-not-leak"); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := svc.ListProjectTemplateConfigCandidates(ConfigCandidateListInput{SourceProjectRef: source.Slug, Q: "launch", Mode: "prompt_available"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 2 || len(page.Items) != 2 {
+		t.Fatalf("page = %#v", page)
+	}
+	if !page.Items[0].HasProjectValue || !page.Items[0].CanFixed || page.Items[0].EffectiveSource != "project" {
+		t.Fatalf("fixed candidate = %#v", page.Items[0])
+	}
+	if page.Items[1].HasProjectValue || page.Items[1].CanFixed || page.Items[1].EffectiveSource != "missing" || !page.Items[1].Secret {
+		t.Fatalf("prompt candidate = %#v", page.Items[1])
+	}
+}
+
 func TestProjectTemplateCandidateAllStatusIncludesEverySelectableState(t *testing.T) {
 	svc, source, _ := projectTemplateCandidateFixture(t)
 	projectSlug, projectID := source.Slug, source.ID
@@ -308,7 +338,7 @@ func TestCandidateSelectionReturnsCanonicalExplicitRefsHashAndRejectsLimit(t *te
 			t.Fatal(err)
 		}
 	}
-	query := CandidateSelectionQuery{SourceProjectRef: source.Slug, Kind: "config", Config: &ConfigCandidateListInput{Mode: "all"}}
+	query := CandidateSelectionQuery{SourceProjectRef: source.Slug, Kind: "config", Config: &ConfigCandidateListInput{Mode: "fixed_available"}}
 	first, err := svc.ResolveProjectTemplateCandidateSelection(query)
 	if err != nil {
 		t.Fatal(err)

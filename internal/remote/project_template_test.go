@@ -22,7 +22,7 @@ func TestRemoteListProjectTemplatesForInstantiationUsesActiveCurrentSurface(t *t
 		}
 		query = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"data":{"items":[{"id":"template-1","key":"launch","name":"启动模板","description":"发布流程","status":"active","current_snapshot":{"id":"snapshot-1","version":3,"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_project_id":"source-1","counts":{"configs":1,"tasks":2,"series":3,"automations":4},"required_secret_keys":["agent.api_key"],"created_by":{"type":"user","user":{"id":"user-1","name":"alice"}},"created_at":100},"created_by":{"type":"user","user":{"id":"user-1","name":"alice"}},"created_at":90,"modified_at":100}],"total":1,"limit":20,"offset":2}}`)
+		_, _ = io.WriteString(w, `{"data":{"items":[{"id":"template-1","key":"launch","name":"启动模板","description":"发布流程","status":"active","current_snapshot":{"id":"snapshot-1","version":3,"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_project_id":"source-1","counts":{"configs":1,"tasks":2,"series":3,"automations":4},"required_secret_keys":["agent.api_key"],"config_inputs":[{"key":"launch.region","label":"发布区域","description":"选择区域","value_type":"string","enum_values":["cn"],"required":true,"secret":false,"status":"ready"}],"created_by":{"type":"user","user":{"id":"user-1","name":"alice"}},"created_at":100},"created_by":{"type":"user","user":{"id":"user-1","name":"alice"}},"created_at":90,"modified_at":100}],"total":1,"limit":20,"offset":2}}`)
 	}))
 	defer srv.Close()
 	client, err := NewClient(Options{BaseURL: srv.URL, Token: "token"})
@@ -45,6 +45,9 @@ func TestRemoteListProjectTemplatesForInstantiationUsesActiveCurrentSurface(t *t
 	got := page.Items[0]
 	if got.Key != "launch" || got.CreatedBy.User == nil || got.CreatedBy.User.Name != "alice" || got.CurrentSnapshot.Counts.Automations != 4 {
 		t.Fatalf("item = %#v", got)
+	}
+	if len(got.CurrentSnapshot.ConfigInputs) != 1 || got.CurrentSnapshot.ConfigInputs[0].Key != "launch.region" {
+		t.Fatalf("config inputs = %#v", got.CurrentSnapshot.ConfigInputs)
 	}
 }
 
@@ -69,13 +72,16 @@ func TestRemoteInstantiateCurrentProjectTemplateSendsAtomicCurrentOnlyBody(t *te
 	description := "说明"
 	result, err := client.InstantiateCurrentProjectTemplate(context.Background(), "local", "launch", app.CurrentSnapshotInstantiateInput{
 		SnapshotID: "snapshot-1", ExpectedHash: strings.Repeat("a", 64), ProjectSlug: "newproj", ProjectName: "新项目",
-		Description: &description, StartDate: "2026-08-01", SecretInputs: map[string]string{"agent.api_key": "sk-test"},
+		Description: &description, StartDate: "2026-08-01", ConfigInputs: map[string]string{"launch.region": "cn"}, SecretInputs: map[string]string{"agent.api_key": "sk-test"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if body["current_only"] != true || body["snapshot_id"] != "snapshot-1" || body["expected_snapshot_hash"] != strings.Repeat("a", 64) {
 		t.Fatalf("body = %#v", body)
+	}
+	if body["config_inputs"].(map[string]any)["launch.region"] != "cn" {
+		t.Fatalf("config_inputs = %#v", body["config_inputs"])
 	}
 	if result.Project.Slug != "newproj" || result.Counts.Tasks != 2 {
 		t.Fatalf("result = %#v", result)

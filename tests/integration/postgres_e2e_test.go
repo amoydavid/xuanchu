@@ -629,6 +629,10 @@ func runPostgresE2EProjectTemplateCurrentWorkflow(
 	}
 	capture := map[string]any{
 		"source_project": "pge2e", "anchor_date": "2026-07-21", "selection": selection,
+		"config_policies": []map[string]any{
+			{"key": "agent.provider.api_key", "strategy": "prompt", "required": true},
+			{"key": "agent.provider.model", "strategy": "prompt", "required": true},
+		},
 	}
 	preview := nestedMap(t, httpJSON(t, http.MethodPost,
 		baseURL+"/api/v1/project-templates/capture-preview?workspace=local",
@@ -653,13 +657,33 @@ func runPostgresE2EProjectTemplateCurrentWorkflow(
 	if listedCurrent["id"] != oldSnapshotID || listedCurrent["hash"] != oldSnapshotHash {
 		t.Fatalf("PostgreSQL current snapshot = %#v, want id=%s hash=%s", listedCurrent, oldSnapshotID, oldSnapshotHash)
 	}
+	configInputs, _ := listedCurrent["config_inputs"].([]any)
+	if len(configInputs) != 2 {
+		t.Fatalf("PostgreSQL current snapshot config_inputs = %#v, want two prompt descriptors", listedCurrent["config_inputs"])
+	}
+	descriptors := map[string]map[string]any{}
+	for _, raw := range configInputs {
+		descriptor, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("PostgreSQL config input descriptor = %#v", raw)
+		}
+		key, _ := descriptor["key"].(string)
+		descriptors[key] = descriptor
+	}
+	if descriptors["agent.provider.api_key"]["required"] != true || descriptors["agent.provider.api_key"]["secret"] != true ||
+		descriptors["agent.provider.model"]["required"] != true || descriptors["agent.provider.model"]["secret"] != false {
+		t.Fatalf("PostgreSQL config input descriptors = %#v", descriptors)
+	}
 
 	instantiated := callMCPProjectTemplateE2E(t, session, "project_template_instantiate", map[string]any{
 		"workspace": "local", "template": "postgres-workflow",
 		"snapshot_id": oldSnapshotID, "expected_snapshot_hash": oldSnapshotHash,
 		"project_slug": "pgtpl", "project_name": "PostgreSQL template project",
-		"start_date":    "2026-08-01",
-		"secret_inputs": map[string]any{"agent.provider.api_key": "postgres-new-project-secret"},
+		"start_date": "2026-08-01",
+		"config_inputs": map[string]any{
+			"agent.provider.api_key": "postgres-new-project-secret",
+			"agent.provider.model":   "postgres-new-project-model",
+		},
 	})
 	instantiatedData := assertMCPProjectTemplateE2EEnvelopeEquivalent(t, instantiated)["data"].(map[string]any)
 	instantiatedProject := instantiatedData["project"].(map[string]any)
@@ -681,8 +705,10 @@ func runPostgresE2EProjectTemplateCurrentWorkflow(
 		t.Fatal(err)
 	}
 	oldSnapshotJSON := oldSnapshot.SnapshotJSON
-	if strings.Contains(oldSnapshotJSON, "postgres-source-secret-must-not-leak") {
-		t.Fatal("PostgreSQL snapshot_json leaked the source secret")
+	for _, sourceValue := range []string{"postgres-source-secret-must-not-leak", "postgres-smoke-model"} {
+		if strings.Contains(oldSnapshotJSON, sourceValue) {
+			t.Fatalf("PostgreSQL snapshot_json leaked prompt source value %q", sourceValue)
+		}
 	}
 	if got := psqlScalar(t, dbURL, `SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'project_template_snapshots' AND column_name = 'snapshot_json'`); got != "text" {
 		t.Fatalf("PostgreSQL workflow snapshot_json data type = %q, want text", got)
@@ -711,6 +737,15 @@ func runPostgresE2EProjectTemplateCurrentWorkflow(
 	}
 	if copiedDeliveries != 0 {
 		t.Fatalf("PostgreSQL copied automation delivery count = %d, want 0", copiedDeliveries)
+	}
+	for key, want := range map[string]string{
+		"agent.provider.api_key": "postgres-new-project-secret",
+		"agent.provider.model":   "postgres-new-project-model",
+	} {
+		var got string
+		if err := store.DB().Table("configs").Select("value").Where("workspace_id = ? AND scope = ? AND scope_id = ? AND key = ?", nestedMap(t, projectResponse, "data")["workspace_id"], "project", instantiatedProjectID, key).Scan(&got).Error; err != nil || got != want {
+			t.Fatalf("PostgreSQL instantiated config %s=%q err=%v, want %q", key, got, err, want)
+		}
 	}
 
 	newTask := nestedMap(t, httpJSON(t, http.MethodPost, baseURL+"/api/v1/tasks", map[string]any{
@@ -742,8 +777,11 @@ func runPostgresE2EProjectTemplateCurrentWorkflow(
 		"workspace": "local", "template": "postgres-workflow",
 		"snapshot_id": oldSnapshotID, "expected_snapshot_hash": oldSnapshotHash,
 		"project_slug": "pgstale", "project_name": "PostgreSQL stale project",
-		"start_date":    "2026-08-01",
-		"secret_inputs": map[string]any{"agent.provider.api_key": "postgres-stale-secret"},
+		"start_date": "2026-08-01",
+		"config_inputs": map[string]any{
+			"agent.provider.api_key": "postgres-stale-secret",
+			"agent.provider.model":   "postgres-stale-model",
+		},
 	})
 	if !stale.IsError || !strings.Contains(toJSONString(t, stale.StructuredContent), "project_template_snapshot_hash_mismatch") {
 		t.Fatalf("PostgreSQL stale current instantiate = %#v, want project_template_snapshot_hash_mismatch", stale.StructuredContent)

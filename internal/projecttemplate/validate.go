@@ -9,12 +9,20 @@ import (
 
 var localRefPattern = regexp.MustCompile(`^(task|series|automation)-[1-9][0-9]*$`)
 
-func ValidateSnapshot(snapshot Snapshot, limits Limits) error {
+func ValidateSnapshot(snapshot SnapshotV1, limits Limits) error {
+	return validateSnapshot(snapshotFromV1(snapshot), limits)
+}
+
+func ValidateSnapshotV2(snapshot SnapshotV2, limits Limits) error {
+	return validateSnapshot(snapshotFromV2(snapshot), limits)
+}
+
+func validateSnapshot(snapshot Snapshot, limits Limits) error {
 	if err := validatePersistedText(snapshot, limits); err != nil {
 		return err
 	}
-	if snapshot.Schema != SnapshotSchemaV1 {
-		return invalid("snapshot schema must be v1")
+	if snapshot.Schema != SnapshotSchemaV1 && snapshot.Schema != SnapshotSchemaV2 {
+		return invalid("snapshot schema is unsupported")
 	}
 	if _, err := time.Parse("2006-01-02", snapshot.AnchorDate); err != nil {
 		return invalid("anchor date must be YYYY-MM-DD")
@@ -25,11 +33,31 @@ func ValidateSnapshot(snapshot Snapshot, limits Limits) error {
 	if len(snapshot.Tasks) > limits.MaxTasks || len(snapshot.Series) > limits.MaxSeries || len(snapshot.Configs) > limits.MaxConfigs || len(snapshot.Automations) > limits.MaxAutomations {
 		return invalid("snapshot component count exceeds limit")
 	}
+	configKeys := make(map[string]struct{}, len(snapshot.Configs))
 	for _, config := range snapshot.Configs {
-		if config.Key == "" || (config.Mode != "literal" && config.Mode != "secret_input" && config.Mode != "secret_copy") {
+		if config.Key == "" {
 			return invalid("config key or mode is invalid")
 		}
-		if (config.Mode == "literal" && (config.Value == nil || config.SecretCiphertext != nil)) ||
+		if snapshot.Schema == SnapshotSchemaV2 {
+			if _, exists := configKeys[config.Key]; exists {
+				return invalid("config keys must be unique")
+			}
+			configKeys[config.Key] = struct{}{}
+			if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "prompt" {
+				return invalid("config key or mode is invalid")
+			}
+			if (config.Mode == "literal" && (config.Value == nil || config.SecretCiphertext != nil || config.Prompt != nil)) ||
+				(config.Mode == "secret_copy" && (config.Value != nil || config.SecretCiphertext == nil || strings.TrimSpace(*config.SecretCiphertext) == "" || config.Prompt != nil)) ||
+				(config.Mode == "prompt" && (config.Value != nil || config.SecretCiphertext != nil || config.Prompt == nil)) {
+				return invalid("config value does not match mode")
+			}
+			continue
+		}
+		if config.Mode != "literal" && config.Mode != "secret_input" && config.Mode != "secret_copy" {
+			return invalid("config key or mode is invalid")
+		}
+		if config.Prompt != nil ||
+			(config.Mode == "literal" && (config.Value == nil || config.SecretCiphertext != nil)) ||
 			(config.Mode == "secret_input" && (config.Value != nil || config.SecretCiphertext != nil)) ||
 			(config.Mode == "secret_copy" && (config.Value != nil || config.SecretCiphertext == nil || strings.TrimSpace(*config.SecretCiphertext) == "")) {
 			return invalid("config value does not match mode")

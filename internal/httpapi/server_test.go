@@ -191,6 +191,9 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	if !openAPISchemaRequired(createCapture, "expected_source_hash") {
 		t.Error("create capture must require expected_source_hash")
 	}
+	if _, ok := createCapture["properties"].(map[string]any)["config_policies"]; !ok {
+		t.Error("capture request schema missing config_policies")
+	}
 	snapshotCapture := openAPIRequestSchema(t, openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}/snapshots", "post"))
 	if !openAPISchemaRequired(snapshotCapture, "expected_source_hash") {
 		t.Error("snapshot capture must require expected_source_hash")
@@ -214,6 +217,9 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	if !ok || currentOnly["type"] != "boolean" {
 		t.Fatalf("instantiate current_only schema = %#v", currentOnly)
 	}
+	if _, ok := instantiateRequest["properties"].(map[string]any)["config_inputs"]; !ok {
+		t.Error("instantiate request schema missing config_inputs")
+	}
 	assertCandidateFields := func(path string, fields ...string) {
 		t.Helper()
 		op := openAPIOperation(t, paths, path, "get")
@@ -228,7 +234,7 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	}
 	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/tasks", "ref", "project_id", "project_seq", "series_id", "title", "status", "priority", "due", "assignees", "warning_count")
 	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/series", "ref", "project_id", "project_seq", "title", "status", "recurrence_rule", "first_due", "assignees", "created_by", "warning_count")
-	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/configs", "ref", "key", "label", "mode", "value_type", "warning_count")
+	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/configs", "ref", "key", "label", "mode", "value_type", "secret", "has_project_value", "effective_source", "can_fixed", "warning_count")
 	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/automations", "ref", "id", "project_id", "name", "description", "enabled", "trigger_type", "created_by", "created_at", "warning_count")
 	detail := openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}", "get")
 	if parameter := openAPIParameter(detail, "snapshot_id"); parameter == nil || parameter["schema"].(map[string]any)["format"] != "uuid" {

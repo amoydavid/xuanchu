@@ -224,7 +224,11 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
           "version": 3,
           "hash": "64-char-lowercase-sha256",
           "counts": {"configs":2,"tasks":8,"series":1,"automations":1},
-          "required_secret_keys": ["agent.api_key"]
+          "required_secret_keys": [],
+          "config_inputs": [
+            {"key":"launch.region","label":"发布区域","description":"目标区域","value_type":"string","enum_values":["cn-east-1","cn-north-1"],"required":true,"secret":false,"status":"ready"},
+            {"key":"agent.api_key","label":"模型密钥","description":"","value_type":"string","enum_values":[],"required":true,"secret":true,"status":"ready"}
+          ]
         }
       }
     ],
@@ -238,7 +242,7 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
 
 ### project_template_instantiate — 从 current Snapshot 创建项目
 
-先调用 `project_template_list`，再原样提交该次返回的 `current_snapshot.id` 和 `current_snapshot.hash`。新项目字段、required secret 和 assignee replacement 收集齐后一次提交；secret 值不会出现在响应或错误中。先用 `member_list` 查询 active workspace member 的 User ID：`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**（由 validation issue 的 `source_ref` 给出），非空 value 是 replacement 的 **target user ID**；两端都不能填 name、slug 或其它 ref。
+先调用 `project_template_list`，再原样提交该次返回的 `current_snapshot.id` 和 `current_snapshot.hash`。按 `current_snapshot.config_inputs` descriptor 收集字段：required 必须显式提交，optional 留空时省略；普通和 secret prompt 都放入 `config_inputs`。新项目字段、config 和 assignee replacement 收集齐后一次提交；secret 值不会出现在响应或错误中。先用 `member_list` 查询 active workspace member 的 User ID：`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**（由 validation issue 的 `source_ref` 给出），非空 value 是 replacement 的 **target user ID**；两端都不能填 name、slug 或其它 ref。
 
 ```json
 // 输入
@@ -251,7 +255,7 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
   "project_name": "2026 发布项目",
   "start_date": "2026-08-01",
   "description": "可选的新项目说明",
-  "secret_inputs": {"agent.api_key":"安全提供的值"},
+  "config_inputs": {"launch.region":"cn-east-1","agent.api_key":"安全提供的值"},
   "assignee_replacements": {"source-user-id":"target-user-id","removed-user-id":null}
 }
 
@@ -265,7 +269,7 @@ MCP 只开放下面两个消费侧工具。Capture、候选项筛选、Capture/I
 }
 ```
 
-如果 current Snapshot 已变化，工具返回 `project_template_snapshot_hash_mismatch`；重新调用 `project_template_list` 并重新确认输入。业务校验失败时，`structuredContent` 的错误包含稳定的 `code`、主 `message` 和完整 `issues`，按 issues 收集缺失输入后重试，不要把 secret 写进日志或普通消息。
+如果 current Snapshot 已变化，工具返回 `project_template_snapshot_hash_mismatch`；重新调用 `project_template_list` 并重新确认 descriptor 与输入。v2 prompt 不使用 `secret_inputs`；该字段只为 v1 历史 `secret_input` 保留。业务校验失败时，`structuredContent` 的错误包含稳定的 `code`、主 `message` 和完整 `issues`，按 issues 收集缺失输入后重试，不要把 secret 写进日志或普通消息。
 
 ## 项目注释
 

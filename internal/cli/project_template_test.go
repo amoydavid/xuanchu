@@ -40,14 +40,14 @@ func TestProjectTemplateCommandTreeIsNarrow(t *testing.T) {
 
 func TestReadProjectTemplateInstantiateInputAcceptsOnlySafeJSON(t *testing.T) {
 	secret := "sk-input-must-not-be-rendered"
-	raw := `{"description":"覆盖说明","secret_inputs":{"agent.api_key":"` + secret + `"},"assignee_replacements":{"old-user":"new-user","removed":null}}`
+	raw := `{"description":"覆盖说明","config_inputs":{"launch.region":"cn-north"},"secret_inputs":{"agent.api_key":"` + secret + `"},"assignee_replacements":{"old-user":"new-user","removed":null}}`
 	cmd := &cobra.Command{}
 	cmd.SetIn(strings.NewReader(raw))
 	input, err := readProjectTemplateInstantiateInput(cmd, "-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if input.Description == nil || *input.Description != "覆盖说明" || input.SecretInputs["agent.api_key"] != secret {
+	if input.Description == nil || *input.Description != "覆盖说明" || input.ConfigInputs["launch.region"] != "cn-north" || input.SecretInputs["agent.api_key"] != secret {
 		t.Fatalf("input = %#v", input)
 	}
 	if input.AssigneeReplacements["removed"] != nil || input.AssigneeReplacements["old-user"] == nil || *input.AssigneeReplacements["old-user"] != "new-user" {
@@ -70,7 +70,9 @@ func TestRenderProjectTemplateListIsStableAndSecretSafe(t *testing.T) {
 		CurrentSnapshot: &app.ProjectTemplateSnapshotSummaryView{
 			ID: "snapshot-1", Version: 3, Hash: strings.Repeat("a", 64),
 			Counts:             app.ComponentCounts{Configs: 1, Tasks: 2, Series: 3, Automations: 4},
-			RequiredSecretKeys: []string{"agent.api_key"}, CreatedBy: task.ActorInfo{Type: "user", User: &task.UserInfo{ID: "user-1", Name: "alice"}},
+			RequiredSecretKeys: []string{"agent.api_key"},
+			ConfigInputs:       []app.ProjectTemplateConfigInputView{{Key: "launch.region", Label: "发布区域", ValueType: "string", Required: true, Status: "ready"}, {Key: "launch.note", Label: "备注", ValueType: "string", Status: "ready"}},
+			CreatedBy:          task.ActorInfo{Type: "user", User: &task.UserInfo{ID: "user-1", Name: "alice"}},
 		},
 		CreatedBy: task.ActorInfo{Type: "user", User: &task.UserInfo{ID: "user-1", Name: "alice"}},
 	}}, Total: 1, Limit: 50, Offset: 0}
@@ -79,7 +81,7 @@ func TestRenderProjectTemplateListIsStableAndSecretSafe(t *testing.T) {
 	if err := renderProjectTemplatePage(&human, false, page); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"launch", "启动模板", "v3", "snapshot-1", strings.Repeat("a", 64), "configs=1", "tasks=2", "series=3", "automations=4", "agent.api_key"} {
+	for _, want := range []string{"launch", "启动模板", "v3", "snapshot-1", strings.Repeat("a", 64), "configs=1", "tasks=2", "series=3", "automations=4", "agent.api_key", "launch.region(required)", "launch.note(optional)"} {
 		if !strings.Contains(human.String(), want) {
 			t.Fatalf("human output missing %q: %s", want, human.String())
 		}
@@ -97,6 +99,10 @@ func TestRenderProjectTemplateListIsStableAndSecretSafe(t *testing.T) {
 	createdBy := items[0].(map[string]any)["created_by"].(map[string]any)
 	if createdBy["type"] != "user" || payload["total"] != float64(1) {
 		t.Fatalf("payload = %#v", payload)
+	}
+	current := items[0].(map[string]any)["current_snapshot"].(map[string]any)
+	if len(current["config_inputs"].([]any)) != 2 {
+		t.Fatalf("config inputs = %#v", current["config_inputs"])
 	}
 	for _, forbidden := range []string{"snapshot_json", "Versions", "Snapshot"} {
 		if strings.Contains(jsonOut.String(), forbidden) {

@@ -76,12 +76,19 @@ type CaptureResolution struct {
 }
 
 type CaptureInput struct {
-	SourceProjectRef   string            `json:"source_project_ref"`
-	AnchorDate         string            `json:"anchor_date"`
-	Selection          CaptureSelection  `json:"selection"`
-	SelectionPresence  SelectionPresence `json:"selection_presence"`
-	Resolution         CaptureResolution `json:"resolution"`
-	ExpectedSourceHash string            `json:"expected_source_hash"`
+	SourceProjectRef   string                     `json:"source_project_ref"`
+	AnchorDate         string                     `json:"anchor_date"`
+	Selection          CaptureSelection           `json:"selection"`
+	SelectionPresence  SelectionPresence          `json:"selection_presence"`
+	ConfigPolicies     []CaptureConfigPolicyInput `json:"config_policies,omitempty"`
+	Resolution         CaptureResolution          `json:"resolution"`
+	ExpectedSourceHash string                     `json:"expected_source_hash"`
+}
+
+type CaptureConfigPolicyInput struct {
+	Key      string `json:"key"`
+	Strategy string `json:"strategy"`
+	Required bool   `json:"required,omitempty"`
 }
 
 type CreateTemplateInput struct {
@@ -139,6 +146,7 @@ type captureSource struct {
 	Tasks              []task.Task
 	Series             []taskseries.Series
 	Configs            []storage.ConfigCandidate
+	ConfigPolicies     map[string]CaptureConfigPolicyInput
 	Automations        []storage.ProjectAutomationRule
 	UDADefs            map[string]uda.Definition
 	Members            []storage.MemberWithUser
@@ -150,7 +158,7 @@ type capturePlan struct {
 	SourceProject storage.Project
 	Selection     CaptureSelection
 	SourceHash    string
-	Snapshot      projecttemplate.SnapshotV1
+	Snapshot      projecttemplate.Snapshot
 	SnapshotJSON  []byte
 	SnapshotHash  string
 	Issues        []CaptureIssue
@@ -526,7 +534,7 @@ func (s *Service) buildProjectTemplateCapture(input CaptureInput, enforceSourceH
 	if err := s.requireCaptureReadPermissions(selection); err != nil {
 		return capturePlan{}, err
 	}
-	source, err := s.loadCaptureSource(project, selection)
+	source, err := s.loadCaptureSource(project, selection, input.ConfigPolicies)
 	if err != nil {
 		return capturePlan{}, err
 	}
@@ -541,14 +549,18 @@ func (s *Service) buildProjectTemplateCapture(input CaptureInput, enforceSourceH
 	if err != nil {
 		return capturePlan{}, err
 	}
-	raw, snapshotHash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
+	persisted, err := projecttemplate.ToV2(snapshot)
+	if err != nil {
+		return capturePlan{}, mapProjectTemplateDomainError(err)
+	}
+	raw, snapshotHash, err := projecttemplate.EncodeV2(persisted, projecttemplate.DefaultLimits)
 	if err == nil {
-		// EncodeV1 是 Snapshot canonicalization 的唯一权威边界。Preview 和最终
+		// EncodeV2 是 Snapshot canonicalization 的唯一权威边界。Preview 和最终
 		// detail 都从 canonical JSON 解码 typed view，避免预览 raw、落库 normalized。
 		snapshot, err = projecttemplate.Decode(raw, projecttemplate.DefaultLimits)
 	} else if len(issues) > 0 {
 		// attachment/未选正文引用会让候选 Snapshot 暂时不能通过完整校验；仍以
-		// EncodeV1 规范化其余字段，并只恢复 trim 后的待处理 description。
+		// EncodeV2 规范化其余字段，并只恢复 trim 后的待处理 description。
 		snapshot, err = canonicalizeBlockingCaptureSnapshot(snapshot)
 		raw, snapshotHash = nil, ""
 	}
@@ -593,7 +605,7 @@ func (s *Service) requireCaptureReadPermissions(selection CaptureSelection) erro
 	return nil
 }
 
-func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSelection) (captureSource, error) {
+func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSelection, policyInputs []CaptureConfigPolicyInput) (captureSource, error) {
 	tasks, err := s.repo.ListByUUIDs(s.workspaceID, selection.TaskRefs)
 	if err != nil {
 		return captureSource{}, err
@@ -632,12 +644,18 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 		return lessSourceSeq(series[i].ProjectSeq, series[i].ID, series[j].ProjectSeq, series[j].ID)
 	})
 
-	configs, err := s.configRepo.ListProjectExplicitByKeys(s.workspaceID, project.ID, selection.ConfigKeys)
-	if err != nil {
-		return captureSource{}, err
+	configs := []storage.ConfigCandidate{}
+	if len(selection.ConfigKeys) > 0 {
+		configPage, err := s.configRepo.ListCandidatePage(storage.ConfigCandidateListOptions{
+			WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: selection.ConfigKeys, Mode: "all",
+		}, len(selection.ConfigKeys), 0)
+		if err != nil {
+			return captureSource{}, err
+		}
+		configs = configPage.Items
 	}
 	if len(configs) != len(selection.ConfigKeys) {
-		return captureSource{}, captureError("project_template_config_invalid", "selected config must be an explicit source project row with a definition")
+		return captureSource{}, captureError("project_template_config_invalid", "selected config definition is unavailable or does not allow project scope")
 	}
 	for i := range configs {
 		item := &configs[i]
@@ -648,11 +666,13 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 		if err != nil {
 			return captureSource{}, invalidCaptureConfig()
 		}
-		normalized, err := s.validateScopedConfigValue(view, storage.ConfigScopeProject, item.Config.Value)
-		if err != nil {
-			return captureSource{}, invalidCaptureConfig()
+		if item.HasProjectValue {
+			normalized, err := s.validateScopedConfigValue(view, storage.ConfigScopeProject, item.Config.Value)
+			if err != nil {
+				return captureSource{}, invalidCaptureConfig()
+			}
+			item.Config.Value = normalized
 		}
-		item.Config.Value = normalized
 	}
 
 	automations, err := s.projectAutomationRuleRepo.ListByIDs(s.workspaceID, selection.AutomationRuleIDs)
@@ -678,6 +698,10 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 	requiredConfigKeys = captureRequiredExplicitConfigKeys(requiredConfigKeys, configs)
 	if len(configs) > projecttemplate.DefaultLimits.MaxConfigs {
 		return captureSource{}, captureError("project_template_selection_invalid", "automation dependencies exceed snapshot config limit")
+	}
+	configPolicies, err := normalizeCaptureConfigPolicies(policyInputs, configs, requiredConfigKeys)
+	if err != nil {
+		return captureSource{}, err
 	}
 
 	udaDefs, err := s.captureUDADefinitions(tasks, series)
@@ -715,7 +739,7 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 	sort.Slice(members, func(i, j int) bool { return members[i].Membership.UserID < members[j].Membership.UserID })
 	normalizedSelection := CaptureSelection{ConfigKeys: make([]string, 0, len(configs)), TaskRefs: make([]string, 0, len(tasks)), SeriesRefs: make([]string, 0, len(series)), AutomationRuleIDs: make([]string, 0, len(automations))}
 	for _, row := range configs {
-		normalizedSelection.ConfigKeys = append(normalizedSelection.ConfigKeys, row.Config.Key)
+		normalizedSelection.ConfigKeys = append(normalizedSelection.ConfigKeys, row.Definition.Key)
 	}
 	for _, row := range tasks {
 		normalizedSelection.TaskRefs = append(normalizedSelection.TaskRefs, row.UUID)
@@ -726,7 +750,49 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 	for _, row := range automations {
 		normalizedSelection.AutomationRuleIDs = append(normalizedSelection.AutomationRuleIDs, row.ID)
 	}
-	return captureSource{Project: project, Selection: normalizedSelection, RequiredConfigKeys: requiredConfigKeys, Tasks: tasks, Series: series, Configs: configs, Automations: automations, UDADefs: udaDefs, Members: members, UserRefs: userRefs}, nil
+	return captureSource{Project: project, Selection: normalizedSelection, RequiredConfigKeys: requiredConfigKeys, Tasks: tasks, Series: series, Configs: configs, ConfigPolicies: configPolicies, Automations: automations, UDADefs: udaDefs, Members: members, UserRefs: userRefs}, nil
+}
+
+func normalizeCaptureConfigPolicies(inputs []CaptureConfigPolicyInput, configs []storage.ConfigCandidate, requiredKeys []string) (map[string]CaptureConfigPolicyInput, error) {
+	selected := make(map[string]storage.ConfigCandidate, len(configs))
+	for _, config := range configs {
+		selected[config.Definition.Key] = config
+	}
+	required := make(map[string]bool, len(requiredKeys))
+	for _, key := range requiredKeys {
+		required[key] = true
+	}
+	policies := make(map[string]CaptureConfigPolicyInput, len(configs))
+	for _, input := range inputs {
+		input.Key, input.Strategy = strings.TrimSpace(input.Key), strings.TrimSpace(input.Strategy)
+		if _, ok := selected[input.Key]; !ok {
+			return nil, captureError("project_template_config_policy_invalid", "config policy key is not selected")
+		}
+		if _, duplicate := policies[input.Key]; duplicate {
+			return nil, captureError("project_template_config_policy_invalid", "config policy key is duplicated")
+		}
+		if input.Strategy != "fixed" && input.Strategy != "prompt" {
+			return nil, captureError("project_template_config_policy_invalid", "config policy strategy must be fixed or prompt")
+		}
+		if input.Strategy == "fixed" && input.Required {
+			return nil, captureError("project_template_config_policy_invalid", "fixed config cannot be marked required")
+		}
+		if input.Strategy == "prompt" && required[input.Key] && !input.Required {
+			return nil, captureError("project_template_config_policy_invalid", "automation dependency prompt must be required")
+		}
+		policies[input.Key] = input
+	}
+	for key, config := range selected {
+		policy, ok := policies[key]
+		if !ok {
+			policy = CaptureConfigPolicyInput{Key: key, Strategy: "fixed"}
+			policies[key] = policy
+		}
+		if policy.Strategy == "fixed" && !config.HasProjectValue {
+			return nil, captureError("project_template_config_policy_invalid", "fixed config requires an explicit source project value")
+		}
+	}
+	return policies, nil
 }
 
 // captureAutomationRequiredConfigKeys 必须与 provider 校验的读取路径一致。它只返回
@@ -755,7 +821,7 @@ func captureAutomationRequiredConfigKeys(rows []storage.ProjectAutomationRule) (
 func (s *Service) appendRequiredCaptureConfigs(project storage.Project, selected []storage.ConfigCandidate, requiredKeys []string) ([]storage.ConfigCandidate, error) {
 	selectedKeys := make(map[string]struct{}, len(selected))
 	for _, item := range selected {
-		selectedKeys[item.Config.Key] = struct{}{}
+		selectedKeys[item.Definition.Key] = struct{}{}
 	}
 	for _, key := range requiredKeys {
 		if _, exists := selectedKeys[key]; exists {
@@ -780,17 +846,20 @@ func (s *Service) appendRequiredCaptureConfigs(project storage.Project, selected
 		if err != nil {
 			return nil, invalidCaptureConfig()
 		}
-		selected = append(selected, storage.ConfigCandidate{Config: storage.Config{WorkspaceID: s.workspaceID, Scope: string(storage.ConfigScopeProject), ScopeID: project.ID, Key: key, Value: normalized}, Definition: definition})
+		selected = append(selected, storage.ConfigCandidate{
+			Config:     storage.Config{WorkspaceID: s.workspaceID, Scope: string(storage.ConfigScopeProject), ScopeID: project.ID, Key: key, Value: normalized},
+			Definition: definition, HasProjectValue: true, CanFixed: true, EffectiveSource: "project",
+		})
 		selectedKeys[key] = struct{}{}
 	}
-	sort.Slice(selected, func(i, j int) bool { return selected[i].Config.Key < selected[j].Config.Key })
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Definition.Key < selected[j].Definition.Key })
 	return selected, nil
 }
 
 func captureRequiredExplicitConfigKeys(required []string, configs []storage.ConfigCandidate) []string {
 	explicit := make(map[string]struct{}, len(configs))
 	for _, item := range configs {
-		explicit[item.Config.Key] = struct{}{}
+		explicit[item.Definition.Key] = struct{}{}
 	}
 	out := make([]string, 0, len(required))
 	for _, key := range required {
@@ -900,7 +969,7 @@ func invalidCaptureConfig() error {
 	return captureError("project_template_config_invalid", "selected project config is invalid")
 }
 
-func canonicalizeBlockingCaptureSnapshot(snapshot projecttemplate.SnapshotV1) (projecttemplate.SnapshotV1, error) {
+func canonicalizeBlockingCaptureSnapshot(snapshot projecttemplate.Snapshot) (projecttemplate.Snapshot, error) {
 	surrogate := snapshot
 	surrogate.Tasks = append([]projecttemplate.TaskBlueprintV1(nil), snapshot.Tasks...)
 	surrogate.Series = append([]projecttemplate.SeriesBlueprintV1(nil), snapshot.Series...)
@@ -910,13 +979,17 @@ func canonicalizeBlockingCaptureSnapshot(snapshot projecttemplate.SnapshotV1) (p
 	for i := range surrogate.Series {
 		surrogate.Series[i].Description = nil
 	}
-	raw, _, err := projecttemplate.EncodeV1(surrogate, projecttemplate.DefaultLimits)
+	persisted, err := projecttemplate.ToV2(surrogate)
 	if err != nil {
-		return projecttemplate.SnapshotV1{}, err
+		return projecttemplate.Snapshot{}, err
+	}
+	raw, _, err := projecttemplate.EncodeV2(persisted, projecttemplate.DefaultLimits)
+	if err != nil {
+		return projecttemplate.Snapshot{}, err
 	}
 	canonical, err := projecttemplate.Decode(raw, projecttemplate.DefaultLimits)
 	if err != nil {
-		return projecttemplate.SnapshotV1{}, err
+		return projecttemplate.Snapshot{}, err
 	}
 	for i := range canonical.Tasks {
 		canonical.Tasks[i].Description = trimStringPointer(snapshot.Tasks[i].Description)
@@ -1055,43 +1128,50 @@ func trimStringPointer(value *string) *string {
 	return &trimmed
 }
 
-func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, resolution CaptureResolution) (projecttemplate.SnapshotV1, []CaptureIssue, []CaptureIssue, error) {
+func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, resolution CaptureResolution) (projecttemplate.Snapshot, []CaptureIssue, []CaptureIssue, error) {
 	localTasks := make(map[string]string, len(source.Tasks))
 	for i, row := range source.Tasks {
 		localTasks[row.UUID] = fmt.Sprintf("task-%d", i+1)
 	}
 	baseIssues, baseWarnings, err := s.capturePreviewIssues(source, anchorDate, localTasks)
 	if err != nil {
-		return projecttemplate.SnapshotV1{}, nil, nil, err
+		return projecttemplate.Snapshot{}, nil, nil, err
 	}
 	resolved, err := validateCaptureResolution(resolution, baseIssues, baseWarnings)
 	if err != nil {
-		return projecttemplate.SnapshotV1{}, nil, nil, err
+		return projecttemplate.Snapshot{}, nil, nil, err
 	}
 
-	snapshot := projecttemplate.SnapshotV1{
-		Schema: projecttemplate.SnapshotSchemaV1, AnchorDate: anchorDate,
+	snapshot := projecttemplate.Snapshot{
+		Schema: projecttemplate.SnapshotSchemaV2, AnchorDate: anchorDate,
 		Project: projecttemplate.ProjectBlueprintV1{Description: source.Project.Description},
-		Configs: []projecttemplate.ConfigBlueprintV1{}, Tasks: []projecttemplate.TaskBlueprintV1{},
+		Configs: []projecttemplate.ConfigBlueprint{}, Tasks: []projecttemplate.TaskBlueprintV1{},
 		Series: []projecttemplate.SeriesBlueprintV1{}, Automations: []projecttemplate.AutomationBlueprintV1{},
 	}
 	for _, item := range source.Configs {
+		policy := source.ConfigPolicies[item.Definition.Key]
+		if policy.Strategy == "prompt" {
+			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprint{
+				Key: item.Definition.Key, Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: policy.Required},
+			})
+			continue
+		}
 		if item.Definition.Secret {
 			ciphertext, err := s.encryptProjectTemplateSecret(item.Config.Value)
 			if err != nil {
-				return projecttemplate.SnapshotV1{}, nil, nil, err
+				return projecttemplate.Snapshot{}, nil, nil, err
 			}
-			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV1{Key: item.Config.Key, Mode: "secret_copy", SecretCiphertext: &ciphertext})
+			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprint{Key: item.Definition.Key, Mode: "secret_copy", SecretCiphertext: &ciphertext})
 		} else {
 			value := item.Config.Value
-			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV1{Key: item.Config.Key, Mode: "literal", Value: &value})
+			snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprint{Key: item.Definition.Key, Mode: "literal", Value: &value})
 		}
 	}
 	for _, row := range source.Tasks {
 		droppedContent := resolved.contentDrops["task\x00"+row.UUID]
 		description, _, err := rewriteCaptureDescription(row.Description, localTasks, droppedContent)
 		if err != nil {
-			return projecttemplate.SnapshotV1{}, nil, nil, mapProjectTemplateDomainError(err)
+			return projecttemplate.Snapshot{}, nil, nil, mapProjectTemplateDomainError(err)
 		}
 		blueprint := projecttemplate.TaskBlueprintV1{
 			Ref: localTasks[row.UUID], Title: row.Title, Description: description, Priority: row.Priority,
@@ -1100,7 +1180,7 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 		}
 		blueprint.Dates, err = captureTaskDates(row, anchorDate, s.clock.Location(), resolved.taskDates[row.UUID])
 		if err != nil {
-			return projecttemplate.SnapshotV1{}, nil, nil, err
+			return projecttemplate.Snapshot{}, nil, nil, err
 		}
 		if row.Parent != nil && !resolved.parentDrops[row.UUID] {
 			if local, ok := localTasks[*row.Parent]; ok {
@@ -1121,11 +1201,11 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 		droppedContent := resolved.contentDrops["series\x00"+row.ID]
 		description, _, err := rewriteCaptureDescription(row.Description, localTasks, droppedContent)
 		if err != nil {
-			return projecttemplate.SnapshotV1{}, nil, nil, mapProjectTemplateDomainError(err)
+			return projecttemplate.Snapshot{}, nil, nil, mapProjectTemplateDomainError(err)
 		}
 		firstDue, until, err := captureSeriesSchedule(row, anchorDate, s.clock.Location(), resolved.seriesSchedules[row.ID])
 		if err != nil {
-			return projecttemplate.SnapshotV1{}, nil, nil, err
+			return projecttemplate.Snapshot{}, nil, nil, err
 		}
 		snapshot.Series = append(snapshot.Series, projecttemplate.SeriesBlueprintV1{
 			Ref: fmt.Sprintf("series-%d", i+1), Title: row.Title, Description: description, Priority: row.Priority,
@@ -1136,7 +1216,7 @@ func (s *Service) mapCaptureSnapshot(source captureSource, anchorDate string, re
 	for i, row := range source.Automations {
 		blueprint, err := captureAutomationBlueprint(row, i+1)
 		if err != nil {
-			return projecttemplate.SnapshotV1{}, nil, nil, err
+			return projecttemplate.Snapshot{}, nil, nil, err
 		}
 		snapshot.Automations = append(snapshot.Automations, blueprint)
 	}

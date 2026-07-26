@@ -57,7 +57,7 @@ Agent 流程固定为 list → 收集输入 → instantiate：
 ```
 1. project_template_list({"workspace":"dajee","q":"发布"})
 2. member_list({"workspace":"dajee"})   // 收集可用成员的 User ID
-3. 从返回项读取 template key、current_snapshot.id/hash、required_secret_keys；向用户收集新项目 slug/name/start_date、所需 secret 和 assignee replacement
+3. 从返回项读取 template key、current_snapshot.id/hash/config_inputs；按 descriptor 向用户收集新项目 slug/name/start_date、必填或需要填写的普通/secret config 和 assignee replacement
 4. project_template_instantiate({
      "workspace":"dajee",
      "template":"release",
@@ -66,12 +66,12 @@ Agent 流程固定为 list → 收集输入 → instantiate：
      "project_slug":"release26",
      "project_name":"2026 发布项目",
      "start_date":"2026-08-01",
-     "secret_inputs":{"agent.api_key":"用户安全提供的值"},
+     "config_inputs":{"launch.region":"cn-east-1","agent.api_key":"用户安全提供的值"},
      "assignee_replacements":{"source-user-id":"target-user-id"}
    })
 ```
 
-每次调用都显式传 `workspace`。`snapshot_id` 和 `expected_snapshot_hash` 必须来自同一次、最新的 `project_template_list`；如果返回 `project_template_snapshot_hash_mismatch`，重新 list 并再次确认输入，不要用旧版本重试。`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**，非空 value 是 active workspace member 的 **target user ID**，两端都不能填 name、slug 或其它 ref；source ID 从 validation issue 的 `source_ref` 取得，target ID 先用 `member_list` 查询。模板内容变更、Capture、Preview、归档和 Snapshot 版本管理交给 Web Console。
+每次调用都显式传 `workspace`。`snapshot_id`、`expected_snapshot_hash` 和 `config_inputs` descriptor 必须来自同一次、最新的 `project_template_list`；required 项必须显式收集，optional 留空时省略 key。普通和 secret prompt 都放入 `config_inputs`，不得把 secret 记录到普通消息或日志。如果返回 `project_template_snapshot_hash_mismatch`，重新 list 并再次确认输入，不要用旧版本重试。`assignee_replacements` 的 key 是 unavailable template member 的 **source user ID**，非空 value 是 active workspace member 的 **target user ID**，两端都不能填 name、slug 或其它 ref；source ID 从 validation issue 的 `source_ref` 取得，target ID 先用 `member_list` 查询。模板内容变更、Capture、Preview、归档和 Snapshot 版本管理交给 Web Console。
 
 ## 易错点
 
@@ -79,8 +79,8 @@ Agent 流程固定为 list → 收集输入 → instantiate：
 - `workspace_use` / `user_use` 只影响 stdio MCP 的隐式状态，HTTP MCP 不受影响。默认显式传参，不依赖隐式切换。
 - 创建项目时 slug 会自动转小写；`api-platform`、`ai_agent`、`p1`、`1api` 都不是合法 project slug。
 - 角色层级：`viewer` < `member` < `admin` < `owner`。成员治理通常需要 `admin` 或 `owner`。
-- `project_template_list` 只返回 active Template 的 current Snapshot 摘要，不返回 Snapshot JSON、历史版本或候选项。实例化前不要依据缓存猜测版本。
-- `secret_inputs` 只用于本次实例化，响应和错误不回显 secret。缺少成员替换或其它输入时，根据结构化 `issues` 补齐后再调用。
+- `project_template_list` 只返回 active Template 的 current Snapshot 摘要和安全的 `config_inputs` descriptor，不返回 Snapshot JSON、历史版本、候选项、字段值或 default。实例化前不要依据缓存猜测版本。
+- v2 的普通和 secret prompt 都使用 `config_inputs`；`secret_inputs` 只兼容 v1 历史 `secret_input`。响应和错误不回显 secret。缺少成员替换或其它输入时，根据结构化 `issues` 补齐后再调用。
 
 ## 参考文档
 

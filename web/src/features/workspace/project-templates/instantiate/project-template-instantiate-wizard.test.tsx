@@ -283,6 +283,68 @@ describe("ProjectTemplateInstantiateWizard", () => {
     ])
   })
 
+  it("renders typed prompt fields in project step and sends secrets only in config_inputs", async () => {
+    const configInputs: api.ProjectTemplateConfigInput[] = [
+      { key: "launch.region", label: "发布区域", description: "选择发布区域", value_type: "string", enum_values: ["cn", "global"], required: true, secret: false, status: "ready" },
+      { key: "launch.gray", label: "启用灰度", description: "可选", value_type: "boolean", enum_values: [], required: false, secret: false, status: "ready" },
+      { key: "launch.token", label: "发布令牌", description: "仅用于本次创建", value_type: "string", enum_values: [], required: true, secret: true, status: "ready" },
+    ]
+    const promptCurrent = { ...current, config_inputs: configInputs }
+    vi.mocked(api.getProjectTemplate).mockResolvedValueOnce({
+      ...detail,
+      template: { ...template, current_snapshot: promptCurrent },
+      versions: [promptCurrent],
+    })
+    vi.mocked(api.previewProjectTemplateInstantiation).mockImplementationOnce(
+      async (_workspace, _ref, input) => ({
+        ...preview({ ...input, secret_inputs: { "agent.provider.api_key": "legacy" } }),
+        template: { ...template, current_snapshot: promptCurrent },
+        snapshot: promptCurrent,
+        config_inputs: configInputs,
+        config_resolutions: configInputs.map((item) => ({
+          key: item.key,
+          required: item.required,
+          secret: item.secret,
+          status: input.config_inputs?.[item.key] ? "provided" as const : "omitted" as const,
+        })),
+        secret_resolutions: [],
+        assignee_issues: [],
+        issues: [],
+      })
+    )
+    renderWizard()
+    await screen.findByRole("dialog", { name: "从模板创建项目" })
+    await userEvent.type(screen.getByLabelText("项目 Slug"), "newproj")
+    await userEvent.type(screen.getByLabelText("项目名称"), "新项目")
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    expect(await screen.findAllByText("此配置为必填项")).toHaveLength(2)
+    expect(api.previewProjectTemplateInstantiation).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole("combobox", { name: /发布区域/ }))
+    await userEvent.click(await screen.findByText("cn"))
+    await userEvent.type(screen.getByLabelText(/发布令牌/), "prompt-secret")
+    const token = screen.getByLabelText(/发布令牌/) as HTMLInputElement
+    expect(token.type).toBe("password")
+    expect(screen.queryByRole("button", { name: /显示机密|reveal/i })).toBeNull()
+    expect(screen.getByRole("combobox", { name: /启用灰度/ })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+
+    await waitFor(() =>
+      expect(api.previewProjectTemplateInstantiation).toHaveBeenCalledWith(
+        "acme",
+        "launch",
+        expect.objectContaining({
+          config_inputs: {
+            "launch.region": "cn",
+            "launch.token": "prompt-secret",
+          },
+        })
+      )
+    )
+    const sent = vi.mocked(api.previewProjectTemplateInstantiation).mock.calls[0][2]
+    expect("secret_inputs" in sent).toBe(false)
+  })
+
   it("pins a historical preview snapshot and never renders secret values", async () => {
     renderWizard({
       templateRef: "launch",
@@ -425,7 +487,7 @@ describe("ProjectTemplateInstantiateWizard", () => {
     expect(screen.getByText("v3 当前")).toBeTruthy()
     expect(screen.queryByText("v1")).toBeNull()
     await userEvent.click(
-      screen.getByRole("button", { name: "下一步：项目信息" })
+      screen.getByRole("button", { name: "下一步：项目与配置" })
     )
     await fillProject()
 

@@ -53,6 +53,281 @@ func instantiateSnapshot() projecttemplate.SnapshotV1 {
 	}
 }
 
+func instantiatePromptSnapshot() projecttemplate.SnapshotV2 {
+	return projecttemplate.SnapshotV2{
+		Schema: projecttemplate.SnapshotSchemaV2, AnchorDate: "2026-07-20",
+		Project: projecttemplate.ProjectBlueprintV2{Description: "配置输入项目"},
+		Configs: []projecttemplate.ConfigBlueprintV2{
+			{Key: "launch.required", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}},
+			{Key: "launch.optional", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: false}},
+			{Key: "launch.secret", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}},
+		},
+		Tasks: []projecttemplate.TaskBlueprintV2{}, Series: []projecttemplate.SeriesBlueprintV2{}, Automations: []projecttemplate.AutomationBlueprintV2{},
+	}
+}
+
+func TestProjectTemplateInstantiateV2PromptRequiresExplicitInputsAndWritesOnlyProvidedRows(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	for _, definition := range []ConfigSchemaInput{
+		{Key: "launch.required", ValueType: "number", AllowedScopes: []string{"workspace", "project"}, Label: "发布分数", Description: "填写项目分数"},
+		{Key: "launch.optional", ValueType: "boolean", AllowedScopes: []string{"project"}, Label: "启用灰度"},
+		{Key: "launch.secret", ValueType: "string", AllowedScopes: []string{"project"}, Label: "发布密钥", Secret: true},
+	} {
+		if err := f.owner.ConfigSchemaSet(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.owner.SetConfig("launch.required", "99"); err != nil {
+		t.Fatal(err)
+	}
+	seedProjectTemplateV2(t, f.owner, "prompt-v2", instantiatePromptSnapshot())
+	page, err := f.owner.ListProjectTemplatesForInstantiation(TemplateInstantiationListInput{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].CurrentSnapshot == nil || len(page.Items[0].CurrentSnapshot.ConfigInputs) != 3 {
+		t.Fatalf("template summary config inputs = %#v", page.Items)
+	}
+	summaryJSON := string(mustJSON(page.Items[0].CurrentSnapshot.ConfigInputs))
+	if strings.Contains(summaryJSON, `"value":"99"`) || strings.Contains(summaryJSON, "default_value") {
+		t.Fatalf("summary leaked inherited/default value: %s", summaryJSON)
+	}
+	input := instantiateTemplateInput(t, f.owner, "prompt-v2", "promptv2")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("prompt-v2", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_config_input_required") {
+		t.Fatalf("issues = %#v", preview.Issues)
+	}
+	if len(preview.ConfigInputs) != 3 || preview.ConfigInputs[0].Key != "launch.optional" && preview.ConfigInputs[0].Key != "launch.required" {
+		t.Fatalf("config inputs = %#v", preview.ConfigInputs)
+	}
+	raw := string(mustJSON(preview))
+	if strings.Contains(raw, `"value":"99"`) || strings.Contains(raw, "default_value") {
+		t.Fatalf("preview leaked inherited/default value: %s", raw)
+	}
+
+	input.ConfigInputs = map[string]string{"launch.required": " 1.00e1 ", "launch.secret": "secret-prompt-canary"}
+	preview, err = f.owner.PreviewProjectTemplateInstantiation("prompt-v2", input)
+	if err != nil || len(preview.Issues) != 0 {
+		t.Fatalf("preview = %#v err=%v", preview, err)
+	}
+	if strings.Contains(string(mustJSON(preview)), "secret-prompt-canary") {
+		t.Fatalf("preview leaked secret: %s", mustJSON(preview))
+	}
+	created, err := f.owner.InstantiateCurrentProjectTemplate("prompt-v2", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{"launch.required": "10", "launch.secret": "secret-prompt-canary"} {
+		got, ok, err := f.owner.configRepo.Get(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: created.Project.ID, Key: key})
+		if err != nil || !ok || got != want {
+			t.Fatalf("config %s = %q ok=%t err=%v", key, got, ok, err)
+		}
+	}
+	if _, ok, err := f.owner.configRepo.Get(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: created.Project.ID, Key: "launch.optional"}); err != nil || ok {
+		t.Fatalf("optional config exists=%t err=%v", ok, err)
+	}
+}
+
+func TestProjectTemplateInstantiateV2RequiredPromptRejectsBlankDespiteFallback(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	defaultValue := "default-value"
+	definitions := []ConfigSchemaInput{
+		{Key: "launch.workspace_fallback", ValueType: "string", AllowedScopes: []string{"workspace", "project"}},
+		{Key: "launch.default_fallback", ValueType: "string", AllowedScopes: []string{"project"}, DefaultValue: &defaultValue},
+	}
+	for _, definition := range definitions {
+		if err := f.owner.ConfigSchemaSet(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.owner.SetConfig("launch.workspace_fallback", "workspace-value"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiatePromptSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV2{
+		{Key: "launch.workspace_fallback", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}},
+		{Key: "launch.default_fallback", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}},
+	}
+	seedProjectTemplateV2(t, f.owner, "required-explicit", snapshot)
+
+	for _, test := range []struct {
+		name   string
+		inputs map[string]string
+	}{
+		{name: "missing", inputs: nil},
+		{name: "empty", inputs: map[string]string{"launch.workspace_fallback": "", "launch.default_fallback": ""}},
+		{name: "whitespace", inputs: map[string]string{"launch.workspace_fallback": " \t", "launch.default_fallback": "\n"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := instantiateTemplateInput(t, f.owner, "required-explicit", "required"+test.name)
+			input.ConfigInputs = test.inputs
+			preview, err := f.owner.PreviewProjectTemplateInstantiation("required-explicit", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			requiredIssues := 0
+			for _, issue := range preview.Issues {
+				if issue.Code == "project_template_config_input_required" {
+					requiredIssues++
+				}
+			}
+			if requiredIssues != 2 || preview.Counts.Configs != 0 {
+				t.Fatalf("preview=%#v, want two explicit-input issues and no planned config", preview)
+			}
+		})
+	}
+}
+
+func TestProjectTemplateInstantiateV2NormalizesTypedPromptInputs(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	definitions := []ConfigSchemaInput{
+		{Key: "typed.string", ValueType: "string", AllowedScopes: []string{"project"}},
+		{Key: "typed.number", ValueType: "number", AllowedScopes: []string{"project"}},
+		{Key: "typed.boolean", ValueType: "boolean", AllowedScopes: []string{"project"}},
+		{Key: "typed.json", ValueType: "json", AllowedScopes: []string{"project"}},
+		{Key: "typed.date", ValueType: "date", AllowedScopes: []string{"project"}},
+		{Key: "typed.datetime", ValueType: "datetime", AllowedScopes: []string{"project"}},
+		{Key: "typed.enum", ValueType: "string", AllowedScopes: []string{"project"}, EnumValues: []string{"blue", "green"}},
+	}
+	for _, definition := range definitions {
+		if err := f.owner.ConfigSchemaSet(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := instantiatePromptSnapshot()
+	snapshot.Configs = make([]projecttemplate.ConfigBlueprintV2, 0, len(definitions))
+	for _, definition := range definitions {
+		snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV2{Key: definition.Key, Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}})
+	}
+	seedProjectTemplateV2(t, f.owner, "typed-inputs", snapshot)
+	inputs := map[string]string{
+		"typed.string": "  keep spaces  ", "typed.number": " 1.00e2 ", "typed.boolean": " TRUE ",
+		"typed.json": ` { "b": 2, "a": 1 } `, "typed.date": " 2026-08-09 ",
+		"typed.datetime": "2026-08-09T08:30:00+08:00", "typed.enum": "green",
+	}
+	wants := map[string]string{
+		"typed.string": "  keep spaces  ", "typed.number": "100", "typed.boolean": "true",
+		"typed.json": `{"a":1,"b":2}`, "typed.date": "2026-08-09",
+		"typed.datetime": "2026-08-09T00:30:00Z", "typed.enum": "green",
+	}
+	input := instantiateTemplateInput(t, f.owner, "typed-inputs", "typedin")
+	input.ConfigInputs = inputs
+	created, err := f.owner.InstantiateCurrentProjectTemplate("typed-inputs", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range wants {
+		got, ok, err := f.owner.configRepo.Get(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: created.Project.ID, Key: key})
+		if err != nil || !ok || got != want {
+			t.Fatalf("config %s=%q ok=%t err=%v, want %q", key, got, ok, err, want)
+		}
+	}
+
+	invalidCases := map[string]string{
+		"typed.number": "NaN!", "typed.boolean": "yes", "typed.json": "{", "typed.date": "2026-02-30",
+		"typed.datetime": "2026-08-09 08:30", "typed.enum": "red",
+	}
+	for key, invalid := range invalidCases {
+		t.Run(key, func(t *testing.T) {
+			invalidInput := instantiateTemplateInput(t, f.owner, "typed-inputs", "invalid"+strings.ReplaceAll(key, ".", ""))
+			invalidInput.ConfigInputs = make(map[string]string, len(inputs))
+			for inputKey, value := range inputs {
+				invalidInput.ConfigInputs[inputKey] = value
+			}
+			invalidInput.ConfigInputs[key] = invalid
+			preview, err := f.owner.PreviewProjectTemplateInstantiation("typed-inputs", invalidInput)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasTemplateIssue(preview.Issues, "project_template_config_input_invalid") {
+				t.Fatalf("issues=%#v", preview.Issues)
+			}
+		})
+	}
+}
+
+func TestProjectTemplateInstantiateV2ReportsDefinitionDriftInDescriptor(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		mutate     func(*projectTemplateFixture) error
+		wantStatus string
+	}{
+		{name: "definition-missing", wantStatus: "definition_missing", mutate: func(f *projectTemplateFixture) error {
+			return f.owner.configDefRepo.Delete(f.owner.workspaceID, "launch.required")
+		}},
+		{name: "scope-invalid", wantStatus: "scope_invalid", mutate: func(f *projectTemplateFixture) error {
+			return f.owner.configDefRepo.Set(storage.ConfigDefinition{WorkspaceID: f.owner.workspaceID, Key: "launch.required", ValueType: "string", AllowedScopesJSON: `["workspace"]`, EnumValuesJSON: `[]`, CreatedAt: 1, ModifiedAt: 2})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			if err := f.owner.ConfigSchemaSet(ConfigSchemaInput{Key: "launch.required", ValueType: "string", AllowedScopes: []string{"project"}, Label: "发布配置"}); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := instantiatePromptSnapshot()
+			snapshot.Configs = []projecttemplate.ConfigBlueprintV2{{Key: "launch.required", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}}}
+			seedProjectTemplateV2(t, f.owner, "descriptor-drift", snapshot)
+			if err := test.mutate(&f); err != nil {
+				t.Fatal(err)
+			}
+			input := instantiateTemplateInput(t, f.owner, "descriptor-drift", "descriptordrift")
+			preview, err := f.owner.PreviewProjectTemplateInstantiation("descriptor-drift", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(preview.ConfigInputs) != 1 || preview.ConfigInputs[0].Status != test.wantStatus || !hasTemplateIssue(preview.Issues, "project_template_config_invalid") {
+				t.Fatalf("preview=%#v", preview)
+			}
+		})
+	}
+}
+
+func TestProjectTemplateInstantiateV2RejectsUnknownFixedAndConflictingInputs(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	for _, key := range []string{"launch.required", "launch.optional", "launch.secret"} {
+		if err := f.owner.ConfigSchemaSet(ConfigSchemaInput{Key: key, ValueType: "string", AllowedScopes: []string{"project"}, Secret: key == "launch.secret"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := instantiatePromptSnapshot()
+	literal := "fixed"
+	snapshot.Configs = append(snapshot.Configs, projecttemplate.ConfigBlueprintV2{Key: "launch.fixed", Mode: "literal", Value: &literal})
+	if err := f.owner.ConfigSchemaSet(ConfigSchemaInput{Key: "launch.fixed", ValueType: "string", AllowedScopes: []string{"project"}}); err != nil {
+		t.Fatal(err)
+	}
+	seedProjectTemplateV2(t, f.owner, "prompt-input-whitelist", snapshot)
+	base := instantiateTemplateInput(t, f.owner, "prompt-input-whitelist", "promptwl")
+	base.ConfigInputs = map[string]string{"launch.required": "value", "launch.secret": "secret"}
+	tests := []struct {
+		name   string
+		mutate func(*InstantiateInput)
+	}{
+		{name: "unknown", mutate: func(in *InstantiateInput) { in.ConfigInputs["launch.unknown"] = "x" }},
+		{name: "fixed", mutate: func(in *InstantiateInput) { in.ConfigInputs["launch.fixed"] = "x" }},
+		{name: "secret conflict", mutate: func(in *InstantiateInput) { in.SecretInputs = map[string]string{"launch.secret": "other"} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := base
+			input.ConfigInputs = map[string]string{}
+			for key, value := range base.ConfigInputs {
+				input.ConfigInputs[key] = value
+			}
+			test.mutate(&input)
+			preview, err := f.owner.PreviewProjectTemplateInstantiation("prompt-input-whitelist", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasTemplateIssue(preview.Issues, "project_template_config_input_unknown") {
+				t.Fatalf("issues = %#v", preview.Issues)
+			}
+		})
+	}
+}
+
 func fullInstantiateSnapshot(ownerID string) projecttemplate.SnapshotV1 {
 	baseURL := "https://api.example.test/v1"
 	parentRef := "task-3"
@@ -251,6 +526,52 @@ func TestProjectTemplateInstantiateRollbackLeavesNothing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestProjectTemplateInstantiateV2PromptRollbackLeavesNoProjectOrConfig(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	if err := f.owner.ConfigSchemaSet(ConfigSchemaInput{Key: "launch.prompt", ValueType: "string", AllowedScopes: []string{"project"}, Secret: true}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiatePromptSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV2{{Key: "launch.prompt", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: true}}}
+	seedProjectTemplateV2(t, f.owner, "prompt-rollback", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "prompt-rollback", "prollback")
+	input.ConfigInputs = map[string]string{"launch.prompt": "prompt-secret-canary"}
+	f.owner.projectTemplateInstantiateFailure = func(stage string) error {
+		if stage == "config-create" {
+			return errors.New("injected config failure")
+		}
+		return nil
+	}
+	_, err := f.owner.InstantiateCurrentProjectTemplate("prompt-rollback", input)
+	if err == nil || strings.Contains(err.Error(), input.ConfigInputs["launch.prompt"]) {
+		t.Fatalf("instantiate error=%v", err)
+	}
+	if _, err := f.owner.ResolveProject("prollback"); runtimeCode(err) != "project_not_found" {
+		t.Fatalf("rollback project remained: %v", err)
+	}
+	var count int64
+	if err := f.store.DB().Model(&storage.Config{}).Where("workspace_id = ? AND key = ?", f.owner.workspaceID, "launch.prompt").Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("rollback config count=%d err=%v", count, err)
+	}
+}
+
+func TestProjectTemplateInstantiateV2OptionalPromptStillRequiresConfigWrite(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	if err := f.owner.ConfigSchemaSet(ConfigSchemaInput{Key: "launch.optional", ValueType: "string", AllowedScopes: []string{"project"}}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiatePromptSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV2{{Key: "launch.optional", Mode: "prompt", Prompt: &projecttemplate.ConfigPromptV2{Required: false}}}
+	seedProjectTemplateV2(t, f.owner, "optional-permission", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "optional-permission", "optperm")
+	input.ConfigInputs = map[string]string{"launch.optional": "  "}
+
+	limited := newScopedTokenService(t, f.store, []string{auth.ScopeProjectWrite}, auth.TokenTypeTenantAccess)
+	if _, err := limited.PreviewProjectTemplateInstantiation("optional-permission", input); runtimeCode(err) != authz.CodePermissionDenied {
+		t.Fatalf("preview error=%v, want config write permission denied", err)
 	}
 }
 

@@ -108,12 +108,16 @@ type SeriesCandidatePage struct {
 }
 
 type ConfigCandidateView struct {
-	Ref          string `json:"ref"`
-	Key          string `json:"key"`
-	Label        string `json:"label"`
-	Mode         string `json:"mode"`
-	ValueType    string `json:"value_type"`
-	WarningCount int    `json:"warning_count"`
+	Ref             string `json:"ref"`
+	Key             string `json:"key"`
+	Label           string `json:"label"`
+	Mode            string `json:"mode"`
+	ValueType       string `json:"value_type"`
+	Secret          bool   `json:"secret"`
+	HasProjectValue bool   `json:"has_project_value"`
+	EffectiveSource string `json:"effective_source"`
+	CanFixed        bool   `json:"can_fixed"`
+	WarningCount    int    `json:"warning_count"`
 }
 
 type ConfigCandidatePage struct {
@@ -375,8 +379,8 @@ func (s *Service) listProjectTemplateConfigCandidates(input ConfigCandidateListI
 	if mode == "" {
 		mode = "all"
 	}
-	if mode != "all" && mode != "literal" && mode != "secret" {
-		return ConfigCandidatePage{}, candidateInputError("config mode must be all|literal|secret")
+	if mode != "all" && mode != "literal" && mode != "secret" && mode != "fixed_available" && mode != "prompt_available" && mode != "non_secret" {
+		return ConfigCandidatePage{}, candidateInputError("config mode must be all|fixed_available|prompt_available|secret|non_secret")
 	}
 	page, err := s.configRepo.ListCandidatePage(storage.ConfigCandidateListOptions{WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: input.Refs, Q: input.Q, Mode: mode}, limit, offset)
 	if err != nil {
@@ -388,7 +392,10 @@ func (s *Service) listProjectTemplateConfigCandidates(input ConfigCandidateListI
 		if row.Definition.Secret {
 			itemMode = "secret"
 		}
-		items = append(items, ConfigCandidateView{Ref: row.Config.Key, Key: row.Config.Key, Label: row.Definition.Label, Mode: itemMode, ValueType: row.Definition.ValueType})
+		items = append(items, ConfigCandidateView{
+			Ref: row.Definition.Key, Key: row.Definition.Key, Label: row.Definition.Label, Mode: itemMode, ValueType: row.Definition.ValueType,
+			Secret: row.Definition.Secret, HasProjectValue: row.HasProjectValue, EffectiveSource: row.EffectiveSource, CanFixed: row.CanFixed,
+		})
 	}
 	return ConfigCandidatePage{Items: items, Total: page.Total, Limit: limit, Offset: offset}, nil
 }

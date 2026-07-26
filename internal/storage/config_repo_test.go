@@ -106,6 +106,65 @@ func TestConfigTemplateCandidatePageScopesJoinsDefinitionAndFiltersMode(t *testi
 	}
 }
 
+func TestConfigTemplateCandidatePageIncludesPromptOnlyDefinitionsWithoutValues(t *testing.T) {
+	store := openIdentityTestStore(t)
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewConfigRepository(store.DB())
+	defs := NewConfigDefinitionRepository(store.DB())
+	definitions := []ConfigDefinition{
+		{WorkspaceID: ws.ID, Key: "a.project", ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "项目值", CreatedAt: 1, ModifiedAt: 1},
+		{WorkspaceID: ws.ID, Key: "b.workspace", ValueType: "string", AllowedScopesJSON: `["workspace","project"]`, Label: "继承值", CreatedAt: 1, ModifiedAt: 1},
+		{WorkspaceID: ws.ID, Key: "c.default", ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "默认值", DefaultValue: "fallback", HasDefault: true, CreatedAt: 1, ModifiedAt: 1},
+		{WorkspaceID: ws.ID, Key: "d.missing_secret", ValueType: "string", AllowedScopesJSON: `["project"]`, Label: "待填写密钥", Secret: true, CreatedAt: 1, ModifiedAt: 1},
+		{WorkspaceID: ws.ID, Key: "e.workspace_only", ValueType: "string", AllowedScopesJSON: `["workspace"]`, Label: "仅工作区", CreatedAt: 1, ModifiedAt: 1},
+	}
+	for _, definition := range definitions {
+		if err := defs.Set(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeProject, ScopeID: "source", Key: "a.project"}, "project-value"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeWorkspace, Key: "b.workspace"}, "workspace-value"); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := repo.ListCandidatePage(ConfigCandidateListOptions{WorkspaceID: ws.ID, ProjectID: "source", Mode: "prompt_available"}, 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 4 || len(page.Items) != 4 {
+		t.Fatalf("page = %#v", page)
+	}
+	wantSources := map[string]string{
+		"a.project": "project", "b.workspace": "workspace", "c.default": "default", "d.missing_secret": "missing",
+	}
+	for _, item := range page.Items {
+		if item.EffectiveSource != wantSources[item.Definition.Key] {
+			t.Fatalf("candidate = %#v", item)
+		}
+		if item.HasProjectValue != (item.Definition.Key == "a.project") || item.CanFixed != item.HasProjectValue {
+			t.Fatalf("fixed flags = %#v", item)
+		}
+		if item.Definition.Key != "a.project" && item.Config.Value != "" {
+			t.Fatalf("candidate leaked effective value: %#v", item)
+		}
+	}
+
+	fixed, err := repo.ListCandidatePage(ConfigCandidateListOptions{WorkspaceID: ws.ID, ProjectID: "source", Mode: "fixed_available"}, 20, 0)
+	if err != nil || fixed.Total != 1 || fixed.Items[0].Definition.Key != "a.project" {
+		t.Fatalf("fixed = %#v err=%v", fixed, err)
+	}
+	secret, err := repo.ListCandidatePage(ConfigCandidateListOptions{WorkspaceID: ws.ID, ProjectID: "source", Mode: "secret"}, 20, 0)
+	if err != nil || secret.Total != 1 || secret.Items[0].Definition.Key != "d.missing_secret" || secret.Items[0].Config.Value != "" {
+		t.Fatalf("secret = %#v err=%v", secret, err)
+	}
+}
+
 func TestConfigRepositoryServerScopeUsesEmptyScopeAndUpserts(t *testing.T) {
 	store := openIdentityTestStore(t)
 	repo := NewConfigRepository(store.DB())

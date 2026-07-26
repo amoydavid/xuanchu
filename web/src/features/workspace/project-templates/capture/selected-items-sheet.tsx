@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Sheet,
@@ -12,7 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 
-import type { CandidateKind } from "../api/project-template-api"
+import type { CandidateKind, CaptureConfigPolicy } from "../api/project-template-api"
 import type {
   CandidateSummary,
   CandidateSelectionStore,
@@ -30,15 +31,19 @@ type SelectedItemsSheetProps = {
   onClearAll: () => void
   onOpenChange: (open: boolean) => void
   onRemove: (kind: CandidateKind, ref: string) => void
+  configPolicies: Record<string, CaptureConfigPolicy>
+  onConfigPolicyChange: (policy: CaptureConfigPolicy) => void
   open: boolean
   selection: CandidateSelectionStore
 }
 
 export function SelectedItemsSheet({
   lockedConfigKeys,
+  configPolicies,
   onClearAll,
   onOpenChange,
   onRemove,
+  onConfigPolicyChange,
   open,
   selection,
 }: SelectedItemsSheetProps) {
@@ -60,10 +65,12 @@ export function SelectedItemsSheet({
         </SheetHeader>
         <SelectedItemsPanel
           items={items}
+          configPolicies={configPolicies}
           lockedConfigKeys={lockedConfigKeys}
           onClearAll={onClearAll}
           onQueryChange={setQ}
           onRemove={onRemove}
+          onConfigPolicyChange={onConfigPolicyChange}
           query={q}
         />
       </SheetContent>
@@ -72,13 +79,15 @@ export function SelectedItemsSheet({
 }
 
 export function SelectedItemsDrawer({
+  configPolicies,
   lockedConfigKeys,
   onClearAll,
   onRemove,
+  onConfigPolicyChange,
   selection,
 }: Pick<
   SelectedItemsSheetProps,
-  "lockedConfigKeys" | "onClearAll" | "onRemove" | "selection"
+  "configPolicies" | "lockedConfigKeys" | "onClearAll" | "onConfigPolicyChange" | "onRemove" | "selection"
 >) {
   const [q, setQ] = useState("")
   const items = useMemo(() => selectedItems(selection, q), [q, selection])
@@ -93,10 +102,12 @@ export function SelectedItemsDrawer({
       </div>
       <SelectedItemsPanel
         items={items}
+        configPolicies={configPolicies}
         lockedConfigKeys={lockedConfigKeys}
         onClearAll={onClearAll}
         onQueryChange={setQ}
         onRemove={onRemove}
+        onConfigPolicyChange={onConfigPolicyChange}
         query={q}
       />
     </aside>
@@ -104,18 +115,22 @@ export function SelectedItemsDrawer({
 }
 
 function SelectedItemsPanel({
+  configPolicies,
   items,
   lockedConfigKeys = new Set(),
   onClearAll,
   onQueryChange,
   onRemove,
+  onConfigPolicyChange,
   query,
 }: {
   items: Array<CandidateSummary & { kind: CandidateKind }>
+  configPolicies: Record<string, CaptureConfigPolicy>
   lockedConfigKeys?: Set<string>
   onClearAll: () => void
   onQueryChange: (value: string) => void
   onRemove: (kind: CandidateKind, ref: string) => void
+  onConfigPolicyChange: (policy: CaptureConfigPolicy) => void
   query: string
 }) {
   return (
@@ -139,7 +154,10 @@ function SelectedItemsPanel({
           </p>
         ) : (
           <ul className="divide-y">
-            {items.map((item) => (
+            {items.map((item) => {
+              const policy = item.kind === "config" ? configPolicies[item.ref] : undefined
+              const promptLocked = item.kind === "config" && lockedConfigKeys.has(item.ref) && policy?.strategy === "prompt"
+              return (
               <li
                 className="flex items-start gap-2 p-3"
                 key={`${item.kind}:${item.ref}`}
@@ -154,9 +172,46 @@ function SelectedItemsPanel({
                       {item.ref}
                     </span>
                   </div>
-				  {item.kind === "config" && lockedConfigKeys.has(item.ref) ? (
+                  {item.kind === "config" && lockedConfigKeys.has(item.ref) ? (
 					  <div className="mt-1 text-[11px] text-muted-foreground">由已选自动化依赖，取消自动化后才可移除</div>
-				  ) : null}
+                  ) : null}
+                  {item.kind === "config" && policy ? (
+                    <div className="mt-3 space-y-2">
+                      <label className="block text-xs font-medium" htmlFor={`config-policy-${item.ref}`}>
+                        创建策略
+                      </label>
+                      <select
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        id={`config-policy-${item.ref}`}
+                        onChange={(event) => {
+                          const strategy = event.target.value as CaptureConfigPolicy["strategy"]
+                          onConfigPolicyChange({
+                            key: item.ref,
+                            strategy,
+                            required: strategy === "prompt" ? (promptLocked || policy.required) : undefined,
+                          })
+                        }}
+                        value={policy.strategy}
+                      >
+                        {item.configCanFixed ? (
+                          <option value="fixed">{item.secret ? "使用当前项目值（加密复制）" : "使用当前项目值"}</option>
+                        ) : null}
+                        <option value="prompt">创建项目时填写</option>
+                      </select>
+                      {policy.strategy === "prompt" ? (
+                        <label className="flex items-center gap-2 text-xs">
+                          <Checkbox
+                            checked={promptLocked || Boolean(policy.required)}
+                            disabled={promptLocked}
+                            onCheckedChange={(checked) =>
+                              onConfigPolicyChange({ key: item.ref, strategy: "prompt", required: checked === true })
+                            }
+                          />
+                          {promptLocked ? "必填（自动化依赖）" : "必填"}
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <Button
                   aria-label={`移除 ${item.label}`}
@@ -168,7 +223,8 @@ function SelectedItemsPanel({
                   <X />
                 </Button>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </div>

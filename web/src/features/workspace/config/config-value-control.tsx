@@ -29,6 +29,10 @@ type ConfigValueControlProps = {
   onChange: (value: string) => void
   disabled?: boolean
   id?: string
+  allowEmpty?: boolean
+  allowSecretReveal?: boolean
+  ariaDescribedBy?: string
+  ariaInvalid?: boolean
 }
 
 // 只依赖 schema 的少量字段，便于 project-config-row 等复用。
@@ -44,6 +48,10 @@ export function ConfigValueControl({
   onChange,
   disabled,
   id,
+  allowEmpty = false,
+  allowSecretReveal = true,
+  ariaDescribedBy,
+  ariaInvalid,
 }: ConfigValueControlProps) {
   const { t } = useTranslation()
   const enumValues = definition.enum_values ?? []
@@ -54,11 +62,16 @@ export function ConfigValueControl({
   // enum 优先级最高
   if (enumValues.length > 0) {
     return (
-      <Select disabled={disabled} onValueChange={onChange} value={value}>
-        <SelectTrigger className="w-full" id={id}>
+      <Select
+        disabled={disabled}
+        onValueChange={(next) => onChange(next === EMPTY_VALUE ? "" : next)}
+        value={allowEmpty && value === "" ? EMPTY_VALUE : value}
+      >
+        <SelectTrigger aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid} className="w-full" id={id}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          {allowEmpty ? <SelectItem value={EMPTY_VALUE}>未选择</SelectItem> : null}
           {enumValues.map((v) => (
             <SelectItem key={v} value={v}>
               {v}
@@ -70,6 +83,24 @@ export function ConfigValueControl({
   }
 
   if (definition.value_type === "boolean") {
+    if (allowEmpty) {
+      return (
+        <Select
+          disabled={disabled}
+          onValueChange={(next) => onChange(next === EMPTY_VALUE ? "" : next)}
+          value={value === "" ? EMPTY_VALUE : value}
+        >
+          <SelectTrigger aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid} className="w-full" id={id}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={EMPTY_VALUE}>未选择</SelectItem>
+            <SelectItem value="true">是</SelectItem>
+            <SelectItem value="false">否</SelectItem>
+          </SelectContent>
+        </Select>
+      )
+    }
     const checked = value === "true"
     return (
       <Switch
@@ -77,6 +108,8 @@ export function ConfigValueControl({
         checked={checked}
         disabled={disabled}
         id={id}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         onCheckedChange={(next) => onChange(next ? "true" : "false")}
       />
     )
@@ -87,6 +120,8 @@ export function ConfigValueControl({
       <JsonControl
         disabled={disabled}
         id={id}
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         invalidHint={t("configDefinitions.jsonInvalid")}
         onChange={onChange}
         value={value}
@@ -99,6 +134,8 @@ export function ConfigValueControl({
       <DateControl
         disabled={disabled}
         id={id}
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         onChange={onChange}
         placeholder={t("configDefinitions.datePlaceholder")}
         clearLabel={t("configDefinitions.clearDate")}
@@ -112,6 +149,8 @@ export function ConfigValueControl({
       <DateTimeControl
         disabled={disabled}
         id={id}
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         onChange={onChange}
         placeholder={t("configDefinitions.datetimePlaceholder")}
         timeLabel={t("configDefinitions.timeLabel")}
@@ -128,11 +167,13 @@ export function ConfigValueControl({
         <Input
           disabled={disabled}
           id={id}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           onChange={(e) => onChange(e.target.value)}
           type={revealed ? "text" : "password"}
           value={value}
         />
-        <Button
+        {allowSecretReveal ? <Button
           aria-label={
             revealed
               ? t("configDefinitions.hideSecret")
@@ -144,7 +185,7 @@ export function ConfigValueControl({
           variant="ghost"
         >
           {revealed ? <EyeOffIcon /> : <EyeIcon />}
-        </Button>
+        </Button> : null}
       </div>
     )
   }
@@ -153,12 +194,16 @@ export function ConfigValueControl({
     <Input
       disabled={disabled}
       id={id}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid}
       onChange={(e) => onChange(e.target.value)}
       type={definition.value_type === "number" ? "number" : "text"}
       value={value}
     />
   )
 }
+
+const EMPTY_VALUE = "__xuanchu_empty__"
 
 // JsonControl 只做 parse 提示，不阻止输入。
 function JsonControl(props: {
@@ -167,8 +212,10 @@ function JsonControl(props: {
   disabled?: boolean
   id?: string
   invalidHint: string
+  ariaDescribedBy?: string
+  ariaInvalid?: boolean
 }) {
-  const { value, onChange, disabled, id, invalidHint } = props
+  const { value, onChange, disabled, id, invalidHint, ariaDescribedBy, ariaInvalid } = props
   const isInvalid = useMemo(() => isInvalidJson(value), [value])
   return (
     <div className="space-y-1">
@@ -176,6 +223,8 @@ function JsonControl(props: {
         className="font-mono text-xs"
         disabled={disabled}
         id={id}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         onChange={(e) => onChange(e.target.value)}
         rows={4}
         value={value}
@@ -203,8 +252,10 @@ function DateControl(props: {
   id?: string
   placeholder: string
   clearLabel: string
+  ariaDescribedBy?: string
+  ariaInvalid?: boolean
 }) {
-  const { value, onChange, disabled, id, placeholder, clearLabel } = props
+  const { value, onChange, disabled, id, placeholder, clearLabel, ariaDescribedBy, ariaInvalid } = props
   const [open, setOpen] = useState(false)
   const selected = useMemo(() => safeParseISO(value), [value])
   const label = selected ? format(selected, "yyyy-MM-dd") : ""
@@ -214,6 +265,8 @@ function DateControl(props: {
       <PopoverTrigger asChild>
         <Button
           aria-label={placeholder}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           className="w-full justify-start font-normal"
           data-empty={!selected}
           disabled={disabled}
@@ -270,8 +323,10 @@ function DateTimeControl(props: {
   placeholder: string
   timeLabel: string
   clearLabel: string
+  ariaDescribedBy?: string
+  ariaInvalid?: boolean
 }) {
-  const { value, onChange, disabled, id, placeholder, timeLabel, clearLabel } = props
+  const { value, onChange, disabled, id, placeholder, timeLabel, clearLabel, ariaDescribedBy, ariaInvalid } = props
   const [open, setOpen] = useState(false)
   // 拆出日期段（本地日历用）和时间段（time input 用），都基于本地时区展示。
   const parsed = useMemo(() => safeParseISO(value), [value])
@@ -309,6 +364,8 @@ function DateTimeControl(props: {
           <PopoverTrigger asChild>
             <Button
               aria-label={placeholder}
+              aria-describedby={ariaDescribedBy}
+              aria-invalid={ariaInvalid}
               className="flex-1 justify-start font-normal"
               data-empty={!parsed}
               disabled={disabled}

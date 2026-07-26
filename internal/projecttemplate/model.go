@@ -5,7 +5,10 @@ import (
 	"errors"
 )
 
-const SnapshotSchemaV1 = "xuanchu.project-template-snapshot/v1"
+const (
+	SnapshotSchemaV1 = "xuanchu.project-template-snapshot/v1"
+	SnapshotSchemaV2 = "xuanchu.project-template-snapshot/v2"
+)
 
 type SnapshotV1 struct {
 	Schema      string                  `json:"schema"`
@@ -16,8 +19,6 @@ type SnapshotV1 struct {
 	Series      []SeriesBlueprintV1     `json:"series"`
 	Automations []AutomationBlueprintV1 `json:"automations"`
 }
-
-type Snapshot = SnapshotV1
 
 type ProjectBlueprintV1 struct {
 	Description string `json:"description"`
@@ -67,6 +68,52 @@ type ConfigBlueprintV1 struct {
 	SecretCiphertext *string `json:"secret_ciphertext,omitempty"`
 }
 
+// SnapshotV2 在不可变快照中增加项目创建时的配置输入声明。
+// 其余 blueprint 使用独立命名类型，避免把持久协议偷换为 V1 alias。
+type SnapshotV2 struct {
+	Schema      string                  `json:"schema"`
+	AnchorDate  string                  `json:"anchor_date"`
+	Project     ProjectBlueprintV2      `json:"project"`
+	Configs     []ConfigBlueprintV2     `json:"configs"`
+	Tasks       []TaskBlueprintV2       `json:"tasks"`
+	Series      []SeriesBlueprintV2     `json:"series"`
+	Automations []AutomationBlueprintV2 `json:"automations"`
+}
+
+type ProjectBlueprintV2 ProjectBlueprintV1
+
+type ConfigPromptV2 struct {
+	Required bool `json:"required"`
+}
+
+type ConfigBlueprintV2 struct {
+	Key              string          `json:"key"`
+	Mode             string          `json:"mode"`
+	Value            *string         `json:"value,omitempty"`
+	SecretCiphertext *string         `json:"secret_ciphertext,omitempty"`
+	Prompt           *ConfigPromptV2 `json:"prompt,omitempty"`
+}
+
+// Snapshot 是所有已支持持久版本升级后的 App 内部模型。
+// Schema 保留来源版本，便于兼容 v1 secret_input 的既有语义。
+type Snapshot struct {
+	Schema      string                  `json:"schema"`
+	AnchorDate  string                  `json:"anchor_date"`
+	Project     ProjectBlueprintV1      `json:"project"`
+	Configs     []ConfigBlueprint       `json:"configs"`
+	Tasks       []TaskBlueprintV1       `json:"tasks"`
+	Series      []SeriesBlueprintV1     `json:"series"`
+	Automations []AutomationBlueprintV1 `json:"automations"`
+}
+
+type ConfigBlueprint struct {
+	Key              string
+	Mode             string
+	Value            *string
+	SecretCiphertext *string
+	Prompt           *ConfigPromptV2
+}
+
 type SeriesBlueprintV1 struct {
 	Ref            string                    `json:"ref"`
 	Title          string                    `json:"title"`
@@ -79,6 +126,10 @@ type SeriesBlueprintV1 struct {
 	FirstDue       RelativeLocalTimeV1       `json:"first_due"`
 	Until          *RelativeLocalTimeV1      `json:"until,omitempty"`
 }
+
+type TaskBlueprintV2 TaskBlueprintV1
+
+type SeriesBlueprintV2 SeriesBlueprintV1
 
 // AutomationTriggerV1 与公开自动化规则的触发字段等价，但属于持久快照契约。
 type AutomationTriggerV1 struct {
@@ -122,6 +173,8 @@ type AutomationBlueprintV1 struct {
 	InstructionTemplate string                `json:"instruction_template"`
 	SystemPrompt        string                `json:"system_prompt,omitempty"`
 }
+
+type AutomationBlueprintV2 AutomationBlueprintV1
 
 type Limits struct {
 	MaxTasks, MaxSeries, MaxConfigs, MaxAutomations int

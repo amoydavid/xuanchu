@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { getHome } from "@/features/workspace/home/home-api"
+import { ConfigValueControl } from "@/features/workspace/config/config-value-control"
 import {
   listWorkspaceMembers,
   type WorkspaceMemberRow,
@@ -51,6 +52,7 @@ import {
   type InstantiateInput,
   type InstantiatePreview,
   type ProjectTemplateIssue,
+  type ProjectTemplateConfigInput,
 } from "../api/project-template-api"
 import { canInstantiateProjectTemplate } from "../project-template-instantiation-permissions"
 import { isCurrentPreviewRevision } from "./project-template-instantiate-revision"
@@ -71,7 +73,7 @@ type ProjectTemplateInstantiateWizardProps = {
   workspaceSlug: string
 }
 
-const steps = ["选择模板", "项目信息", "处理问题", "确认创建"]
+const steps = ["选择模板", "项目与配置", "处理问题", "确认创建"]
 const PROJECT_SLUG_PATTERN = /^[a-z][a-z0-9]{2,9}$/
 const REMOVE_ASSIGNEE = "__remove__"
 const TEMPLATE_PAGE_SIZE = 20
@@ -102,6 +104,7 @@ function ProjectTemplateInstantiateWizardSession({
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [startDate, setStartDate] = useState("")
+  const [configInputs, setConfigInputs] = useState<Record<string, string>>({})
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({})
   const [assigneeReplacements, setAssigneeReplacements] = useState<
     Record<string, string | null>
@@ -119,6 +122,7 @@ function ProjectTemplateInstantiateWizardSession({
     slug?: string
     name?: string
     startDate?: string
+    configs?: Record<string, string>
   }>({})
   const initializedDescription = useRef<string | undefined>(undefined)
   const initializedStartDate = useRef(false)
@@ -186,6 +190,15 @@ function ProjectTemplateInstantiateWizardSession({
       preview?.issues.filter((issue) => issue.severity === "blocking") ?? [],
     [preview]
   )
+  const configDescriptors = useMemo(() => {
+    const versions = detailQuery.data?.versions ?? []
+    const selectedVersion = versions.find((item) => item.id === selection?.snapshotID)
+    return (
+      selectedVersion?.config_inputs ??
+      detailQuery.data?.template.current_snapshot?.config_inputs ??
+      []
+    )
+  }, [detailQuery.data, selection?.snapshotID])
 
   function invalidatePreview() {
     formRevision.current += 1
@@ -207,6 +220,7 @@ function ProjectTemplateInstantiateWizardSession({
     setSelection({ templateRef, snapshotID, snapshotHash: hash })
     initializedDescription.current = undefined
     setDescription("")
+    setConfigInputs({})
     setSecretInputs({})
     setAssigneeReplacements({})
     setPreview(undefined)
@@ -224,15 +238,38 @@ function ProjectTemplateInstantiateWizardSession({
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
       next.startDate = "请选择有效的开始日期"
     }
+    const configErrors: Record<string, string> = {}
+    for (const descriptor of configDescriptors) {
+      if (descriptor.status !== "ready") {
+        configErrors[descriptor.key] = "当前配置定义不可用，请联系工作区管理员"
+        continue
+      }
+      const value = descriptor.secret
+        ? secretInputs[descriptor.key]
+        : configInputs[descriptor.key]
+      if (descriptor.required && !value?.trim()) {
+        configErrors[descriptor.key] = "此配置为必填项"
+      }
+    }
+    if (Object.keys(configErrors).length) next.configs = configErrors
     setFieldErrors(next)
     return Object.keys(next).length === 0
   }
 
   function instantiateInput(pinned = selection): InstantiateInput | undefined {
     if (!pinned) return undefined
-    const secrets = Object.fromEntries(
-      Object.entries(secretInputs).filter(([, value]) => value !== "")
-    )
+	const promptSecretKeys = new Set(
+	  configDescriptors.filter((item) => item.secret).map((item) => item.key)
+	)
+	const configValues = Object.fromEntries([
+	  ...Object.entries(configInputs),
+	  ...Object.entries(secretInputs).filter(([key]) => promptSecretKeys.has(key)),
+	].filter(([, value]) => value.trim() !== ""))
+	const secrets = Object.fromEntries(
+	  Object.entries(secretInputs).filter(
+		([key, value]) => !promptSecretKeys.has(key) && value !== ""
+	  )
+	)
     return {
       snapshot_id: pinned.snapshotID,
       expected_snapshot_hash: pinned.snapshotHash,
@@ -240,6 +277,7 @@ function ProjectTemplateInstantiateWizardSession({
       project_name: name.trim(),
       description: description.trim(),
       start_date: startDate,
+      ...(Object.keys(configValues).length ? { config_inputs: configValues } : {}),
       ...(Object.keys(secrets).length ? { secret_inputs: secrets } : {}),
       ...(Object.keys(assigneeReplacements).length
         ? { assignee_replacements: assigneeReplacements }
@@ -251,6 +289,7 @@ function ProjectTemplateInstantiateWizardSession({
     setSelection(undefined)
     setPreview(undefined)
     setPreviewDirty(false)
+    setConfigInputs({})
     setSecretInputs({})
     setAssigneeReplacements({})
     setStep(0)
@@ -515,6 +554,9 @@ function ProjectTemplateInstantiateWizardSession({
             ) : null}
             {step === 1 ? (
               <ProjectStep
+                configDescriptors={configDescriptors}
+                configErrors={fieldErrors.configs ?? {}}
+                configInputs={configInputs}
                 description={description}
                 disabled={previewPending}
                 detailError={detailQuery.isError}
@@ -523,6 +565,18 @@ function ProjectTemplateInstantiateWizardSession({
                 name={name}
                 onDescriptionChange={(value) => {
                   setDescription(value)
+                  markPreviewDirty()
+                }}
+                onConfigChange={(descriptor, value) => {
+                  if (descriptor.secret) {
+                    setSecretInputs((current) => ({ ...current, [descriptor.key]: value }))
+                  } else {
+                    setConfigInputs((current) => ({ ...current, [descriptor.key]: value }))
+                  }
+                  setFieldErrors((current) => ({
+                    ...current,
+                    configs: { ...current.configs, [descriptor.key]: "" },
+                  }))
                   markPreviewDirty()
                 }}
                 onNameChange={(value) => {
@@ -542,6 +596,7 @@ function ProjectTemplateInstantiateWizardSession({
                 selection={selection}
                 slug={slug}
                 startDate={startDate}
+                secretInputs={secretInputs}
                 workspaceDateError={homeQuery.isError}
                 workspaceDatePending={homeQuery.isPending}
               />
@@ -596,7 +651,7 @@ function ProjectTemplateInstantiateWizardSession({
                 onClick={() => setStep(1)}
                 type="button"
               >
-                下一步：项目信息
+                下一步：项目与配置
                 <ArrowRight />
               </Button>
             ) : null}
@@ -801,12 +856,16 @@ function TemplateStep({
 }
 
 function ProjectStep({
+  configDescriptors,
+  configErrors,
+  configInputs,
   description,
   disabled,
   detailError,
   detailPending,
   fieldErrors,
   name,
+  onConfigChange,
   onDescriptionChange,
   onDetailRetry,
   onNameChange,
@@ -815,15 +874,20 @@ function ProjectStep({
   selection,
   slug,
   startDate,
+  secretInputs,
   workspaceDateError,
   workspaceDatePending,
 }: {
+  configDescriptors: ProjectTemplateConfigInput[]
+  configErrors: Record<string, string>
+  configInputs: Record<string, string>
   description: string
   disabled: boolean
   detailError: boolean
   detailPending: boolean
   fieldErrors: { slug?: string; name?: string; startDate?: string }
   name: string
+  onConfigChange: (descriptor: ProjectTemplateConfigInput, value: string) => void
   onDescriptionChange: (value: string) => void
   onDetailRetry: () => void
   onNameChange: (value: string) => void
@@ -832,6 +896,7 @@ function ProjectStep({
   selection?: ProjectTemplateInstantiateSelection
   slug: string
   startDate: string
+  secretInputs: Record<string, string>
   workspaceDateError: boolean
   workspaceDatePending: boolean
 }) {
@@ -843,7 +908,7 @@ function ProjectStep({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
         <div>
           <h2 className="font-medium" id="instantiate-project-heading">
-            设置新项目
+            设置新项目与配置
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             模板 {selection?.templateRef} · 固定 Snapshot{" "}
@@ -921,8 +986,57 @@ function ProjectStep({
           已预填 Snapshot 中的项目说明，可在创建前覆盖。
         </p>
       </Field>
+      {configDescriptors.length ? (
+        <section className="space-y-3 border-t pt-4" aria-labelledby="instantiate-config-heading">
+          <div>
+            <h3 className="font-medium" id="instantiate-config-heading">创建时填写配置</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              这些字段由当前模板版本声明；必填项必须由本次创建显式填写。
+            </p>
+          </div>
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            {configDescriptors.map((descriptor) => {
+              const id = `instantiate-config-${safeFieldID(descriptor.key)}`
+              const hintID = `${id}-hint`
+              const error = configErrors[descriptor.key]
+              const value = descriptor.secret
+                ? (secretInputs[descriptor.key] ?? "")
+                : (configInputs[descriptor.key] ?? "")
+              return (
+                <div className="min-w-0 space-y-2" key={descriptor.key}>
+                  <Label htmlFor={id}>
+                    {descriptor.label || descriptor.key}
+                    {descriptor.required ? " *" : "（选填）"}
+                  </Label>
+                  <ConfigValueControl
+                    allowEmpty
+                    allowSecretReveal={false}
+                    ariaDescribedBy={hintID}
+                    ariaInvalid={Boolean(error)}
+                    definition={descriptor}
+                    disabled={disabled || descriptor.status !== "ready"}
+                    id={id}
+                    onChange={(next) => onConfigChange(descriptor, next)}
+                    value={value}
+                  />
+                  <div id={hintID}>
+                    <p className="break-words text-xs text-muted-foreground">
+                      {descriptor.description || descriptor.key}
+                    </p>
+                    {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      ) : null}
     </section>
   )
+}
+
+function safeFieldID(key: string) {
+  return key.replace(/[^a-zA-Z0-9_-]/g, "-")
 }
 
 function Field({

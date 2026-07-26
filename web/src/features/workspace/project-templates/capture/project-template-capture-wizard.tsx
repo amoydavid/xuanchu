@@ -44,8 +44,10 @@ import {
   resolveProjectTemplateCandidateSelection,
   type CandidateKind,
   type CaptureInput,
+  type CaptureConfigPolicy,
   type CaptureIssue,
   type CapturePreview,
+  type ProjectTemplateConfig,
   type CaptureResolution,
 } from "../api/project-template-api"
 import {
@@ -112,6 +114,7 @@ function ProjectTemplateCaptureWizardSession({
   const [requiredConfigKeys, setRequiredConfigKeys] = useState<Set<string>>(
     () => new Set()
   )
+  const [configPolicies, setConfigPolicies] = useState<Record<string, CaptureConfigPolicy>>({})
   const [resolution, setResolution] = useState<CaptureResolution>({})
   const [previewDirty, setPreviewDirty] = useState(false)
   const [pending, setPending] = useState(false)
@@ -280,7 +283,17 @@ function ProjectTemplateCaptureWizardSession({
     apply("automation", result.selection.automation_rule_ids)
     selectionRef.current = next
     setSelection(next)
-    setRequiredConfigKeys(new Set(requiredKeys))
+    const locked = new Set(requiredKeys)
+    setRequiredConfigKeys(locked)
+    setConfigPolicies((current) => {
+      const normalized = syncConfigPolicies(current, next.config, locked)
+      for (const key of locked) {
+        if (normalized[key]?.strategy === "prompt") {
+          normalized[key] = { key, strategy: "prompt", required: true }
+        }
+      }
+      return normalized
+    })
   }, [])
 
   const runPreview = useCallback(async () => {
@@ -293,7 +306,8 @@ function ProjectTemplateCaptureWizardSession({
         selection,
         sourceProject.slug,
         anchorDate,
-        resolution
+        resolution,
+        configPolicies
       )
       const result =
         mode === "create"
@@ -317,6 +331,7 @@ function ProjectTemplateCaptureWizardSession({
     anchorDate,
     mode,
     resolution,
+    configPolicies,
     selection,
     sourceProject.slug,
     templateRef,
@@ -329,7 +344,7 @@ function ProjectTemplateCaptureWizardSession({
     setPending(true)
     setError(undefined)
     const capture: CaptureInput = {
-      ...captureInput(selection, sourceProject.slug, anchorDate, resolution),
+      ...captureInput(selection, sourceProject.slug, anchorDate, resolution, configPolicies),
       expected_source_hash: preview.source_hash,
     }
     try {
@@ -378,6 +393,7 @@ function ProjectTemplateCaptureWizardSession({
   }, [
     anchorDate,
     canSave,
+    configPolicies,
     description,
     keyValue,
     mode,
@@ -423,6 +439,9 @@ function ProjectTemplateCaptureWizardSession({
   ) {
     const nextSelection = { ...selectionRef.current, [kind]: next }
     replaceSelection(nextSelection)
+    if (kind === "config") {
+      setConfigPolicies((current) => syncConfigPolicies(current, next, requiredConfigKeys))
+    }
     if (kind === "automation") setRequiredConfigKeys(new Set())
     setResolution((current) => sanitizeResolution(current, nextSelection))
     setPreview(undefined)
@@ -455,6 +474,7 @@ function ProjectTemplateCaptureWizardSession({
     const next = emptySelection()
     replaceSelection(next)
 	setRequiredConfigKeys(new Set())
+    setConfigPolicies({})
     setResolution((current) => sanitizeResolution(current, next))
     setPreview(undefined)
     setPreviewDirty(false)
@@ -466,6 +486,9 @@ function ProjectTemplateCaptureWizardSession({
   ) {
     if (sameSelectionMap(selectionRef.current[kind], next)) return
     replaceSelection({ ...selectionRef.current, [kind]: next })
+    if (kind === "config") {
+      setConfigPolicies((current) => syncConfigPolicies(current, next, requiredConfigKeys))
+    }
   }
 
   function handleDialogKeyDown(event: ReactKeyboardEvent) {
@@ -617,18 +640,30 @@ function ProjectTemplateCaptureWizardSession({
                 </Tabs>
               </div>
               <SelectedItemsDrawer
+                configPolicies={configPolicies}
                 lockedConfigKeys={requiredConfigKeys}
                 onClearAll={clearAllSelection}
                 onRemove={removeSelection}
+                onConfigPolicyChange={(policy) => {
+                  setConfigPolicies((current) => ({ ...current, [policy.key]: policy }))
+                  setPreview(undefined)
+                  setPreviewDirty(false)
+                }}
                 selection={selection}
               />
               <SelectedItemsSheet
+                configPolicies={configPolicies}
                 onClearAll={() => {
                   clearAllSelection()
                   setSelectedOpen(false)
                 }}
                 onOpenChange={setSelectedOpen}
                 onRemove={removeSelection}
+                onConfigPolicyChange={(policy) => {
+                  setConfigPolicies((current) => ({ ...current, [policy.key]: policy }))
+                  setPreview(undefined)
+                  setPreviewDirty(false)
+                }}
                 open={selectedOpen}
                 lockedConfigKeys={requiredConfigKeys}
                 selection={selection}
@@ -819,6 +854,7 @@ function PreviewStep({
       </div>
     )
   }
+  const configSummary = summarizeCapturedConfigs(preview.snapshot?.configs ?? [])
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-5 sm:p-8">
       <dl className="grid grid-cols-4 gap-px border bg-border">
@@ -831,6 +867,9 @@ function PreviewStep({
           </div>
         ))}
       </dl>
+      <p className="text-xs text-muted-foreground">
+        固定配置 {configSummary.fixed} · 创建时填写：必填 {configSummary.required}、选填 {configSummary.optional}
+      </p>
       {previewDirty ? (
         <Alert>
           <AlertTriangle />
@@ -877,6 +916,18 @@ function PreviewStep({
         </section>
       ) : null}
     </div>
+  )
+}
+
+function summarizeCapturedConfigs(configs: ProjectTemplateConfig[]) {
+  return configs.reduce(
+    (counts, config) => {
+      if (config.mode !== "prompt") counts.fixed += 1
+      else if (config.prompt?.required) counts.required += 1
+      else counts.optional += 1
+      return counts
+    },
+    { fixed: 0, required: 0, optional: 0 }
   )
 }
 
@@ -1143,7 +1194,8 @@ function captureInput(
   selection: CandidateSelectionStore,
   sourceProject: string,
   anchorDate: string,
-  resolution: CaptureResolution
+  resolution: CaptureResolution,
+  configPolicies: Record<string, CaptureConfigPolicy>
 ): CaptureInput {
   const input: CaptureInput = {
     source_project: sourceProject,
@@ -1154,11 +1206,37 @@ function captureInput(
       config_keys: [...selection.config.keys()].sort(),
       automation_rule_ids: [...selection.automation.keys()].sort(),
     },
+    config_policies: [...selection.config.keys()]
+      .sort()
+      .map((key) => configPolicies[key])
+      .filter((policy): policy is CaptureConfigPolicy => Boolean(policy)),
   }
   if (Object.values(resolution).some((value) => value?.length)) {
     input.resolution = resolution
   }
   return input
+}
+
+function syncConfigPolicies(
+  current: Record<string, CaptureConfigPolicy>,
+  selected: Map<string, CandidateSummary>,
+  locked: Set<string>
+) {
+  const next: Record<string, CaptureConfigPolicy> = {}
+  for (const [key, summary] of selected) {
+    const existing = current[key]
+    if (existing) {
+      next[key] = existing.strategy === "prompt" && locked.has(key)
+        ? { key, strategy: "prompt", required: true }
+        : existing
+      continue
+    }
+    const canFixed = summary.configCanFixed !== false
+    next[key] = canFixed
+      ? { key, strategy: "fixed" }
+      : { key, strategy: "prompt", required: locked.has(key) }
+  }
+  return next
 }
 
 function emptySelection(): CandidateSelectionStore {

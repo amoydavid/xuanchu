@@ -790,9 +790,12 @@ func projectTemplateCaptureRequestOpenAPISchema(requireHash bool) *huma.Schema {
 			"source_series_ref": {Type: "string"}, "first_due": relativeTime, "until": relativeTime, "clear_until": {Type: "boolean"},
 		}, Required: []string{"source_series_ref", "first_due"}}},
 	}}
+	configPolicies := &huma.Schema{Type: "array", Items: &huma.Schema{Type: "object", AdditionalProperties: false, Properties: map[string]*huma.Schema{
+		"key": {Type: "string"}, "strategy": {Type: "string", Enum: []any{"fixed", "prompt"}}, "required": {Type: "boolean"},
+	}, Required: []string{"key", "strategy"}}}
 	schema := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"source_project": {Type: "string"}, "anchor_date": {Type: "string", Format: "date"}, "selection": selection,
-		"resolution": resolution, "expected_source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
+		"config_policies": configPolicies, "resolution": resolution, "expected_source_hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`},
 	}, Required: []string{"source_project", "anchor_date", "selection"}}
 	if requireHash {
 		schema.Required = append(schema.Required, "expected_source_hash")
@@ -808,6 +811,7 @@ func projectTemplateInstantiateRequestOpenAPISchema(allowCurrentOnly bool) *huma
 		"project_name":           {Type: "string"},
 		"description":            {Type: "string", Nullable: true},
 		"start_date":             {Type: "string", Format: "date"},
+		"config_inputs":          {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
 		"secret_inputs":          {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
 		"assignee_replacements":  {Type: "object", AdditionalProperties: &huma.Schema{Type: "string", Nullable: true}},
 	}
@@ -849,8 +853,9 @@ func projectTemplateSuccessOpenAPISchema(route humaRoute) *huma.Schema {
 		case strings.HasSuffix(route.Path, "/configs"):
 			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 				"ref": {Type: "string"}, "key": {Type: "string"}, "label": {Type: "string"}, "mode": {Type: "string", Enum: []any{"literal", "secret"}},
-				"value_type": {Type: "string"}, "warning_count": {Type: "integer", Format: "int32"},
-			}, Required: []string{"ref", "key", "label", "mode", "value_type", "warning_count"}}
+				"value_type": {Type: "string"}, "secret": {Type: "boolean"}, "has_project_value": {Type: "boolean"},
+				"effective_source": {Type: "string"}, "can_fixed": {Type: "boolean"}, "warning_count": {Type: "integer", Format: "int32"},
+			}, Required: []string{"ref", "key", "label", "mode", "value_type", "secret", "has_project_value", "effective_source", "can_fixed", "warning_count"}}
 		default:
 			item = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 				"ref": {Type: "string"}, "id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string", Format: "uuid"},
@@ -897,8 +902,18 @@ func projectTemplateSnapshotSummaryOpenAPISchema() *huma.Schema {
 		"id": {Type: "string", Format: "uuid"}, "version": {Type: "integer", Format: "int64"},
 		"hash": {Type: "string", Pattern: `^[a-f0-9]{64}$`}, "source_project_id": {Type: "string", Format: "uuid"},
 		"counts": projectTemplateCountsOpenAPISchema(), "required_secret_keys": {Type: "array", Items: &huma.Schema{Type: "string"}},
-		"created_by": actorInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"},
-	}, Required: []string{"id", "version", "hash", "source_project_id", "counts", "required_secret_keys", "created_by", "created_at"}}
+		"config_inputs": {Type: "array", Items: projectTemplateConfigInputOpenAPISchema()},
+		"created_by":    actorInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"},
+	}, Required: []string{"id", "version", "hash", "source_project_id", "counts", "required_secret_keys", "config_inputs", "created_by", "created_at"}}
+}
+
+func projectTemplateConfigInputOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"key": {Type: "string"}, "label": {Type: "string"}, "description": {Type: "string"},
+		"value_type":  {Type: "string", Enum: []any{"string", "number", "boolean", "json", "date", "datetime"}},
+		"enum_values": {Type: "array", Items: &huma.Schema{Type: "string"}}, "required": {Type: "boolean"},
+		"secret": {Type: "boolean"}, "status": {Type: "string", Enum: []any{"ready", "definition_missing", "scope_invalid"}},
+	}, Required: []string{"key", "label", "description", "value_type", "enum_values", "required", "secret", "status"}}
 }
 
 func projectTemplateSummaryOpenAPISchema() *huma.Schema {
@@ -989,7 +1004,12 @@ func projectTemplateInstantiatePreviewOpenAPISchema() *huma.Schema {
 		"project": {Type: "object", Properties: map[string]*huma.Schema{
 			"slug": {Type: "string"}, "name": {Type: "string"}, "description": {Type: "string"}, "start_date": {Type: "string", Format: "date"},
 		}, Required: []string{"slug", "name", "description", "start_date"}},
-		"counts": projectTemplateCountsOpenAPISchema(),
+		"counts":        projectTemplateCountsOpenAPISchema(),
+		"config_inputs": {Type: "array", Items: projectTemplateConfigInputOpenAPISchema()},
+		"config_resolutions": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"key": {Type: "string"}, "required": {Type: "boolean"}, "secret": {Type: "boolean"},
+			"status": {Type: "string", Enum: []any{"provided", "omitted", "invalid"}},
+		}, Required: []string{"key", "required", "secret", "status"}}},
 		"secret_resolutions": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 			"key": {Type: "string"}, "resolved_from": {Type: "string", Enum: []any{"input", "workspace", "default", "missing", "template", "unavailable"}},
 		}, Required: []string{"key", "resolved_from"}}},
@@ -997,7 +1017,7 @@ func projectTemplateInstantiatePreviewOpenAPISchema() *huma.Schema {
 			"user": userInfoOpenAPISchema(), "affected_refs": {Type: "array", Items: &huma.Schema{Type: "string"}}, "resolution": {Type: "string"},
 		}, Required: []string{"user", "affected_refs", "resolution"}}},
 		"issues": issues, "warnings": issues,
-	}, Required: []string{"template", "snapshot", "project", "counts", "secret_resolutions", "assignee_issues", "issues", "warnings"}}
+	}, Required: []string{"template", "snapshot", "project", "counts", "config_inputs", "config_resolutions", "secret_resolutions", "assignee_issues", "issues", "warnings"}}
 }
 
 func defaultResponseStatus(route humaRoute) string {

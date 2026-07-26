@@ -10,14 +10,15 @@ import (
 )
 
 type projectTemplateSnapshotSummaryDTO struct {
-	ID                 string              `json:"id"`
-	Version            int64               `json:"version"`
-	Hash               string              `json:"hash"`
-	SourceProjectID    string              `json:"source_project_id"`
-	Counts             app.ComponentCounts `json:"counts"`
-	RequiredSecretKeys []string            `json:"required_secret_keys"`
-	CreatedBy          task.JSONActorInfo  `json:"created_by"`
-	CreatedAt          int64               `json:"created_at"`
+	ID                 string                               `json:"id"`
+	Version            int64                                `json:"version"`
+	Hash               string                               `json:"hash"`
+	SourceProjectID    string                               `json:"source_project_id"`
+	Counts             app.ComponentCounts                  `json:"counts"`
+	RequiredSecretKeys []string                             `json:"required_secret_keys"`
+	ConfigInputs       []app.ProjectTemplateConfigInputView `json:"config_inputs"`
+	CreatedBy          task.JSONActorInfo                   `json:"created_by"`
+	CreatedAt          int64                                `json:"created_at"`
 }
 
 type projectTemplateSummaryDTO struct {
@@ -97,6 +98,7 @@ func projectTemplatePageDTOToView(page projectTemplatePageDTO) app.ProjectTempla
 				ID: item.CurrentSnapshot.ID, Version: item.CurrentSnapshot.Version, Hash: item.CurrentSnapshot.Hash,
 				SourceProjectID: item.CurrentSnapshot.SourceProjectID, Counts: item.CurrentSnapshot.Counts,
 				RequiredSecretKeys: append([]string{}, item.CurrentSnapshot.RequiredSecretKeys...),
+				ConfigInputs:       append([]app.ProjectTemplateConfigInputView{}, item.CurrentSnapshot.ConfigInputs...),
 				CreatedBy:          task.ActorInfoFromJSON(item.CurrentSnapshot.CreatedBy), CreatedAt: item.CurrentSnapshot.CreatedAt,
 			}
 			view.CurrentSnapshot = &current

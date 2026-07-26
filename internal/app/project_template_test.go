@@ -116,6 +116,47 @@ func seedProjectTemplate(t *testing.T, svc *Service, key string, snapshot projec
 	return row
 }
 
+func seedProjectTemplateV2(t *testing.T, svc *Service, key string, snapshot projecttemplate.SnapshotV2) storage.ProjectTemplate {
+	t.Helper()
+	raw, hash, err := projecttemplate.EncodeV2(snapshot, projecttemplate.DefaultLimits)
+	if err != nil {
+		t.Fatalf("EncodeV2: %v", err)
+	}
+	now := svc.Clock().Unix()
+	userID := svc.Runtime().ActorUserID
+	template := storage.ProjectTemplate{
+		ID: uuid.NewString(), WorkspaceID: svc.Runtime().WorkspaceID, Key: key, Name: "配置输入模板", Description: "配置输入流程", Status: "active",
+		CreatedByActorType: actorTypeUser, CreatedByUserID: &userID, CreatedAt: now, ModifiedAt: now,
+	}
+	repo := storage.NewProjectTemplateRepository(svc.store.DB())
+	if err := repo.Create(template); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+	source, resolveErr := svc.ResolveProject("src")
+	sourceID := source.ID
+	if resolveErr != nil {
+		created, createErr := svc.AddProject(AddProjectInput{Slug: "src", Name: "模板来源"})
+		if createErr != nil {
+			t.Fatalf("create source project: %v", createErr)
+		}
+		sourceID = created.ID
+	}
+	if err := svc.store.Transaction(func(txStore *storage.Store) error {
+		_, appendErr := storage.NewProjectTemplateRepository(txStore.DB()).AppendSnapshotLocked(template.WorkspaceID, template.ID, storage.ProjectTemplateSnapshot{
+			ID: uuid.NewString(), SourceProjectID: sourceID, SnapshotJSON: string(raw), SnapshotHash: hash,
+			CreatedByActorType: actorTypeUser, CreatedByUserID: &userID, CreatedAt: now,
+		})
+		return appendErr
+	}); err != nil {
+		t.Fatalf("append snapshot: %v", err)
+	}
+	row, err := repo.GetByRef(template.WorkspaceID, template.ID)
+	if err != nil {
+		t.Fatalf("get template: %v", err)
+	}
+	return row
+}
+
 func runtimeCode(err error) string {
 	var runtimeErr RuntimeError
 	if errors.As(err, &runtimeErr) {

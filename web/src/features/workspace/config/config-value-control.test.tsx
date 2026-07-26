@@ -63,6 +63,19 @@ describe("ConfigValueControl", () => {
     expect(onChange).toHaveBeenCalledWith("true")
   })
 
+  it("keeps an explicit unselected state for boolean when allowEmpty is enabled", () => {
+    render(
+      <ConfigValueControl
+        allowEmpty
+        definition={def({ value_type: "boolean" })}
+        value=""
+        onChange={() => {}}
+      />
+    )
+    expect(screen.getByRole("combobox")).toBeTruthy()
+    expect(screen.queryByRole("switch")).toBeNull()
+  })
+
   it("renders a textarea for json type and shows parse error for invalid json", () => {
     const onChange = vi.fn()
     const { rerender } = render(
@@ -115,6 +128,19 @@ describe("ConfigValueControl", () => {
     await user.click(reveal)
     const input = screen.getByDisplayValue("topsecret") as HTMLInputElement
     expect(input.type).toBe("text")
+  })
+
+  it("can forbid revealing a secret for one-time template input", () => {
+    render(
+      <ConfigValueControl
+        allowSecretReveal={false}
+        definition={def({ secret: true })}
+        value="topsecret"
+        onChange={() => {}}
+      />
+    )
+    expect((screen.getByDisplayValue("topsecret") as HTMLInputElement).type).toBe("password")
+    expect(screen.queryByRole("button", { name: /reveal|显示/i })).toBeNull()
   })
 
   it("renders a date trigger showing the current date value", () => {

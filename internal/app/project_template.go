@@ -22,14 +22,15 @@ type ComponentCounts struct {
 }
 
 type ProjectTemplateSnapshotSummaryView struct {
-	ID                 string          `json:"id"`
-	Version            int64           `json:"version"`
-	Hash               string          `json:"hash"`
-	SourceProjectID    string          `json:"source_project_id"`
-	Counts             ComponentCounts `json:"counts"`
-	RequiredSecretKeys []string        `json:"required_secret_keys"`
-	CreatedBy          task.ActorInfo  `json:"created_by"`
-	CreatedAt          int64           `json:"created_at"`
+	ID                 string                           `json:"id"`
+	Version            int64                            `json:"version"`
+	Hash               string                           `json:"hash"`
+	SourceProjectID    string                           `json:"source_project_id"`
+	Counts             ComponentCounts                  `json:"counts"`
+	RequiredSecretKeys []string                         `json:"required_secret_keys"`
+	ConfigInputs       []ProjectTemplateConfigInputView `json:"config_inputs"`
+	CreatedBy          task.ActorInfo                   `json:"created_by"`
+	CreatedAt          int64                            `json:"created_at"`
 }
 
 // ProjectTemplateSummaryView 只包含元数据和当前 Snapshot 摘要，永不暴露原始 JSON。
@@ -54,9 +55,10 @@ type ProjectTemplatePage struct {
 }
 
 type ProjectTemplateConfigView struct {
-	Key   string  `json:"key"`
-	Mode  string  `json:"mode"`
-	Value *string `json:"value,omitempty"`
+	Key    string                          `json:"key"`
+	Mode   string                          `json:"mode"`
+	Value  *string                         `json:"value,omitempty"`
+	Prompt *projecttemplate.ConfigPromptV2 `json:"prompt,omitempty"`
 }
 
 type ProjectTemplateTaskView struct {
@@ -363,7 +365,7 @@ func (s *Service) projectTemplateSummaryViews(rows []storage.ProjectTemplate) ([
 	}
 	views := make([]ProjectTemplateSummaryView, 0, len(rows))
 	for _, row := range rows {
-		view, err := projectTemplateSummaryViewFromRows(row, snapshots[row.ID], users)
+		view, err := s.projectTemplateSummaryViewFromRows(row, snapshots[row.ID], users)
 		if err != nil {
 			return nil, err
 		}
@@ -380,7 +382,7 @@ func (s *Service) projectTemplateMetadataView(row storage.ProjectTemplate) (Proj
 	return ProjectTemplateView{Template: views[0]}, nil
 }
 
-func projectTemplateSummaryViewFromRows(row storage.ProjectTemplate, snapshot storage.ProjectTemplateSnapshot, users map[string]task.UserInfo) (ProjectTemplateSummaryView, error) {
+func (s *Service) projectTemplateSummaryViewFromRows(row storage.ProjectTemplate, snapshot storage.ProjectTemplateSnapshot, users map[string]task.UserInfo) (ProjectTemplateSummaryView, error) {
 	view := ProjectTemplateSummaryView{ID: row.ID, Key: row.Key, Name: row.Name, Description: row.Description, Status: row.Status, CreatedBy: actorInfoFromColumns(projectTemplateActorColumns(row), valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt, ArchivedAt: row.ArchivedAt}
 	if snapshot.ID == "" {
 		return view, nil
@@ -389,12 +391,42 @@ func projectTemplateSummaryViewFromRows(row storage.ProjectTemplate, snapshot st
 	if err != nil {
 		return ProjectTemplateSummaryView{}, err
 	}
-	view.CurrentSnapshot = projectTemplateSnapshotSummaryView(snapshot, decoded, users)
+	view.CurrentSnapshot, err = s.projectTemplateSnapshotSummaryView(snapshot, decoded, users)
+	if err != nil {
+		return ProjectTemplateSummaryView{}, err
+	}
 	return view, nil
 }
 
-func projectTemplateSnapshotSummaryView(row storage.ProjectTemplateSnapshot, decoded projecttemplate.Snapshot, users map[string]task.UserInfo) *ProjectTemplateSnapshotSummaryView {
-	return &ProjectTemplateSnapshotSummaryView{ID: row.ID, Version: row.Version, Hash: row.SnapshotHash, SourceProjectID: row.SourceProjectID, Counts: componentCounts(decoded), RequiredSecretKeys: requiredTemplateSecretKeys(decoded), CreatedBy: actorInfoFromColumns(projectTemplateSnapshotActorColumns(row), valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt}
+func (s *Service) projectTemplateSnapshotSummaryView(row storage.ProjectTemplateSnapshot, decoded projecttemplate.Snapshot, users map[string]task.UserInfo) (*ProjectTemplateSnapshotSummaryView, error) {
+	configInputs, err := s.projectTemplateConfigInputViews(decoded)
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectTemplateSnapshotSummaryView{ID: row.ID, Version: row.Version, Hash: row.SnapshotHash, SourceProjectID: row.SourceProjectID, Counts: componentCounts(decoded), RequiredSecretKeys: requiredTemplateSecretKeys(decoded), ConfigInputs: configInputs, CreatedBy: actorInfoFromColumns(projectTemplateSnapshotActorColumns(row), valueOrEmpty(row.CreatedByUserID), users), CreatedAt: row.CreatedAt}, nil
+}
+
+func (s *Service) projectTemplateConfigInputViews(snapshot projecttemplate.Snapshot) ([]ProjectTemplateConfigInputView, error) {
+	views := make([]ProjectTemplateConfigInputView, 0)
+	for _, blueprint := range snapshot.Configs {
+		if blueprint.Mode != "prompt" || blueprint.Prompt == nil {
+			continue
+		}
+		def, err := s.scopedConfigDefinition(blueprint.Key)
+		if err != nil {
+			if code, ok := IsRuntimeErrorCode(err); ok && code == "config_definition_not_found" {
+				views = append(views, ProjectTemplateConfigInputView{Key: blueprint.Key, Label: blueprint.Key, EnumValues: []string{}, Required: blueprint.Prompt.Required, Status: "definition_missing"})
+				continue
+			}
+			return nil, err
+		}
+		status := "ready"
+		if !configDefinitionAllowsScope(def, storage.ConfigScopeProject) {
+			status = "scope_invalid"
+		}
+		views = append(views, projectTemplateConfigInputView(blueprint, def, status))
+	}
+	return views, nil
 }
 
 func componentCounts(snapshot projecttemplate.Snapshot) ComponentCounts {
@@ -450,7 +482,7 @@ func (s *Service) projectTemplateDetailedView(template storage.ProjectTemplate, 
 	if err != nil {
 		return ProjectTemplateView{}, err
 	}
-	templateSummary, err := projectTemplateSummaryViewFromRows(template, snapshot, users)
+	templateSummary, err := s.projectTemplateSummaryViewFromRows(template, snapshot, users)
 	if err != nil {
 		return ProjectTemplateView{}, err
 	}
@@ -460,7 +492,11 @@ func (s *Service) projectTemplateDetailedView(template storage.ProjectTemplate, 
 		if err != nil {
 			return ProjectTemplateView{}, err
 		}
-		versionViews = append(versionViews, *projectTemplateSnapshotSummaryView(version, versionDecoded, users))
+		versionView, err := s.projectTemplateSnapshotSummaryView(version, versionDecoded, users)
+		if err != nil {
+			return ProjectTemplateView{}, err
+		}
+		versionViews = append(versionViews, *versionView)
 	}
 	return ProjectTemplateView{Template: templateSummary, Snapshot: projectTemplateSnapshotView(decoded, users), Versions: versionViews}, nil
 }
@@ -472,7 +508,7 @@ func projectTemplateSnapshotView(snapshot projecttemplate.Snapshot, users map[st
 		if config.Mode == "secret_input" || config.Mode == "secret_copy" {
 			value = nil
 		}
-		view.Configs = append(view.Configs, ProjectTemplateConfigView{Key: config.Key, Mode: config.Mode, Value: value})
+		view.Configs = append(view.Configs, ProjectTemplateConfigView{Key: config.Key, Mode: config.Mode, Value: value, Prompt: config.Prompt})
 	}
 	for _, item := range snapshot.Tasks {
 		view.Tasks = append(view.Tasks, ProjectTemplateTaskView{Ref: item.Ref, Title: item.Title, Description: item.Description, Priority: item.Priority, Tags: append([]string(nil), item.Tags...), Assignees: userInfosForIDs(item.AssigneeIDs, users), UDAs: item.UDAs, Dates: item.Dates, ParentRef: item.ParentRef, DependsRefs: append([]string(nil), item.DependsRefs...), Links: append([]projecttemplate.TaskLinkBlueprintV1(nil), item.Links...)})

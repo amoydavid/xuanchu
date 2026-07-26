@@ -110,6 +110,45 @@ async function prepareRuntime() {
     ],
     projectRoot
   )
+  for (const args of [
+    [
+      "agent.provider.api_key",
+      "type:string",
+      "scopes:workspace,project",
+      "label:模型密钥",
+      "secret:true",
+    ],
+    [
+      "template.release_region",
+      "type:string",
+      "scopes:project",
+      "label:发布区域",
+      "description:选择项目发布区域",
+      "values:cn-east-1,cn-north-1",
+    ],
+    [
+      "template.enable_review",
+      "type:boolean",
+      "scopes:project",
+      "label:启用复核",
+      "description:是否启用人工复核",
+    ],
+  ]) {
+    await runCommand(
+      binary,
+      [
+        "--db",
+        database,
+        "--workspace",
+        "local",
+        "config",
+        "schema",
+        "set",
+        ...args,
+      ],
+      projectRoot
+    )
+  }
   for (const [key, value] of [
     ["agent.provider.base_url", "https://agent.example.test"],
     ["agent.provider.api_key", "source-secret-must-not-leak"],
@@ -225,6 +264,29 @@ async function seedFixture() {
     )
   }
 
+  const configCandidates = await apiJSON(
+    "GET",
+    "/api/v1/projects/source/template-candidates/configs?workspace=local&limit=100&offset=0"
+  )
+  const configKeys = new Set(configCandidates.items.map((item) => item.key))
+  const releaseRegion = configCandidates.items.find(
+    (item) => item.key === "template.release_region"
+  )
+  const enableReview = configCandidates.items.find(
+    (item) => item.key === "template.enable_review"
+  )
+  if (
+    configCandidates.total < 13 ||
+    !configKeys.has("template.release_region") ||
+    !configKeys.has("template.enable_review") ||
+    releaseRegion?.can_fixed !== false ||
+    enableReview?.can_fixed !== false
+  ) {
+    throw new Error(
+      `fixture config candidates do not include prompt-only definitions: ${JSON.stringify(configCandidates)}`
+    )
+  }
+
   return {
     blocker,
     dependent,
@@ -275,11 +337,37 @@ async function runDesktopSmoke(browser, fixture) {
     await activateWithPointer(dialog.getByRole("tab", { name: /循环任务/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "每日模板巡检" }))
     await activateWithPointer(dialog.getByRole("tab", { name: /配置/ }))
-    const configPageCheckbox = dialog.getByRole("checkbox", {
-      name: /选择本页 4 项/,
-    })
-    await configPageCheckbox.waitFor()
-    await ensureChecked(configPageCheckbox)
+    const configSearch = dialog.getByRole("textbox", { name: "搜索配置" })
+    for (const [query, label] of [
+      ["agent.provider.allowed_hosts", "agent.provider.allowed_hosts"],
+      ["agent.provider.api_key", "模型密钥"],
+      ["agent.provider.base_url", "agent.provider.base_url"],
+      ["agent.provider.model", "agent.provider.model"],
+      ["template.release_region", "发布区域"],
+      ["template.enable_review", "启用复核"],
+    ]) {
+      await configSearch.fill(query)
+      await ensureChecked(dialog.getByRole("checkbox", { name: label }))
+    }
+    await configSearch.fill("")
+    await setSelectedConfigPolicy(
+      selectedDrawer,
+      "agent.provider.api_key",
+      "prompt",
+      true
+    )
+    await setSelectedConfigPolicy(
+      selectedDrawer,
+      "template.release_region",
+      "prompt",
+      true
+    )
+    await setSelectedConfigPolicy(
+      selectedDrawer,
+      "template.enable_review",
+      "prompt",
+      false
+    )
     await activateWithPointer(dialog.getByRole("tab", { name: /自动化/ }))
     await ensureChecked(dialog.getByRole("checkbox", { name: "模板自动化" }))
     await dialog.getByRole("button", { name: /^已选 / }).click()
@@ -305,6 +393,20 @@ async function runDesktopSmoke(browser, fixture) {
     await addReferencedTask.click()
     await dialog.getByRole("button", { name: /^(生成|重新)预览$/ }).click()
     await expectVisibleText(dialog, "没有阻断问题")
+    await expectVisibleText(
+      dialog,
+      "固定配置 3 · 创建时填写：必填 2、选填 1"
+    )
+    await dialog.getByRole("button", { name: "返回" }).click()
+    await activateWithPointer(dialog.getByRole("tab", { name: /配置/ }))
+    const lockedSecret = selectedConfigItem(
+      selectedDrawer,
+      "agent.provider.api_key"
+    ).getByRole("checkbox", { name: "必填（自动化依赖）" })
+    if (!(await lockedSecret.isChecked()) || !(await lockedSecret.isDisabled())) {
+      throw new Error("automation-dependent prompt secret was not locked required")
+    }
+    await dialog.getByRole("button", { name: /下一步/ }).click()
     await dialog.getByRole("button", { name: /下一步/ }).click()
     await dialog.getByRole("button", { name: "保存模板" }).click()
     await dialog.waitFor({ state: "detached" })
@@ -333,6 +435,30 @@ async function runDesktopSmoke(browser, fixture) {
     if (templates.items[0].current_snapshot.counts.tasks !== 52) {
       throw new Error(
         `dependency resolution did not capture 52 tasks: ${JSON.stringify(templates.items[0])}`
+      )
+    }
+    const descriptors = templates.items[0].current_snapshot.config_inputs ?? []
+    if (
+      descriptors.length !== 3 ||
+      !descriptors.some(
+        (item) =>
+          item.key === "agent.provider.api_key" &&
+          item.required === true &&
+          item.secret === true
+      ) ||
+      !descriptors.some(
+        (item) =>
+          item.key === "template.release_region" &&
+          item.required === true &&
+          item.enum_values?.includes("cn-east-1")
+      ) ||
+      !descriptors.some(
+        (item) =>
+          item.key === "template.enable_review" && item.required === false
+      )
+    ) {
+      throw new Error(
+        `template config input descriptors are wrong: ${JSON.stringify(descriptors)}`
       )
     }
     if (fixture.blocker.uuid === fixture.dependent.uuid) {
@@ -406,10 +532,25 @@ async function runInstantiationSmoke(browser) {
     await page.getByRole("button", { name: "从模板创建" }).click()
     const sheet = page.getByRole("dialog", { name: "从模板创建项目" })
     await sheet.getByRole("button", { name: /发布流程模板/ }).click()
-    await sheet.getByRole("button", { name: /下一步：项目信息/ }).click()
+    await sheet.getByRole("button", { name: /下一步：项目与配置/ }).click()
     await sheet.getByLabel("项目 Slug").fill("newlaunch")
     await sheet.getByLabel("项目名称").fill("新发布项目")
     await sheet.getByLabel("开始日期").fill("2026-08-01")
+    await sheet.getByRole("button", { name: "生成预览" }).click()
+    const requiredErrors = sheet.getByText("此配置为必填项", { exact: true })
+    if ((await requiredErrors.count()) !== 2) {
+      throw new Error(
+        `required config validation did not expose two errors:\n${await sheet.innerText()}`
+      )
+    }
+    await sheet.getByLabel(/发布区域/).click()
+    await page.getByRole("option", { name: "cn-east-1" }).click()
+    const promptSecret = "new-project-prompt-secret-must-not-leak"
+    await sheet.getByLabel(/模型密钥/).fill(promptSecret)
+    const optionalReview = sheet.getByLabel(/启用复核/)
+    if (!(await optionalReview.innerText()).includes("未选择")) {
+      throw new Error("optional boolean config did not start empty")
+    }
     await sheet.getByRole("button", { name: "生成预览" }).click()
 
     const memberResolution = sheet.getByRole("combobox", {
@@ -482,6 +623,50 @@ async function runInstantiationSmoke(browser) {
         `automation delivery/history was copied: ${JSON.stringify(deliveries)}`
       )
     }
+    const effectiveConfigs = await apiJSON(
+      "GET",
+      "/api/v1/projects/newlaunch/config/effective?workspace=local"
+    )
+    const configByKey = new Map(effectiveConfigs.map((item) => [item.key, item]))
+    if (
+      configByKey.get("template.release_region")?.source !== "project" ||
+      configByKey.get("template.release_region")?.value !== "cn-east-1"
+    ) {
+      throw new Error(
+        `required enum prompt was not written: ${JSON.stringify(configByKey.get("template.release_region"))}`
+      )
+    }
+    if (configByKey.get("template.enable_review")?.source !== "missing") {
+      throw new Error(
+        `blank optional prompt created a project row: ${JSON.stringify(configByKey.get("template.enable_review"))}`
+      )
+    }
+    if (configByKey.get("agent.provider.api_key")?.source !== "project") {
+      throw new Error(
+        `secret prompt was not written: ${JSON.stringify(configByKey.get("agent.provider.api_key"))}`
+      )
+    }
+    const storedSecret = await runCommand(
+      binary,
+      [
+        "--db",
+        database,
+        "--workspace",
+        "local",
+        "project",
+        "config",
+        "get",
+        "newlaunch",
+        "agent.provider.api_key",
+      ],
+      projectRoot
+    )
+    if (storedSecret !== promptSecret) {
+      throw new Error("secret prompt did not replace the source project secret")
+    }
+    if ((await page.locator("body").innerText()).includes(promptSecret)) {
+      throw new Error("secret prompt remained visible after project creation")
+    }
     await page.screenshot({
       fullPage: true,
       path: path.join(screenshotDir, "desktop-instantiated-project.png"),
@@ -552,6 +737,21 @@ async function expectVisibleText(root, text) {
   throw new Error(
     `cannot find visible text ${JSON.stringify(text)}\nvisible text:\n${body.slice(0, 5000)}`
   )
+}
+
+function selectedConfigItem(root, key) {
+  return root.locator("li").filter({ hasText: key })
+}
+
+async function setSelectedConfigPolicy(root, key, strategy, required) {
+  const item = selectedConfigItem(root, key)
+  await item.getByLabel("创建策略").selectOption(strategy)
+  if (strategy !== "prompt") return
+  const checkbox = item.getByRole("checkbox", { name: "必填" })
+  if ((await checkbox.isChecked()) !== required) await checkbox.click()
+  if ((await checkbox.isChecked()) !== required) {
+    throw new Error(`config policy ${key} required=${required} was not applied`)
+  }
 }
 
 async function ensureChecked(locator) {

@@ -141,7 +141,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 ### 项目模板
 
-项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project 显式配置和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。选择 automation 时，它依赖的显式项目配置会自动加入并锁定；项目级 secret 会以加密形式随快照复制，界面和接口均不显示其值。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」负责填写新项目字段、历史模板所需的 secret 与失效成员替换，并在一个事务中创建 planning Project。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
+项目模板是 workspace 内的不可变项目初始化快照。项目 Header 的「更多操作 → 另存为模板」负责从当前项目选择普通任务、循环任务、project config 和项目自动化；候选列表由服务端筛选和分页，已选清单可跨页保留。每个 config 可以固定使用当前项目值，也可以声明为创建时必填或选填；没有源项目显式值、但允许 project scope 的 ConfigDefinition 只能选择创建时填写。选择 automation 时，它依赖的配置会自动加入并锁定；若改为创建时填写，则必须为必填。固定的项目级 secret 会加密写入快照，prompt secret 只在创建请求中短暂出现，界面和接口均不回显其值。保存前会预检缺失依赖、内容引用、日期、成员和配置问题。Workspace 设置的 `/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」根据 current Snapshot 的 `config_inputs` 描述生成 typed form，并同时处理失效成员替换，在一个事务中创建 planning Project。必填 prompt 必须由本次请求显式填写，workspace 继承值或 default 不能代替；选填 prompt 留空时不创建 project config row。新任务和 Series 使用全新身份，Series 不复制 occurrence/history，自动化规则创建后保持停用，delivery 不复制。
 
 CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 Capture、Preview、详情、归档或版本治理。先用 list 取得 current Snapshot ID/hash：
 
@@ -150,7 +150,7 @@ CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 C
   project template list --q launch --limit 20 --offset 0
 ```
 
-实例化必须显式固定 list 返回的 current Snapshot。含 secret 的补充输入建议从 stdin 传入，避免进入 shell history；`assignee_replacements` 的值为替代用户引用，`null` 表示移除原指派：
+实例化必须显式固定 list 返回的 current Snapshot。先读取 `current_snapshot.config_inputs` 的字段描述，再把普通和 secret prompt 统一放进 `config_inputs`；含 secret 的输入建议从 stdin 传入，避免进入 shell history。`assignee_replacements` 的值为替代用户 ID，`null` 表示移除原指派：
 
 ```bash
 ./xuanchu --workspace local --json \
@@ -161,7 +161,8 @@ CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 C
   --input - <<'JSON'
 {
   "description": "从发布流程模板创建",
-  "secret_inputs": {
+  "config_inputs": {
+    "launch.region": "cn-east-1",
     "agent.provider.api_key": "replace-with-real-secret"
   },
   "assignee_replacements": {
@@ -172,7 +173,7 @@ CLI 只提供 active 模板的 current Snapshot 列表和实例化，不提供 C
 JSON
 ```
 
-`--input` 也接受最大 1 MiB 的 JSON 文件。新 Snapshot 的项目级 secret 以加密密文保存并由服务端直接复制；`secret_inputs` 仅兼容历史 `secret_input` 模板。响应、审计、日志和错误都不得回显明文或密文。若 current Snapshot 已变化，实例化返回 `project_template_snapshot_hash_mismatch`，必须重新 list 并由调用方确认新 ID/hash，不能自动切换版本。远程 CLI 使用同一组命令和字段，只需增加 `--server`、`--token` 与显式 `--workspace`。
+`--input` 也接受最大 1 MiB 的 JSON 文件。`config_inputs` 只能包含 Snapshot 声明的 prompt key；选填项留空时应省略。新 Snapshot 的固定项目级 secret 以加密密文保存并由服务端直接复制；`secret_inputs` 只兼容 v1 历史 `secret_input` 模板，v2 prompt secret 也必须放入 `config_inputs`。响应、Preview、审计、日志和错误都不得回显明文或密文。若 current Snapshot 已变化，实例化返回 `project_template_snapshot_hash_mismatch`，必须重新 list 并由调用方确认新 ID/hash，不能自动切换版本。新 binary 默认写 `xuanchu.project-template-snapshot/v2`；旧 binary 不支持实例化 v2 current Snapshot，回滚时必须恢复支持 v2 的 binary。远程 CLI 使用同一组命令和字段，只需增加 `--server`、`--token` 与显式 `--workspace`。
 
 普通 Console 的 `/members` 页面是 workspace 成员管理入口。owner/admin 可以搜索和筛选成员、添加已有用户或创建最小用户后加入 workspace、编辑成员 `display_name`、调整角色、移出成员；所有弹窗和危险确认都走 shadcn 组件。`/members/:userRef` 承载次级成员详情：身份快照、当前 membership、外部身份摘要、关联 token 跳转和最近成员审计。admin 只能管理非 owner 成员；owner 可以授予/降级 owner 或移出 owner，但服务端会保护最后一个 owner。member/viewer 只能查看成员名册和详情。`users.name` 仍是稳定引用名，`display_name` 只用于展示姓名；成员页修改展示姓名不会改变稳定名。浏览器 OIDC session 允许普通 `/api/v1/*` 的成员管理与 token 管理（创建/修改/吊销 PAT/Agent/tenant token）写入，但仍必须经过 CSRF、membership role 和 scope 检查，且不会因此获得 `impersonate`；token 管理动作最终仍受 app 层 `tokenManageAllowed(role)` 约束，仅 owner/admin 可执行。
 
@@ -216,6 +217,12 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 ```bash
 go test ./tests/integration -count=1
+```
+
+项目模板的真实浏览器 E2E 使用生产 Web 构建、真实 `xuanchu server` 和临时 SQLite，覆盖桌面/移动端 Capture、配置策略、required/optional typed form、secret 输入、成员替换与原子实例化；脚本结束后会关闭服务并确认端口释放：
+
+```bash
+pnpm --dir web run smoke:project-template
 ```
 
 PostgreSQL E2E 是显式 opt-in。测试会用 admin URL 创建并删除 `xuanchu_e2e_*` 临时数据库：
@@ -1116,8 +1123,8 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `project_list` | 列出当前 workspace 项目 |
 | `project_get` | 读取单个项目 |
 | `project_get_current` | 当前 project scope |
-| `project_template_list` | 列出 workspace 内 active 模板及 current Snapshot ID/hash、组件数量和必填 secret key |
-| `project_template_instantiate` | 固定 current Snapshot ID/hash 并原子创建新项目 |
+| `project_template_list` | 列出 workspace 内 active 模板及 current Snapshot ID/hash、组件数量、历史必填 secret key 和 typed `config_inputs` 描述 |
+| `project_template_instantiate` | 固定 current Snapshot ID/hash，提交 `config_inputs` 并原子创建新项目 |
 | `context_set` | 设置 active context |
 | `context_get` | 显示 active context |
 | `config_get` | 读取配置 |
@@ -1128,7 +1135,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 
 每个 tool 成功返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。MCP `structuredContent` 保存同一信封；`content[0].text` 也输出完整 JSON 字符串，方便只读取文本内容的 Agent 继续解析 `data`。
 
-项目模板 MCP 与 CLI 保持同一收窄边界：只注册 `project_template_list` 和 `project_template_instantiate`，每次都必须显式传 `workspace`，且只能实例化 list 返回的 current Snapshot。MCP 不提供 candidate、Capture、Preview、详情、修改、归档、Snapshot 追加或历史版本实例化；这些治理动作只在 Web Console 的 HTTP API 中开放。Agent 收到 hash mismatch 后应重新 list，并让调用方确认版本变化后再重试。
+项目模板 MCP 与 CLI 保持同一收窄边界：只注册 `project_template_list` 和 `project_template_instantiate`，每次都必须显式传 `workspace`，且只能实例化 list 返回的 current Snapshot。Agent 必须先按 `current_snapshot.config_inputs` 收集普通或 secret prompt，再把它们统一提交到 `config_inputs`；`secret_inputs` 只用于 v1 历史模板。MCP 不提供 candidate、Capture、Preview、详情、修改、归档、Snapshot 追加或历史版本实例化；这些治理动作只在 Web Console 的 HTTP API 中开放。Agent 收到 hash mismatch 后应重新 list，并让调用方确认版本变化后再重试。
 
 ### MCP resources
 

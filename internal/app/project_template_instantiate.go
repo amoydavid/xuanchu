@@ -64,8 +64,27 @@ type InstantiateInput struct {
 	ProjectName          string             `json:"project_name"`
 	Description          *string            `json:"description,omitempty"`
 	StartDate            string             `json:"start_date"`
+	ConfigInputs         map[string]string  `json:"config_inputs,omitempty"`
 	SecretInputs         map[string]string  `json:"secret_inputs,omitempty"`
 	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty"`
+}
+
+type ProjectTemplateConfigInputView struct {
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Description string   `json:"description"`
+	ValueType   string   `json:"value_type"`
+	EnumValues  []string `json:"enum_values"`
+	Required    bool     `json:"required"`
+	Secret      bool     `json:"secret"`
+	Status      string   `json:"status"`
+}
+
+type ConfigInputResolutionView struct {
+	Key      string `json:"key"`
+	Required bool   `json:"required"`
+	Secret   bool   `json:"secret"`
+	Status   string `json:"status"`
 }
 
 type CurrentSnapshotInstantiateInput = InstantiateInput
@@ -103,6 +122,8 @@ type InstantiatePreview struct {
 	Snapshot          ProjectTemplateSnapshotSummaryView `json:"snapshot"`
 	Project           ProjectTemplateProjectPreview      `json:"project"`
 	Counts            ComponentCounts                    `json:"counts"`
+	ConfigInputs      []ProjectTemplateConfigInputView   `json:"config_inputs"`
+	ConfigResolutions []ConfigInputResolutionView        `json:"config_resolutions"`
 	SecretResolutions []SecretResolutionView             `json:"secret_resolutions"`
 	AssigneeIssues    []AssigneeIssueView                `json:"assignee_issues"`
 	Issues            []ProjectTemplateIssue             `json:"issues"`
@@ -110,14 +131,15 @@ type InstantiatePreview struct {
 }
 
 type instantiateSnapshotSummaryWire struct {
-	ID                 string             `json:"id"`
-	Version            int64              `json:"version"`
-	Hash               string             `json:"hash"`
-	SourceProjectID    string             `json:"source_project_id"`
-	Counts             ComponentCounts    `json:"counts"`
-	RequiredSecretKeys []string           `json:"required_secret_keys"`
-	CreatedBy          task.JSONActorInfo `json:"created_by"`
-	CreatedAt          int64              `json:"created_at"`
+	ID                 string                           `json:"id"`
+	Version            int64                            `json:"version"`
+	Hash               string                           `json:"hash"`
+	SourceProjectID    string                           `json:"source_project_id"`
+	Counts             ComponentCounts                  `json:"counts"`
+	RequiredSecretKeys []string                         `json:"required_secret_keys"`
+	ConfigInputs       []ProjectTemplateConfigInputView `json:"config_inputs"`
+	CreatedBy          task.JSONActorInfo               `json:"created_by"`
+	CreatedAt          int64                            `json:"created_at"`
 }
 
 type instantiateTemplateSummaryWire struct {
@@ -135,18 +157,20 @@ type instantiateTemplateSummaryWire struct {
 
 func (preview InstantiatePreview) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		Template          instantiateTemplateSummaryWire `json:"template"`
-		Snapshot          instantiateSnapshotSummaryWire `json:"snapshot"`
-		Project           ProjectTemplateProjectPreview  `json:"project"`
-		Counts            ComponentCounts                `json:"counts"`
-		SecretResolutions []SecretResolutionView         `json:"secret_resolutions"`
-		AssigneeIssues    []AssigneeIssueView            `json:"assignee_issues"`
-		Issues            []ProjectTemplateIssue         `json:"issues"`
-		Warnings          []ProjectTemplateIssue         `json:"warnings"`
+		Template          instantiateTemplateSummaryWire   `json:"template"`
+		Snapshot          instantiateSnapshotSummaryWire   `json:"snapshot"`
+		Project           ProjectTemplateProjectPreview    `json:"project"`
+		Counts            ComponentCounts                  `json:"counts"`
+		ConfigInputs      []ProjectTemplateConfigInputView `json:"config_inputs"`
+		ConfigResolutions []ConfigInputResolutionView      `json:"config_resolutions"`
+		SecretResolutions []SecretResolutionView           `json:"secret_resolutions"`
+		AssigneeIssues    []AssigneeIssueView              `json:"assignee_issues"`
+		Issues            []ProjectTemplateIssue           `json:"issues"`
+		Warnings          []ProjectTemplateIssue           `json:"warnings"`
 	}
 	return json.Marshal(wire{
 		Template: instantiateTemplateSummaryToWire(preview.Template), Snapshot: instantiateSnapshotSummaryToWire(preview.Snapshot),
-		Project: preview.Project, Counts: preview.Counts, SecretResolutions: preview.SecretResolutions,
+		Project: preview.Project, Counts: preview.Counts, ConfigInputs: preview.ConfigInputs, ConfigResolutions: preview.ConfigResolutions, SecretResolutions: preview.SecretResolutions,
 		AssigneeIssues: preview.AssigneeIssues, Issues: preview.Issues, Warnings: preview.Warnings,
 	})
 }
@@ -166,7 +190,7 @@ func instantiateTemplateSummaryToWire(view ProjectTemplateSummaryView) instantia
 func instantiateSnapshotSummaryToWire(view ProjectTemplateSnapshotSummaryView) instantiateSnapshotSummaryWire {
 	return instantiateSnapshotSummaryWire{
 		ID: view.ID, Version: view.Version, Hash: view.Hash, SourceProjectID: view.SourceProjectID,
-		Counts: view.Counts, RequiredSecretKeys: append([]string{}, view.RequiredSecretKeys...),
+		Counts: view.Counts, RequiredSecretKeys: append([]string{}, view.RequiredSecretKeys...), ConfigInputs: nonNilConfigInputs(view.ConfigInputs),
 		CreatedBy: task.ActorInfoToJSON(view.CreatedBy), CreatedAt: view.CreatedAt,
 	}
 }
@@ -563,7 +587,7 @@ func (s *Service) buildInstantiatePlanForTemplate(template storage.ProjectTempla
 	plan.memberReplacements = memberState.replacements
 	issues = append(issues, memberIssues...)
 
-	secretViews, configIssues, appliedConfigs, err := s.planInstantiateConfigs(decoded.Configs, input.SecretInputs, plan.ConfigValues, plan.effectiveConfigValues)
+	configInputViews, configResolutionViews, secretViews, configIssues, appliedConfigs, err := s.planInstantiateConfigs(decoded.Schema, decoded.Configs, input.ConfigInputs, input.SecretInputs, plan.ConfigValues, plan.effectiveConfigValues)
 	if err != nil {
 		return instantiatePlan{}, err
 	}
@@ -595,18 +619,26 @@ func (s *Service) buildInstantiatePlanForTemplate(template storage.ProjectTempla
 	if err != nil {
 		return instantiatePlan{}, err
 	}
+	currentSummary, err := s.projectTemplateSnapshotSummaryView(currentSnapshot, currentDecoded, users)
+	if err != nil {
+		return instantiatePlan{}, err
+	}
 	templateSummary := ProjectTemplateSummaryView{
 		ID: template.ID, Key: template.Key, Name: template.Name, Description: template.Description, Status: template.Status,
-		CurrentSnapshot: projectTemplateSnapshotSummaryView(currentSnapshot, currentDecoded, users),
+		CurrentSnapshot: currentSummary,
 		CreatedBy:       actorInfoFromColumns(projectTemplateActorColumns(template), valueOrEmpty(template.CreatedByUserID), users),
 		CreatedAt:       template.CreatedAt, ModifiedAt: template.ModifiedAt, ArchivedAt: template.ArchivedAt,
 	}
-	previewSnapshot := projectTemplateSnapshotSummaryView(snapshot, decoded, users)
+	previewSnapshot, err := s.projectTemplateSnapshotSummaryView(snapshot, decoded, users)
+	if err != nil {
+		return instantiatePlan{}, err
+	}
 	counts := ComponentCounts{Configs: appliedConfigs, Tasks: len(plan.Tasks), Series: len(plan.Series), Automations: len(plan.Automations)}
 	plan.Preview = InstantiatePreview{
 		Template: templateSummary, Snapshot: *previewSnapshot,
 		Project: ProjectTemplateProjectPreview{Slug: slug, Name: name, Description: description, StartDate: strings.TrimSpace(input.StartDate)},
-		Counts:  counts, SecretResolutions: nonNilSecretResolutions(secretViews), AssigneeIssues: nonNilAssigneeIssues(assigneeViews),
+		Counts:  counts, ConfigInputs: nonNilConfigInputs(configInputViews), ConfigResolutions: nonNilConfigInputResolutions(configResolutionViews),
+		SecretResolutions: nonNilSecretResolutions(secretViews), AssigneeIssues: nonNilAssigneeIssues(assigneeViews),
 		Issues: nonNilProjectTemplateIssues(issues), Warnings: []ProjectTemplateIssue{},
 	}
 	return plan, nil
@@ -832,19 +864,71 @@ func mentionedUserIDs(description *string) []string {
 	return ids
 }
 
-func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlueprintV1, secretInputs map[string]string, projectValues, effectiveValues map[string]string) ([]SecretResolutionView, []ProjectTemplateIssue, int, error) {
+func (s *Service) planInstantiateConfigs(
+	snapshotSchema string,
+	blueprints []projecttemplate.ConfigBlueprint,
+	configInputs map[string]string,
+	secretInputs map[string]string,
+	projectValues map[string]string,
+	effectiveValues map[string]string,
+) ([]ProjectTemplateConfigInputView, []ConfigInputResolutionView, []SecretResolutionView, []ProjectTemplateIssue, int, error) {
+	configViews := []ProjectTemplateConfigInputView{}
+	configResolutions := []ConfigInputResolutionView{}
 	secretViews := []SecretResolutionView{}
 	issues := []ProjectTemplateIssue{}
 	applied := 0
+	allowedConfigInputs := map[string]bool{}
 	allowedSecretInputs := map[string]bool{}
 	for _, blueprint := range blueprints {
 		def, err := s.scopedConfigDefinition(blueprint.Key)
 		if err != nil {
+			if blueprint.Mode == "prompt" && blueprint.Prompt != nil {
+				allowedConfigInputs[blueprint.Key] = true
+				configViews = append(configViews, ProjectTemplateConfigInputView{
+					Key: blueprint.Key, Label: blueprint.Key, EnumValues: []string{}, Required: blueprint.Prompt.Required, Status: "definition_missing",
+				})
+				configResolutions = append(configResolutions, ConfigInputResolutionView{Key: blueprint.Key, Required: blueprint.Prompt.Required, Status: "invalid"})
+			}
 			issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "definition", "config definition is unavailable"))
 			continue
 		}
 		if !configDefinitionAllowsScope(def, storage.ConfigScopeProject) {
+			if blueprint.Mode == "prompt" && blueprint.Prompt != nil {
+				allowedConfigInputs[blueprint.Key] = true
+				configViews = append(configViews, projectTemplateConfigInputView(blueprint, def, "scope_invalid"))
+				configResolutions = append(configResolutions, ConfigInputResolutionView{Key: blueprint.Key, Required: blueprint.Prompt.Required, Secret: def.Secret, Status: "invalid"})
+			}
 			issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "scope", "config no longer allows project scope"))
+			continue
+		}
+		if blueprint.Mode == "prompt" {
+			if blueprint.Prompt == nil {
+				issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "mode", "prompt config is missing its input policy"))
+				continue
+			}
+			allowedConfigInputs[blueprint.Key] = true
+			configViews = append(configViews, projectTemplateConfigInputView(blueprint, def, "ready"))
+			resolution := ConfigInputResolutionView{Key: blueprint.Key, Required: blueprint.Prompt.Required, Secret: def.Secret, Status: "omitted"}
+			raw, provided := configInputs[blueprint.Key]
+			if !provided || strings.TrimSpace(raw) == "" {
+				if blueprint.Prompt.Required {
+					resolution.Status = "invalid"
+					issues = append(issues, blockingTemplateIssue("project_template_config_input_required", "config", blueprint.Key, "config_inputs", "required template config input is missing"))
+				}
+				configResolutions = append(configResolutions, resolution)
+				continue
+			}
+			value, validateErr := s.validateProspectiveProjectConfigValue(def, raw)
+			if validateErr != nil {
+				resolution.Status = "invalid"
+				issues = append(issues, blockingTemplateIssue("project_template_config_input_invalid", "config", blueprint.Key, "config_inputs", "template config input is incompatible with current config schema"))
+				configResolutions = append(configResolutions, resolution)
+				continue
+			}
+			projectValues[blueprint.Key], effectiveValues[blueprint.Key] = value, value
+			resolution.Status = "provided"
+			configResolutions = append(configResolutions, resolution)
+			applied++
 			continue
 		}
 		if blueprint.Mode == "secret_copy" {
@@ -869,8 +953,7 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 			applied++
 			continue
 		}
-		secret := blueprint.Mode == "secret_input" || def.Secret
-		if secret {
+		if blueprint.Mode == "secret_input" || (snapshotSchema == projecttemplate.SnapshotSchemaV1 && def.Secret) {
 			allowedSecretInputs[blueprint.Key] = true
 			source := "missing"
 			if raw, ok := secretInputs[blueprint.Key]; ok && strings.TrimSpace(raw) != "" {
@@ -895,7 +978,7 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 			secretViews = append(secretViews, SecretResolutionView{Key: blueprint.Key, ResolvedFrom: source})
 			continue
 		}
-		if blueprint.Mode != "literal" || blueprint.Value == nil {
+		if blueprint.Mode != "literal" || blueprint.Value == nil || def.Secret {
 			issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "mode", "config blueprint mode is incompatible with current schema"))
 			continue
 		}
@@ -907,13 +990,36 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 		projectValues[blueprint.Key], effectiveValues[blueprint.Key] = value, value
 		applied++
 	}
+	for key := range configInputs {
+		if !allowedConfigInputs[key] {
+			issues = append(issues, blockingTemplateIssue("project_template_config_input_unknown", "config", key, "config_inputs", "config input does not match a template prompt"))
+		}
+		if _, conflict := secretInputs[key]; conflict {
+			issues = append(issues, blockingTemplateIssue("project_template_config_input_unknown", "config", key, "config_inputs", "config input conflicts with secret_inputs"))
+		}
+	}
 	for key := range secretInputs {
 		if !allowedSecretInputs[key] {
-			issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", key, "secret_inputs", "secret input does not match a template secret requirement"))
+			code := "project_template_config_invalid"
+			if allowedConfigInputs[key] {
+				code = "project_template_config_input_unknown"
+			}
+			issues = append(issues, blockingTemplateIssue(code, "config", key, "secret_inputs", "secret input does not match a template secret requirement"))
 		}
 	}
 	sort.Slice(secretViews, func(i, j int) bool { return secretViews[i].Key < secretViews[j].Key })
-	return secretViews, issues, applied, nil
+	return configViews, configResolutions, secretViews, issues, applied, nil
+}
+
+func projectTemplateConfigInputView(blueprint projecttemplate.ConfigBlueprint, def ConfigDefinitionView, status string) ProjectTemplateConfigInputView {
+	label := strings.TrimSpace(def.Label)
+	if label == "" {
+		label = blueprint.Key
+	}
+	return ProjectTemplateConfigInputView{
+		Key: blueprint.Key, Label: label, Description: def.Description, ValueType: def.ValueType,
+		EnumValues: append([]string{}, def.EnumValues...), Required: blueprint.Prompt.Required, Secret: def.Secret, Status: status,
+	}
 }
 
 func (s *Service) decryptProjectTemplateSecret(ciphertext *string) (string, error) {
@@ -1274,6 +1380,20 @@ func nonNilProjectTemplateIssues(items []ProjectTemplateIssue) []ProjectTemplate
 func nonNilSecretResolutions(items []SecretResolutionView) []SecretResolutionView {
 	if items == nil {
 		return []SecretResolutionView{}
+	}
+	return items
+}
+
+func nonNilConfigInputs(items []ProjectTemplateConfigInputView) []ProjectTemplateConfigInputView {
+	if items == nil {
+		return []ProjectTemplateConfigInputView{}
+	}
+	return items
+}
+
+func nonNilConfigInputResolutions(items []ConfigInputResolutionView) []ConfigInputResolutionView {
+	if items == nil {
+		return []ConfigInputResolutionView{}
 	}
 	return items
 }

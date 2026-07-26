@@ -27,6 +27,7 @@ type ProjectTemplateInstantiateInput struct {
 	ProjectName          string             `json:"project_name" jsonschema:"human-readable name for the new project"`
 	StartDate            string             `json:"start_date" jsonschema:"project start date in YYYY-MM-DD format"`
 	Description          *string            `json:"description,omitempty" jsonschema:"optional description override for the new project"`
+	ConfigInputs         map[string]string  `json:"config_inputs,omitempty" jsonschema:"values for prompt config fields declared by the current snapshot; values are never returned"`
 	SecretInputs         map[string]string  `json:"secret_inputs,omitempty" jsonschema:"secret values required by the current snapshot; values are never returned"`
 	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty" jsonschema:"source user ID to target user ID; null removes the assignee"`
 }
@@ -38,14 +39,15 @@ type ProjectTemplateToolError struct {
 }
 
 type projectTemplateSnapshotSummaryMCPView struct {
-	ID                 string              `json:"id"`
-	Version            int64               `json:"version"`
-	Hash               string              `json:"hash"`
-	SourceProjectID    string              `json:"source_project_id"`
-	Counts             app.ComponentCounts `json:"counts"`
-	RequiredSecretKeys []string            `json:"required_secret_keys"`
-	CreatedBy          task.JSONActorInfo  `json:"created_by"`
-	CreatedAt          int64               `json:"created_at"`
+	ID                 string                               `json:"id"`
+	Version            int64                                `json:"version"`
+	Hash               string                               `json:"hash"`
+	SourceProjectID    string                               `json:"source_project_id"`
+	Counts             app.ComponentCounts                  `json:"counts"`
+	RequiredSecretKeys []string                             `json:"required_secret_keys"`
+	ConfigInputs       []app.ProjectTemplateConfigInputView `json:"config_inputs"`
+	CreatedBy          task.JSONActorInfo                   `json:"created_by"`
+	CreatedAt          int64                                `json:"created_at"`
 }
 
 type projectTemplateSummaryMCPView struct {
@@ -95,7 +97,7 @@ func registerProjectTemplateTools(s *mcp.Server, opts Options) {
 		result, err := svc.InstantiateCurrentProjectTemplate(in.Template, app.CurrentSnapshotInstantiateInput{
 			SnapshotID: in.SnapshotID, ExpectedHash: in.ExpectedSnapshotHash,
 			ProjectSlug: in.ProjectSlug, ProjectName: in.ProjectName, Description: in.Description,
-			StartDate: in.StartDate, SecretInputs: in.SecretInputs, AssigneeReplacements: in.AssigneeReplacements,
+			StartDate: in.StartDate, ConfigInputs: in.ConfigInputs, SecretInputs: in.SecretInputs, AssigneeReplacements: in.AssigneeReplacements,
 		})
 		if err != nil {
 			return projectTemplateErrorWithEnvelope(err)
@@ -117,7 +119,8 @@ func projectTemplatePageForMCP(page app.ProjectTemplatePage) projectTemplatePage
 			view.CurrentSnapshot = &projectTemplateSnapshotSummaryMCPView{
 				ID: current.ID, Version: current.Version, Hash: current.Hash, SourceProjectID: current.SourceProjectID,
 				Counts: current.Counts, RequiredSecretKeys: append([]string{}, current.RequiredSecretKeys...),
-				CreatedBy: task.ActorInfoToJSON(current.CreatedBy), CreatedAt: current.CreatedAt,
+				ConfigInputs: append([]app.ProjectTemplateConfigInputView{}, current.ConfigInputs...),
+				CreatedBy:    task.ActorInfoToJSON(current.CreatedBy), CreatedAt: current.CreatedAt,
 			}
 		}
 		items = append(items, view)

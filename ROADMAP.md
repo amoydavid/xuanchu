@@ -61,6 +61,7 @@
 | v0.6.0 | 已完成 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
 | v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
+| v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed、创建时必填与创建时选填，统一 typed `config_inputs` |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -704,13 +705,33 @@ docs/superpowers/plans/2026-07-20-project-template-snapshot-implementation.md
 - definition 的 type、values、default 统一归一化；活动 Series 使用字段时，删除或不兼容修改被阻止，普通 Task 历史值继续保留。
 - Task / TaskSeries 表单改为“已选择字段 + 添加自定义字段”，Task 详情按 Workspace definition 使用 typed editor，definition-missing 历史值只读。
 - MCP `task_add` 补齐 `udas` 输入；已有 `task_get/query/modify` 已覆盖读写，因此不增加 `uda_list`、`uda_set` 等同义工具。
-- Project Template 保持严格 `xuanchu.project-template-snapshot/v1`：capture 只保存 Task / Series UDA blueprint，实例化按当前 Workspace definition 校验，缺失或不兼容时阻断且不产生半成品 Project。
+- Project Template 的 v1/v2 Snapshot 都只保存 Task / Series UDA blueprint，实例化按当前 Workspace definition 校验，缺失或不兼容时阻断且不产生半成品 Project。
 
 规格与实施计划：
 
 ```text
 docs/superpowers/specs/2026-07-23-workspace-custom-fields-design.md
 docs/superpowers/plans/2026-07-23-workspace-custom-fields-implementation.md
+```
+
+## v0.6.3：项目模板配置输入
+
+**状态：已完成。**
+
+在 `xuanchu.project-template-snapshot/v2` 中为每个已选 project config 固化取值策略：`fixed`、创建时必填 prompt 或创建时选填 prompt。规则属于不可变 Snapshot 并进入 canonical hash，不新增模板子表或数据库列；v1 Snapshot 的 literal、secret_copy、secret_input 语义继续兼容。
+
+- Capture 候选从 project-scoped ConfigDefinition 出发：有源项目显式 row 的字段可 fixed 或 prompt，无显式 row 的字段只能 prompt；automation 依赖的 prompt 强制必填。
+- list/Preview 根据当前 ConfigDefinition 返回 label、description、type、enum、required、secret 和 status descriptor，不返回来源值、default 或 secret。
+- Web Console 在创建流程中复用 typed config 控件；HTTP、CLI、Remote、MCP 统一通过 `config_inputs` 提交普通与 secret prompt，`secret_inputs` 只保留给 v1 legacy Snapshot。
+- required prompt 必须由本次请求显式填写，不能被 workspace 继承值或 default 满足；optional 留空不创建 project config row，但 Snapshot 只要包含 config 就继续要求 config 写权限。
+- 项目、config、Task、Series 和 automation 继续在同一事务中创建；任何 schema 漂移、hash 漂移或后续写入失败都不留下半成品。secret 不进入 Snapshot 明文、Preview、响应、审计、日志或错误。
+- 新 binary 默认写 v2；旧 binary 遇到 v2 current Snapshot 必须明确拒绝实例化，回滚需要恢复支持 v2 的 binary。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-26-project-template-config-inputs-design.md
+docs/superpowers/plans/2026-07-26-project-template-config-inputs-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1712,4 +1733,5 @@ v0.6.0 已完成。该里程碑新增 workspace 内项目模板：用户在 Web 
 docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
 docs/superpowers/specs/2026-07-19-task-description-rich-content-attachments-mentions-design.md
 docs/superpowers/specs/2026-07-20-project-template-snapshot-design.md
+docs/superpowers/specs/2026-07-26-project-template-config-inputs-design.md
 ```

@@ -43,6 +43,7 @@ const projectTemplateCLIInputLimitBytes = 1 << 20
 
 type projectTemplateInstantiateFileInput struct {
 	Description          *string            `json:"description,omitempty"`
+	ConfigInputs         map[string]string  `json:"config_inputs,omitempty"`
 	SecretInputs         map[string]string  `json:"secret_inputs,omitempty"`
 	AssigneeReplacements map[string]*string `json:"assignee_replacements,omitempty"`
 }
@@ -135,7 +136,7 @@ func newProjectTemplateInstantiateCommand(opts Options) *cobra.Command {
 			input := app.CurrentSnapshotInstantiateInput{
 				SnapshotID: strings.TrimSpace(snapshotID), ExpectedHash: strings.TrimSpace(snapshotHash),
 				ProjectSlug: args[1], ProjectName: projectName, Description: fileInput.Description, StartDate: strings.TrimSpace(startDate),
-				SecretInputs: fileInput.SecretInputs, AssigneeReplacements: fileInput.AssigneeReplacements,
+				ConfigInputs: fileInput.ConfigInputs, SecretInputs: fileInput.SecretInputs, AssigneeReplacements: fileInput.AssigneeReplacements,
 			}
 			currentOpts := optionsFromCmd(cmd, opts)
 			var result app.InstantiateResult
@@ -225,6 +226,7 @@ func renderProjectTemplatePage(w io.Writer, asJSON bool, page app.ProjectTemplat
 					"id": item.CurrentSnapshot.ID, "version": item.CurrentSnapshot.Version, "hash": item.CurrentSnapshot.Hash,
 					"source_project_id": item.CurrentSnapshot.SourceProjectID, "counts": item.CurrentSnapshot.Counts,
 					"required_secret_keys": append([]string{}, item.CurrentSnapshot.RequiredSecretKeys...),
+					"config_inputs":        append([]app.ProjectTemplateConfigInputView{}, item.CurrentSnapshot.ConfigInputs...),
 					"created_by":           task.ActorInfoToJSON(item.CurrentSnapshot.CreatedBy), "created_at": item.CurrentSnapshot.CreatedAt,
 				}
 			}
@@ -242,9 +244,21 @@ func renderProjectTemplatePage(w io.Writer, asJSON bool, page app.ProjectTemplat
 		if len(current.RequiredSecretKeys) > 0 {
 			secrets = strings.Join(current.RequiredSecretKeys, ",")
 		}
-		fmt.Fprintf(w, "%s\t%s\tv%d\t%s\t%s\tconfigs=%d tasks=%d series=%d automations=%d\tsecrets=%s\n",
+		inputs := "-"
+		if len(current.ConfigInputs) > 0 {
+			parts := make([]string, 0, len(current.ConfigInputs))
+			for _, input := range current.ConfigInputs {
+				requirement := "optional"
+				if input.Required {
+					requirement = "required"
+				}
+				parts = append(parts, fmt.Sprintf("%s(%s)", input.Key, requirement))
+			}
+			inputs = strings.Join(parts, ",")
+		}
+		fmt.Fprintf(w, "%s\t%s\tv%d\t%s\t%s\tconfigs=%d tasks=%d series=%d automations=%d\tsecrets=%s\tinputs=%s\n",
 			item.Key, item.Name, current.Version, current.ID, current.Hash,
-			current.Counts.Configs, current.Counts.Tasks, current.Counts.Series, current.Counts.Automations, secrets)
+			current.Counts.Configs, current.Counts.Tasks, current.Counts.Series, current.Counts.Automations, secrets, inputs)
 	}
 	return nil
 }

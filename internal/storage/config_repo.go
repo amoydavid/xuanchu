@@ -39,12 +39,15 @@ type ConfigCandidateListOptions struct {
 	ProjectID   string
 	Refs        []string
 	Q           string
-	Mode        string // all|literal|secret
+	Mode        string // all|fixed_available|prompt_available|secret|non_secret；literal 兼容 non_secret
 }
 
 type ConfigCandidate struct {
-	Config     Config
-	Definition ConfigDefinition
+	Config          Config
+	Definition      ConfigDefinition
+	HasProjectValue bool
+	CanFixed        bool
+	EffectiveSource string
 }
 
 type ConfigCandidatePage struct {
@@ -170,49 +173,79 @@ func (r *ConfigRepository) ListProjectExplicitByKeys(workspaceID, projectID stri
 	return items, nil
 }
 
-// ListCandidatePage 只列出源项目显式保存的 project-scope 配置，并批量加载定义。
+// ListCandidatePage 从允许 project scope 的定义出发列候选。
+// 没有源项目显式值的定义仍可用于模板 prompt，但绝不把 workspace/default 值放进 Config。
 func (r *ConfigRepository) ListCandidatePage(opts ConfigCandidateListOptions, limit, offset int) (ConfigCandidatePage, error) {
-	base := r.db.Model(&Config{}).
-		Joins("JOIN config_definitions ON config_definitions.workspace_id = configs.workspace_id AND config_definitions.key = configs.key").
-		Where("configs.workspace_id = ? AND configs.scope = ? AND configs.scope_id = ?", opts.WorkspaceID, string(ConfigScopeProject), opts.ProjectID)
+	base := r.db.Model(&ConfigDefinition{}).
+		Where("config_definitions.workspace_id = ?", opts.WorkspaceID).
+		Where("config_definitions.allowed_scopes_json LIKE ?", `%"project"%`)
 	if len(opts.Refs) > 0 {
-		base = base.Where("configs.key IN ?", opts.Refs)
+		base = base.Where("config_definitions.key IN ?", opts.Refs)
 	}
 	if q := strings.TrimSpace(opts.Q); q != "" {
 		like := "%" + q + "%"
-		base = base.Where("(LOWER(configs.key) LIKE LOWER(?) OR LOWER(config_definitions.label) LIKE LOWER(?))", like, like)
+		base = base.Where("(LOWER(config_definitions.key) LIKE LOWER(?) OR LOWER(config_definitions.label) LIKE LOWER(?))", like, like)
 	}
 	switch opts.Mode {
 	case "secret":
 		base = base.Where("config_definitions.secret = ?", true)
-	case "literal":
+	case "literal", "non_secret":
 		base = base.Where("config_definitions.secret = ?", false)
+	case "fixed_available":
+		base = base.Where(`EXISTS (
+			SELECT 1 FROM configs
+			WHERE configs.workspace_id = config_definitions.workspace_id
+			  AND configs.scope = ? AND configs.scope_id = ?
+			  AND configs.key = config_definitions.key
+		)`, string(ConfigScopeProject), opts.ProjectID)
 	}
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return ConfigCandidatePage{}, err
 	}
-	var configs []Config
-	if err := base.Session(&gorm.Session{}).Select("configs.*").Order("configs.key ASC").Limit(limit).Offset(offset).Find(&configs).Error; err != nil {
+	var definitions []ConfigDefinition
+	if err := base.Session(&gorm.Session{}).Order("config_definitions.key ASC").Limit(limit).Offset(offset).Find(&definitions).Error; err != nil {
 		return ConfigCandidatePage{}, err
 	}
-	keys := make([]string, 0, len(configs))
-	for _, row := range configs {
+	keys := make([]string, 0, len(definitions))
+	for _, row := range definitions {
 		keys = append(keys, row.Key)
 	}
-	definitions := make(map[string]ConfigDefinition, len(keys))
+	projectConfigs := make(map[string]Config, len(keys))
+	workspaceConfigured := make(map[string]bool, len(keys))
 	if len(keys) > 0 {
-		var rows []ConfigDefinition
-		if err := r.db.Where("workspace_id = ? AND key IN ?", opts.WorkspaceID, keys).Find(&rows).Error; err != nil {
+		var rows []Config
+		if err := r.db.Where("workspace_id = ? AND key IN ? AND ((scope = ? AND scope_id = ?) OR (scope = ? AND scope_id = ?))",
+			opts.WorkspaceID, keys, string(ConfigScopeProject), opts.ProjectID, string(ConfigScopeWorkspace), opts.WorkspaceID,
+		).Find(&rows).Error; err != nil {
 			return ConfigCandidatePage{}, err
 		}
 		for _, row := range rows {
-			definitions[row.Key] = row
+			if row.Scope == string(ConfigScopeProject) {
+				projectConfigs[row.Key] = row
+			} else if row.Scope == string(ConfigScopeWorkspace) {
+				workspaceConfigured[row.Key] = true
+			}
 		}
 	}
-	items := make([]ConfigCandidate, 0, len(configs))
-	for _, row := range configs {
-		items = append(items, ConfigCandidate{Config: row, Definition: definitions[row.Key]})
+	items := make([]ConfigCandidate, 0, len(definitions))
+	for _, definition := range definitions {
+		config, hasProjectValue := projectConfigs[definition.Key]
+		if !hasProjectValue {
+			config.Key = definition.Key
+		}
+		source := "missing"
+		switch {
+		case hasProjectValue:
+			source = "project"
+		case workspaceConfigured[definition.Key]:
+			source = "workspace"
+		case definition.HasDefault:
+			source = "default"
+		}
+		items = append(items, ConfigCandidate{
+			Config: config, Definition: definition, HasProjectValue: hasProjectValue, CanFixed: hasProjectValue, EffectiveSource: source,
+		})
 	}
 	return ConfigCandidatePage{Items: items, Total: total, Limit: limit, Offset: offset}, nil
 }

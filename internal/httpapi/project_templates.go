@@ -30,6 +30,7 @@ type projectTemplateCaptureRequest struct {
 	SourceProject      string                                 `json:"source_project"`
 	AnchorDate         string                                 `json:"anchor_date"`
 	Selection          projectTemplateCaptureSelectionRequest `json:"selection"`
+	ConfigPolicies     []app.CaptureConfigPolicyInput         `json:"config_policies,omitempty"`
 	Resolution         app.CaptureResolution                  `json:"resolution,omitempty"`
 	ExpectedSourceHash string                                 `json:"expected_source_hash,omitempty"`
 }
@@ -129,14 +130,15 @@ func (req *projectTemplateResolveSelectionRequest) UnmarshalJSON(data []byte) er
 }
 
 type projectTemplateSnapshotSummaryResponse struct {
-	ID                 string              `json:"id"`
-	Version            int64               `json:"version"`
-	Hash               string              `json:"hash"`
-	SourceProjectID    string              `json:"source_project_id"`
-	Counts             app.ComponentCounts `json:"counts"`
-	RequiredSecretKeys []string            `json:"required_secret_keys"`
-	CreatedBy          task.JSONActorInfo  `json:"created_by"`
-	CreatedAt          int64               `json:"created_at"`
+	ID                 string                               `json:"id"`
+	Version            int64                                `json:"version"`
+	Hash               string                               `json:"hash"`
+	SourceProjectID    string                               `json:"source_project_id"`
+	Counts             app.ComponentCounts                  `json:"counts"`
+	RequiredSecretKeys []string                             `json:"required_secret_keys"`
+	ConfigInputs       []app.ProjectTemplateConfigInputView `json:"config_inputs"`
+	CreatedBy          task.JSONActorInfo                   `json:"created_by"`
+	CreatedAt          int64                                `json:"created_at"`
 }
 
 type projectTemplateSummaryResponse struct {
@@ -594,7 +596,7 @@ func (req projectTemplateCaptureRequest) appInput() app.CaptureInput {
 	}
 	return app.CaptureInput{
 		SourceProjectRef: req.SourceProject, AnchorDate: req.AnchorDate, Selection: selection,
-		SelectionPresence: presence, Resolution: req.Resolution, ExpectedSourceHash: req.ExpectedSourceHash,
+		SelectionPresence: presence, ConfigPolicies: append([]app.CaptureConfigPolicyInput{}, req.ConfigPolicies...), Resolution: req.Resolution, ExpectedSourceHash: req.ExpectedSourceHash,
 	}
 }
 
@@ -875,7 +877,7 @@ func projectTemplateSummaryToResponse(view app.ProjectTemplateSummaryView) proje
 func projectTemplateSnapshotSummaryToResponse(view app.ProjectTemplateSnapshotSummaryView) projectTemplateSnapshotSummaryResponse {
 	return projectTemplateSnapshotSummaryResponse{
 		ID: view.ID, Version: view.Version, Hash: view.Hash, SourceProjectID: view.SourceProjectID,
-		Counts: view.Counts, RequiredSecretKeys: append([]string{}, view.RequiredSecretKeys...),
+		Counts: view.Counts, RequiredSecretKeys: append([]string{}, view.RequiredSecretKeys...), ConfigInputs: append([]app.ProjectTemplateConfigInputView{}, view.ConfigInputs...),
 		CreatedBy: task.ActorInfoToJSON(view.CreatedBy), CreatedAt: view.CreatedAt,
 	}
 }

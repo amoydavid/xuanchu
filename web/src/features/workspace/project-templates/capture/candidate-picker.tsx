@@ -40,6 +40,9 @@ export type CandidateSummary = {
   ref: string
   secondary?: string
   secret?: boolean
+  configCanFixed?: boolean
+  configHasProjectValue?: boolean
+  configValueType?: string
 }
 
 export type CandidateSelectionStore = Record<
@@ -428,8 +431,10 @@ export function CandidatePicker({
               value={mode}
               options={[
                 ["all", "全部配置"],
-                ["literal", "普通值"],
+                ["fixed_available", "可使用当前项目值"],
+                ["prompt_available", "可在创建时填写"],
                 ["secret", "机密值"],
+                ["non_secret", "普通值"],
               ]}
             />
           </div>
@@ -734,7 +739,10 @@ export function summarizeCandidate(
         ref: item.ref,
         label: item.label || item.key,
         secondary: `${item.key} · ${item.value_type}`,
-        secret: item.mode === "secret",
+        secret: item.secret ?? item.mode === "secret",
+        configCanFixed: item.can_fixed,
+        configHasProjectValue: item.has_project_value,
+        configValueType: item.value_type,
       }
     }
     case "automation": {

@@ -45,6 +45,9 @@ func TestMCPProjectTemplateSchemasRequireExplicitWorkspaceAndCurrentSnapshot(t *
 	if got := instantiateSchema.Properties["assignee_replacements"].Description; got != "source user ID to target user ID; null removes the assignee" {
 		t.Fatalf("assignee_replacements description = %q", got)
 	}
+	if got := instantiateSchema.Properties["config_inputs"].Description; !strings.Contains(got, "prompt") {
+		t.Fatalf("config_inputs description = %q", got)
+	}
 }
 
 func TestMCPProjectTemplateSkillDocsRequireUserIDsForAssigneeReplacement(t *testing.T) {

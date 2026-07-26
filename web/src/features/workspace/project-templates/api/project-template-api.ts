@@ -53,6 +53,7 @@ export type ProjectTemplateSnapshotSummary = {
   source_project_id: string
   counts: ComponentCounts
   required_secret_keys: string[]
+  config_inputs?: ProjectTemplateConfigInput[]
   created_by: ActorInfo
   created_at: number
 }
@@ -88,6 +89,7 @@ export type ProjectTemplateConfig = {
   key: string
   mode: string
   value?: string
+  prompt?: { required: boolean }
 }
 
 export type ProjectTemplateTask = {
@@ -195,6 +197,10 @@ export type ConfigCandidate = {
   label: string
   mode: string
   value_type: string
+  secret: boolean
+  has_project_value: boolean
+  effective_source: string
+  can_fixed: boolean
   warning_count: number
 }
 
@@ -299,8 +305,15 @@ export type CaptureInput = {
   source_project: string
   anchor_date: string
   selection: CaptureSelection
+  config_policies?: CaptureConfigPolicy[]
   resolution?: CaptureResolution
   expected_source_hash?: string
+}
+
+export type CaptureConfigPolicy = {
+  key: string
+  strategy: "fixed" | "prompt"
+  required?: boolean
 }
 
 export type CreateProjectTemplateInput = {
@@ -354,8 +367,27 @@ export type InstantiateInput = {
   project_name: string
   description?: string
   start_date: string
+  config_inputs?: Record<string, string>
   secret_inputs?: Record<string, string>
   assignee_replacements?: Record<string, string | null>
+}
+
+export type ProjectTemplateConfigInput = {
+  key: string
+  label: string
+  description: string
+  value_type: string
+  enum_values: string[]
+  required: boolean
+  secret: boolean
+  status: "ready" | "definition_missing" | "scope_invalid"
+}
+
+export type ConfigInputResolution = {
+  key: string
+  required: boolean
+  secret: boolean
+  status: "provided" | "omitted" | "invalid"
 }
 
 export type SecretResolution = {
@@ -379,6 +411,8 @@ export type InstantiatePreview = {
     start_date: string
   }
   counts: ComponentCounts
+  config_inputs?: ProjectTemplateConfigInput[]
+  config_resolutions?: ConfigInputResolution[]
   secret_resolutions: SecretResolution[]
   assignee_issues: AssigneeIssue[]
   issues: ProjectTemplateIssue[]

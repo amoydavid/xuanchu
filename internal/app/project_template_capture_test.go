@@ -133,7 +133,7 @@ func TestCapturePreviewUsesCanonicalSnapshotView(t *testing.T) {
 	}
 }
 
-func TestCaptureKeepsWorkspaceUDAInStrictSnapshotV1(t *testing.T) {
+func TestCaptureKeepsWorkspaceUDAInStrictSnapshotV2(t *testing.T) {
 	svc, project := captureFixture(t)
 	if err := svc.DefineUDA("estimate", "numeric", "工作量", []string{"1", "2", "3"}, "2"); err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestCaptureKeepsWorkspaceUDAInStrictSnapshotV1(t *testing.T) {
 		t.Fatalf("UDA blueprint=%#v", blueprint)
 	}
 	input.ExpectedSourceHash = preview.SourceHash
-	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "uda-v1", Name: "UDA v1", Capture: input})
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "uda-v2", Name: "UDA v2", Capture: input})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,8 +171,8 @@ func TestCaptureKeepsWorkspaceUDAInStrictSnapshotV1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Schema != projecttemplate.SnapshotSchemaV1 {
-		t.Fatalf("schema=%q, want %q", snapshot.Schema, projecttemplate.SnapshotSchemaV1)
+	if snapshot.Schema != projecttemplate.SnapshotSchemaV2 {
+		t.Fatalf("schema=%q, want %q", snapshot.Schema, projecttemplate.SnapshotSchemaV2)
 	}
 	blueprint = snapshot.Tasks[0].UDAs["estimate"]
 	if blueprint.Raw != "3" || blueprint.Type != "numeric" {
@@ -266,6 +266,148 @@ func TestCaptureConfigLiteralUsesValidatedNormalizedValueAndStableHash(t *testin
 	}
 	if string(mustJSON(after.Snapshot)) != string(mustJSON(before.Snapshot)) {
 		t.Fatalf("normalized snapshots differ: before=%s after=%s", mustJSON(before.Snapshot), mustJSON(after.Snapshot))
+	}
+}
+
+func TestCaptureConfigPoliciesWriteSnapshotV2WithoutPromptSourceValues(t *testing.T) {
+	svc, project := captureFixture(t)
+	definitions := []ConfigSchemaInput{
+		{Key: "capture.fixed", ValueType: "string", AllowedScopes: []string{"project"}, Label: "固定配置"},
+		{Key: "capture.required", ValueType: "string", AllowedScopes: []string{"project"}, Label: "必填配置"},
+		{Key: "capture.optional", ValueType: "string", AllowedScopes: []string{"project"}, Label: "选填配置"},
+		{Key: "capture.secret_prompt", ValueType: "string", AllowedScopes: []string{"project"}, Label: "机密输入", Secret: true},
+	}
+	for _, definition := range definitions {
+		if err := svc.ConfigSchemaSet(definition); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for key, value := range map[string]string{
+		"capture.fixed": "copy-me", "capture.secret_prompt": "must-not-enter-snapshot",
+	} {
+		if err := svc.ProjectConfigSet(project.ID, key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{ConfigKeys: []string{
+		"capture.fixed", "capture.required", "capture.optional", "capture.secret_prompt",
+	}})
+	input.ConfigPolicies = []CaptureConfigPolicyInput{
+		{Key: "capture.required", Strategy: "prompt", Required: true},
+		{Key: "capture.optional", Strategy: "prompt"},
+		{Key: "capture.secret_prompt", Strategy: "prompt", Required: true},
+	}
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Snapshot == nil || len(preview.Snapshot.Configs) != 4 {
+		t.Fatalf("preview = %#v", preview)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "config-prompts", Name: "配置输入", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	template, err := svc.resolveProjectTemplate(created.Template.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := svc.projectTemplateSnapshot(template, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(row.SnapshotJSON, "must-not-enter-snapshot") {
+		t.Fatalf("prompt source leaked: %s", row.SnapshotJSON)
+	}
+	decoded, err := projecttemplate.Decode([]byte(row.SnapshotJSON), projecttemplate.DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Schema != projecttemplate.SnapshotSchemaV2 {
+		t.Fatalf("schema = %q", decoded.Schema)
+	}
+	modes := map[string]projecttemplate.ConfigBlueprint{}
+	for _, config := range decoded.Configs {
+		modes[config.Key] = config
+	}
+	if modes["capture.fixed"].Mode != "literal" || modes["capture.fixed"].Value == nil || *modes["capture.fixed"].Value != "copy-me" {
+		t.Fatalf("fixed = %#v", modes["capture.fixed"])
+	}
+	if modes["capture.required"].Prompt == nil || !modes["capture.required"].Prompt.Required || modes["capture.optional"].Prompt == nil || modes["capture.optional"].Prompt.Required {
+		t.Fatalf("prompts = %#v", modes)
+	}
+	if modes["capture.secret_prompt"].Prompt == nil || !modes["capture.secret_prompt"].Prompt.Required || modes["capture.secret_prompt"].SecretCiphertext != nil {
+		t.Fatalf("secret prompt = %#v", modes["capture.secret_prompt"])
+	}
+}
+
+func TestCaptureConfigPoliciesRejectInvalidOrMissingFixedSource(t *testing.T) {
+	svc, project := captureFixture(t)
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{Key: "capture.prompt_only", ValueType: "string", AllowedScopes: []string{"project"}}); err != nil {
+		t.Fatal(err)
+	}
+	base := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{ConfigKeys: []string{"capture.prompt_only"}})
+	tests := []struct {
+		name     string
+		policies []CaptureConfigPolicyInput
+	}{
+		{name: "missing policy defaults to unavailable fixed"},
+		{name: "fixed cannot be required", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "fixed", Required: true}}},
+		{name: "unknown strategy", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "inherit"}}},
+		{name: "duplicate", policies: []CaptureConfigPolicyInput{{Key: "capture.prompt_only", Strategy: "prompt"}, {Key: "capture.prompt_only", Strategy: "prompt"}}},
+		{name: "unselected", policies: []CaptureConfigPolicyInput{{Key: "another.key", Strategy: "prompt"}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := base
+			input.ConfigPolicies = test.policies
+			_, err := svc.PreviewProjectTemplateCapture(input)
+			if runtimeCode(err) != "project_template_config_policy_invalid" {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestCaptureAutomationDependencyPromptMustBeRequired(t *testing.T) {
+	configs := []storage.ConfigCandidate{{
+		Config:          storage.Config{Key: "agent.provider.api_key", Value: "secret"},
+		Definition:      storage.ConfigDefinition{Key: "agent.provider.api_key", Secret: true},
+		HasProjectValue: true, CanFixed: true, EffectiveSource: "project",
+	}}
+	_, err := normalizeCaptureConfigPolicies([]CaptureConfigPolicyInput{{
+		Key: "agent.provider.api_key", Strategy: "prompt", Required: false,
+	}}, configs, []string{"agent.provider.api_key"})
+	if runtimeCode(err) != "project_template_config_policy_invalid" {
+		t.Fatalf("error = %v", err)
+	}
+	policies, err := normalizeCaptureConfigPolicies([]CaptureConfigPolicyInput{{
+		Key: "agent.provider.api_key", Strategy: "prompt", Required: true,
+	}}, configs, []string{"agent.provider.api_key"})
+	if err != nil || !policies["agent.provider.api_key"].Required {
+		t.Fatalf("policies = %#v err=%v", policies, err)
+	}
+}
+
+func TestCapturePromptDefinitionDriftChangesSourceHash(t *testing.T) {
+	svc, project := captureFixture(t)
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{Key: "capture.drift", ValueType: "string", AllowedScopes: []string{"project"}, Label: "旧标签"}); err != nil {
+		t.Fatal(err)
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{ConfigKeys: []string{"capture.drift"}})
+	input.ConfigPolicies = []CaptureConfigPolicyInput{{Key: "capture.drift", Strategy: "prompt", Required: true}}
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{Key: "capture.drift", ValueType: "string", AllowedScopes: []string{"project"}, Label: "新标签"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.CreateProjectTemplate(CreateTemplateInput{Key: "definition-drift", Name: "定义漂移", Capture: input})
+	if runtimeCode(err) != "project_template_source_changed" {
+		t.Fatalf("error = %v", err)
 	}
 }
 

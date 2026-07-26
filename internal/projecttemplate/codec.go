@@ -30,6 +30,25 @@ func EncodeV1(in SnapshotV1, limits Limits) ([]byte, string, error) {
 	return raw, hex.EncodeToString(sum[:]), nil
 }
 
+func EncodeV2(in SnapshotV2, limits Limits) ([]byte, string, error) {
+	normalized, err := normalizeV2(in)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := ValidateSnapshotV2(normalized, limits); err != nil {
+		return nil, "", err
+	}
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, "", invalid(fmt.Sprintf("encode snapshot: %v", err))
+	}
+	if len(raw) > limits.MaxJSONBytes {
+		return nil, "", invalid("snapshot exceeds maximum JSON size")
+	}
+	sum := sha256.Sum256(raw)
+	return raw, hex.EncodeToString(sum[:]), nil
+}
+
 func Decode(raw []byte, limits Limits) (Snapshot, error) {
 	if len(raw) > limits.MaxJSONBytes {
 		return Snapshot{}, invalid("snapshot exceeds maximum JSON size")
@@ -47,25 +66,45 @@ func Decode(raw []byte, limits Limits) (Snapshot, error) {
 	if err := json.Unmarshal(header.Schema, &schema); err != nil {
 		return Snapshot{}, invalid("snapshot schema must be a string")
 	}
-	if schema != SnapshotSchemaV1 {
+	if schema != SnapshotSchemaV1 && schema != SnapshotSchemaV2 {
 		return Snapshot{}, Error{Code: "project_template_snapshot_schema_unsupported", Message: "snapshot schema is unsupported"}
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var snapshot SnapshotV1
-	if err := decoder.Decode(&snapshot); err != nil {
-		return Snapshot{}, invalid("decode snapshot")
+	if schema == SnapshotSchemaV1 {
+		var snapshot SnapshotV1
+		if err := decodeStrictSnapshot(raw, &snapshot); err != nil {
+			return Snapshot{}, err
+		}
+		if snapshot.Configs == nil || snapshot.Tasks == nil || snapshot.Series == nil || snapshot.Automations == nil {
+			return Snapshot{}, invalid("top-level component arrays are required")
+		}
+		if err := ValidateSnapshot(snapshot, limits); err != nil {
+			return Snapshot{}, err
+		}
+		return snapshotFromV1(snapshot), nil
 	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return Snapshot{}, invalid("snapshot contains trailing JSON")
+	var snapshot SnapshotV2
+	if err := decodeStrictSnapshot(raw, &snapshot); err != nil {
+		return Snapshot{}, err
 	}
 	if snapshot.Configs == nil || snapshot.Tasks == nil || snapshot.Series == nil || snapshot.Automations == nil {
 		return Snapshot{}, invalid("top-level component arrays are required")
 	}
-	if err := ValidateSnapshot(snapshot, limits); err != nil {
+	if err := ValidateSnapshotV2(snapshot, limits); err != nil {
 		return Snapshot{}, err
 	}
-	return snapshot, nil
+	return snapshotFromV2(snapshot), nil
+}
+
+func decodeStrictSnapshot(raw []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return invalid("decode snapshot")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return invalid("snapshot contains trailing JSON")
+	}
+	return nil
 }
 
 func normalizeV1(in SnapshotV1) (SnapshotV1, error) {
@@ -101,6 +140,146 @@ func normalizeV1(in SnapshotV1) (SnapshotV1, error) {
 	}
 	for i := range out.Automations {
 		out.Automations[i] = normalizeAutomation(out.Automations[i])
+	}
+	return out, nil
+}
+
+func normalizeV2(in SnapshotV2) (SnapshotV2, error) {
+	out := in
+	out.Schema = strings.TrimSpace(out.Schema)
+	out.AnchorDate = strings.TrimSpace(out.AnchorDate)
+	out.Project.Description = strings.TrimSpace(out.Project.Description)
+	out.Configs = append([]ConfigBlueprintV2{}, in.Configs...)
+	out.Tasks = append([]TaskBlueprintV2{}, in.Tasks...)
+	out.Series = append([]SeriesBlueprintV2{}, in.Series...)
+	out.Automations = append([]AutomationBlueprintV2{}, in.Automations...)
+
+	for i := range out.Configs {
+		out.Configs[i].Key = strings.TrimSpace(out.Configs[i].Key)
+		out.Configs[i].Mode = strings.TrimSpace(out.Configs[i].Mode)
+		out.Configs[i].Value = trimPtr(out.Configs[i].Value)
+		out.Configs[i].SecretCiphertext = trimPtr(out.Configs[i].SecretCiphertext)
+		if out.Configs[i].Prompt != nil {
+			prompt := *out.Configs[i].Prompt
+			out.Configs[i].Prompt = &prompt
+		}
+	}
+	sort.Slice(out.Configs, func(i, j int) bool { return lessConfigV2(out.Configs[i], out.Configs[j]) })
+	for i := range out.Tasks {
+		normalized, err := normalizeTask(TaskBlueprintV1(out.Tasks[i]))
+		if err != nil {
+			return SnapshotV2{}, err
+		}
+		out.Tasks[i] = TaskBlueprintV2(normalized)
+	}
+	for i := range out.Series {
+		normalized, err := normalizeSeries(SeriesBlueprintV1(out.Series[i]))
+		if err != nil {
+			return SnapshotV2{}, err
+		}
+		out.Series[i] = SeriesBlueprintV2(normalized)
+	}
+	for i := range out.Automations {
+		out.Automations[i] = AutomationBlueprintV2(normalizeAutomation(AutomationBlueprintV1(out.Automations[i])))
+	}
+	return out, nil
+}
+
+func lessConfigV2(left, right ConfigBlueprintV2) bool {
+	if left.Key != right.Key {
+		return left.Key < right.Key
+	}
+	if left.Mode != right.Mode {
+		return left.Mode < right.Mode
+	}
+	if configValue(left.Value) != configValue(right.Value) {
+		return configValue(left.Value) < configValue(right.Value)
+	}
+	if configValue(left.SecretCiphertext) != configValue(right.SecretCiphertext) {
+		return configValue(left.SecretCiphertext) < configValue(right.SecretCiphertext)
+	}
+	return promptRequired(left.Prompt) < promptRequired(right.Prompt)
+}
+
+func promptRequired(prompt *ConfigPromptV2) int {
+	if prompt == nil {
+		return -1
+	}
+	if prompt.Required {
+		return 1
+	}
+	return 0
+}
+
+func snapshotFromV1(in SnapshotV1) Snapshot {
+	out := Snapshot{
+		Schema: in.Schema, AnchorDate: in.AnchorDate, Project: in.Project,
+		Configs: make([]ConfigBlueprint, 0, len(in.Configs)),
+		Tasks:   append([]TaskBlueprintV1{}, in.Tasks...), Series: append([]SeriesBlueprintV1{}, in.Series...),
+		Automations: append([]AutomationBlueprintV1{}, in.Automations...),
+	}
+	for _, config := range in.Configs {
+		out.Configs = append(out.Configs, ConfigBlueprint{
+			Key: config.Key, Mode: config.Mode, Value: config.Value, SecretCiphertext: config.SecretCiphertext,
+		})
+	}
+	return out
+}
+
+// UpgradeV1 将 V1 持久模型显式升级为 App 使用的当前模型。
+func UpgradeV1(in SnapshotV1) Snapshot {
+	return snapshotFromV1(in)
+}
+
+func snapshotFromV2(in SnapshotV2) Snapshot {
+	out := Snapshot{
+		Schema: in.Schema, AnchorDate: in.AnchorDate, Project: ProjectBlueprintV1(in.Project),
+		Configs: make([]ConfigBlueprint, 0, len(in.Configs)), Tasks: make([]TaskBlueprintV1, 0, len(in.Tasks)),
+		Series: make([]SeriesBlueprintV1, 0, len(in.Series)), Automations: make([]AutomationBlueprintV1, 0, len(in.Automations)),
+	}
+	for _, config := range in.Configs {
+		out.Configs = append(out.Configs, ConfigBlueprint{
+			Key: config.Key, Mode: config.Mode, Value: config.Value, SecretCiphertext: config.SecretCiphertext, Prompt: config.Prompt,
+		})
+	}
+	for _, item := range in.Tasks {
+		out.Tasks = append(out.Tasks, TaskBlueprintV1(item))
+	}
+	for _, item := range in.Series {
+		out.Series = append(out.Series, SeriesBlueprintV1(item))
+	}
+	for _, item := range in.Automations {
+		out.Automations = append(out.Automations, AutomationBlueprintV1(item))
+	}
+	return out
+}
+
+// ToV2 把当前 App 模型转换为 V2 持久模型；V1 legacy mode 不能写入新快照。
+func ToV2(in Snapshot) (SnapshotV2, error) {
+	if in.Schema != SnapshotSchemaV2 {
+		return SnapshotV2{}, invalid("current snapshot schema must be v2")
+	}
+	out := SnapshotV2{
+		Schema: in.Schema, AnchorDate: in.AnchorDate, Project: ProjectBlueprintV2(in.Project),
+		Configs: make([]ConfigBlueprintV2, 0, len(in.Configs)), Tasks: make([]TaskBlueprintV2, 0, len(in.Tasks)),
+		Series: make([]SeriesBlueprintV2, 0, len(in.Series)), Automations: make([]AutomationBlueprintV2, 0, len(in.Automations)),
+	}
+	for _, config := range in.Configs {
+		if config.Mode != "literal" && config.Mode != "secret_copy" && config.Mode != "prompt" {
+			return SnapshotV2{}, invalid("current config mode cannot be encoded as v2")
+		}
+		out.Configs = append(out.Configs, ConfigBlueprintV2{
+			Key: config.Key, Mode: config.Mode, Value: config.Value, SecretCiphertext: config.SecretCiphertext, Prompt: config.Prompt,
+		})
+	}
+	for _, item := range in.Tasks {
+		out.Tasks = append(out.Tasks, TaskBlueprintV2(item))
+	}
+	for _, item := range in.Series {
+		out.Series = append(out.Series, SeriesBlueprintV2(item))
+	}
+	for _, item := range in.Automations {
+		out.Automations = append(out.Automations, AutomationBlueprintV2(item))
 	}
 	return out, nil
 }

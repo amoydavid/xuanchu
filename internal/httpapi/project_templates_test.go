@@ -23,6 +23,38 @@ func TestProjectTemplateCaptureRequiresAllSelectionArrays(t *testing.T) {
 	assertHTTPErrorCode(t, rr, http.StatusUnprocessableEntity, "project_template_selection_invalid")
 }
 
+func TestProjectTemplateRequestMapsConfigPoliciesAndInputs(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{
+		"source_project":"ops",
+		"anchor_date":"2026-07-20",
+		"selection":{"config_keys":["launch.region"],"task_refs":[],"series_refs":[],"automation_rule_ids":[]},
+		"config_policies":[{"key":"launch.region","strategy":"prompt","required":true}]
+	}`))
+	rr := httptest.NewRecorder()
+	var capture projectTemplateCaptureRequest
+	if !decodeProjectTemplateJSON(rr, req, &capture) {
+		t.Fatalf("decode capture failed: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	input := capture.appInput()
+	if len(input.ConfigPolicies) != 1 || input.ConfigPolicies[0].Key != "launch.region" || !input.ConfigPolicies[0].Required {
+		t.Fatalf("capture policies = %#v", input.ConfigPolicies)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{
+		"expected_snapshot_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"project_slug":"launch","project_name":"发布","start_date":"2026-07-20",
+		"config_inputs":{"launch.region":"cn-north"}
+	}`))
+	rr = httptest.NewRecorder()
+	var instantiate projectTemplateInstantiateRequest
+	if !decodeProjectTemplateJSON(rr, req, &instantiate) {
+		t.Fatalf("decode instantiate failed: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if instantiate.ConfigInputs["launch.region"] != "cn-north" {
+		t.Fatalf("config inputs = %#v", instantiate.ConfigInputs)
+	}
+}
+
 func TestProjectTemplateWorkspaceIsExplicit(t *testing.T) {
 	fixture := newHTTPProjectTemplateFixture(t)
 	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/project-templates", authHeader(fixture.token))
