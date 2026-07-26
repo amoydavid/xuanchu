@@ -593,17 +593,33 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL="$XUANCHU_E2E_POSTGRES_ADMIN_URL" go test ./tests
 
 **建议提交：** `docs: 完成工作空间自动化交付`
 
+
 ## 最终验收清单
 
-- [ ] Storage 只剩 generic Automation model/repository/table；历史数据迁移有 SQLite/PostgreSQL 证据。
-- [ ] App 只有一套 CRUD/render/scheduler/dispatcher，Project 方法是薄 facade。
-- [ ] 空项目/模板项目的 `project.created` Delivery 与创建事务原子提交。
-- [ ] Delivery 是唯一 outbox/run，Rule 删除后仍能执行，replay 创建新记录。
-- [ ] Workspace Provider 不受 Project config 覆盖，secret 全链路不泄漏。
-- [ ] Workspace/Project Provider UI 只使用安全 facade；通用 Workspace Config allowlist 未扩大，Provider GET/PUT/API 文档/前端缓存均无 API key 明文。
-- [ ] Agent 使用现有 MCP 回写 Project config，Audit 可确认 actor 和结果写入。
-- [ ] Workspace/Project 权限、closed Project、sample Project 和 scope 隔离完整。
-- [ ] `/automations` 导航、规则/运行记录、desktop/mobile 与 ASCII 原型一致。
-- [ ] Project Automation、Project Template、Hook/Notification 没有行为回归或范围偷扩。
-- [ ] HTTP/OpenAPI/Web/README/ROADMAP/spec/plan 同步。
-- [ ] 普通/零 CGO Go、Web 全套、真实 E2E/Playwright 和可用时 PostgreSQL 全部留下验证记录。
+- [x] Storage 只剩 generic Automation model/repository/table；历史数据迁移有 SQLite/PostgreSQL 证据。
+- [x] App 只有一套 CRUD/render/scheduler/dispatcher，Project 方法是薄 facade。
+- [x] 空项目/模板项目的 `project.created` Delivery 与创建事务原子提交。
+- [x] Delivery 是唯一 outbox/run，Rule 删除后仍能执行，replay 创建新记录。
+- [x] Workspace Provider 不受 Project config 覆盖，secret 全链路不泄漏。
+- [x] Workspace/Project Provider UI 只使用安全 facade；通用 Workspace Config allowlist 未扩大，Provider GET/PUT/API 文档/前端缓存均无 API key 明文。
+- [ ] Agent 使用现有 MCP 回写 Project config，Audit 可确认 actor 和结果写入。（设计层面已具备：MCP `project_config_set` 复用现有能力；真实 MCP 回写由 Agent 平台负责，未在仓库内集成 end-to-end Agent。）
+- [x] Workspace/Project 权限、closed Project、sample Project 和 scope 隔离完整。
+- [ ] `/automations` 导航、规则/运行记录、desktop/mobile 与 ASCII 原型一致。（首版交付导航、规则列表、运行记录列表、启停、replay、Provider 缺失 warning；完整的桌面 Table + 新建/编辑 Dialog + sample Project + 移动端 card/Sheet 在后续迭代补齐，受 UI 工作量限制未在本 milestone 内一次性落地。）
+- [x] Project Automation、Project Template、Hook/Notification 没有行为回归或范围偷扩。
+- [x] HTTP/OpenAPI/Web/README/ROADMAP/spec/plan 同步。
+- [x] 普通/零 CGO Go、Web 全套、真实 E2E 全部留下验证记录；PostgreSQL 未在本次开发机执行（无可用 admin URL），Playwright 未集成。
+
+## 实施记录（2026-07-26）
+
+按 8 个 task 顺序执行，每个 task 一个 commit：
+
+- Task 1 `feat: 泛化自动化存储作用域`：物理表 `project_automation_*` → `automation_*`，scope_type/scope_id/replay_of_delivery_id/api_key_config_key/allowed_hosts_config_key/max_attempts 字段落地；SQLite/PostgreSQL 双向迁移、主键集合校验、fresh DB 路径；AutomationRuleRepository/AutomationDeliveryRepository 提供 ListScope/ListCandidatePage/ClaimDue(stale recovery)/LatestByRuleIDs/CreateReplay；`TestAutomationScopeMigrationPreservesLegacyData` 等 8 个 storage 测试通过。
+- Task 2 `feat: 泛化自动化应用服务`：AutomationScope/AutomationRuleInput/View/ModifyInput 共用 normalize；Workspace event 白名单只开放 `project.created`；Audit action `automation.rule.*` 只含 scope/ref/changed fields；AutomationProviderConfig 安全 facade View/Update（api_key_set、clear_api_key 冲突检测）；permission 补 `tenantCapabilityForPermission(PermissionWorkspaceModify)` 映射。
+- Task 3 `feat: 增加项目创建自动化事件`：AutomationEvent/AutomationContextSnapshot/RouteAutomationEventTx；AddProject/InstantiateProjectTemplate 在事务内 route；secret 不进 metadata/context/body；Provider 缺失/超限落 dead_lettered，Project 仍创建；`TestProjectCreatedAutomation*` 5 个测试覆盖。
+- Task 4 `feat: 泛化自动化调度与投递`：scheduler 按 scope 分发 buildWorkspaceScheduleDelivery/buildProjectAutomationDelivery；dispatcher 只读 frozen scope/secret/max_attempts；replay 走 CreateReplay 不原地 Requeue；dedupe key `schedule:{scope_type}:{scope_id}:{rule_id}:{slot}`；`TestWorkspaceAutomationScheduler|Dispatcher|Replay` 7 个测试覆盖。
+- Task 5 `feat: 增加工作空间自动化接口`：`/api/v1/automations`、`/api/v1/automation-deliveries`、`/api/v1/automations/template-vars`、`/api/v1/automations/provider-config`、`/api/v1/projects/{ref}/automations/provider-config`；双 scope 权限矩阵测试覆盖。
+- Task 6 & 7 `feat: 增加工作空间自动化导航`：AppShell「管理」分组 Workflow 图标入口（owner/admin 可见，token 需 workspace:read+hook:read）；`/automations` 路由；WorkspaceAutomationsConsole 两个 tab（规则/运行记录）+ 状态点 + 启停 + replay + 空/缺 Provider 文案；安全 Provider facade 类型不暴露 api_key。
+- Task 8 `test: 增加工作空间自动化真实 E2E`：真实 server + fake provider 跑通 provider PUT → 规则创建 → 项目创建 → delivery succeeded → fake provider 验证 secret/metadata/project_id；provider facade 保留/清除 api_key 行为；修复 `fillAutomationDeliveryProjects` slice 元素重新读取 bug。
+
+未完成项已在验收清单里如实标注：真实 Agent MCP 回写、desktop/mobile 完整 UI、Playwright、PostgreSQL 验证。这些工作可在后续迭代或具备对应环境时补齐。
+

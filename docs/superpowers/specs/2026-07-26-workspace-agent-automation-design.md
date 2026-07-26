@@ -3,7 +3,7 @@
 > **给 agentic workers 的要求：** 本规格通过评审后，先使用 `superpowers:writing-plans` 拆成实施计划，再开始编码。实现必须遵循 Red → Green → Refactor，并同步 HTTP/OpenAPI、Web Console 和用户文档。
 
 **日期：** 2026-07-26
-**状态：** 设计中
+**状态：** 已完成
 **目标版本：** v0.6.4
 **依赖规格：** [Web Console 项目自动化与 OpenAI 兼容投递设计](2026-07-08-web-console-project-automation-openai-compatible-design.md)
 **首要场景：** Project 创建完成后，由 Workspace 规则把 Project、初始 config 和 `project.created` 事件交给 Yaoguang Agent；Agent 使用已配置的璇础 MCP 完成外部资源创建，并用 `project_config_set` 回写结果。

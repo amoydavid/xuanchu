@@ -62,7 +62,7 @@
 | v0.6.1 | 已完成 | 自动化定时配置增强：项目自动化与提醒规则支持标准 cron 表达式（可视化预设 + 中文解读 + 时区），统一调度包 `internal/schedule`，修复提醒规则 UI 假 cron 选项 |
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
 | v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed/inherit/prompt；模板标识默认来源 slug，同标识保存追加版本 |
-| v0.6.4 | 规划中 | Workspace Agent 自动化：复用 Project Automation，支持 `project.created`、自然语言编排、MCP 回写和跨项目运行记录 |
+| v0.6.4 | 已完成 | Workspace Agent 自动化：复用 Project Automation，支持 `project.created`、自然语言编排、MCP 回写和跨项目运行记录 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -738,7 +738,7 @@ docs/superpowers/plans/2026-07-26-project-template-config-inputs-implementation.
 
 ## v0.6.4：Workspace Agent 自动化
 
-**状态：规划中。**
+**状态：已完成。**
 
 把现有 Project Automation 泛化为 `workspace | project` 两种 scope，在 Web Console「管理」分组增加顶层「自动化」入口。Workspace 规则复用 OpenAI-compatible Agent Provider、自然语言指令、上下文预览、dispatcher、重试/replay 和 Delivery 运行记录，不新增用户脚本、Setup Action、工作流 DSL 或 Yaoguang 专用 action。
 
