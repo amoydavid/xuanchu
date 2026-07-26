@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,7 +123,7 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 			continue
 		}
 		svc := s.serviceFactory(rule.WorkspaceID)
-		delivery, err := svc.buildProjectAutomationDelivery(rule, ProjectAutomationTriggerSchedule, "", "", key, now, nil)
+		delivery, err := svc.buildAutomationScheduleDelivery(rule, key, now)
 		if err != nil {
 			return result, err
 		}
@@ -130,6 +133,97 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 		result.DeliveriesEnqueued++
 	}
 	return result, nil
+}
+
+// buildAutomationScheduleDelivery 按 rule.ScopeType 分发到 Workspace/Project 渲染路径。
+// Workspace schedule 不绑定 Project，project_id=nil，且不查询 Project/Task；
+// Project schedule 继续走 buildProjectAutomationDelivery，保留历史行为。
+func (s *Service) buildAutomationScheduleDelivery(rule storage.AutomationRule, dedupeKey string, now int64) (storage.AutomationDelivery, error) {
+	if rule.ScopeType == storage.AutomationScopeWorkspace {
+		return s.buildWorkspaceScheduleDelivery(rule, dedupeKey, now)
+	}
+	return s.buildProjectAutomationDelivery(rule, ProjectAutomationTriggerSchedule, "", "", dedupeKey, now, nil)
+}
+
+// buildWorkspaceScheduleDelivery 渲染 Workspace schedule Delivery。
+// 上下文节点只有 _xuanchu + workspace；Agent 通过 MCP 自行查询 Project/Task。
+func (s *Service) buildWorkspaceScheduleDelivery(rule storage.AutomationRule, dedupeKey string, now int64) (storage.AutomationDelivery, error) {
+	input := automationRuleInputFromRow(rule)
+	systemPrompt := input.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = defaultAutomationSystemPromptForScope(AutomationScope{Type: AutomationScopeWorkspace, ID: s.workspaceID})
+	}
+	baseURL, _, model, err := s.resolveWorkspaceAutomationProviderConfig(input.Action)
+	if err != nil {
+		return storage.AutomationDelivery{}, err
+	}
+	ws, err := s.workspaceRepo.GetByID(s.workspaceID)
+	if err != nil {
+		return storage.AutomationDelivery{}, err
+	}
+	xuanchuNode := map[string]any{
+		"automation_rule_id": rule.ID,
+		"automation_scope":   storage.AutomationScopeWorkspace,
+		"trigger_type":       ProjectAutomationTriggerSchedule,
+		"triggered_at":       now,
+	}
+	workspaceNode := map[string]any{"id": ws.ID, "slug": ws.Slug, "name": ws.Name}
+	contextNode := map[string]any{"_xuanchu": xuanchuNode, "workspace": workspaceNode}
+	body := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": renderAutomationTemplate(input.InstructionTemplate, map[string]string{
+				"workspace.id":   ws.ID,
+				"workspace.slug": ws.Slug,
+				"workspace.name": ws.Name,
+				"trigger_type":   ProjectAutomationTriggerSchedule,
+			})},
+		},
+		"temperature": input.Action.Temperature,
+		"metadata":    xuanchuNode,
+		"input":       []map[string]any{{"type": "input_json", "input_json": contextNode}},
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return storage.AutomationDelivery{}, err
+	}
+	if len(bodyBytes) > automationRequestBodyLimit {
+		return storage.AutomationDelivery{}, RuntimeError{Code: "automation_context_too_large", Message: "frozen request body exceeds limit"}
+	}
+	sum := sha256.Sum256(bodyBytes)
+	maskedHeaders := map[string][]string{
+		"Authorization": {"Bearer ****"},
+		"Content-Type":  {"application/json"},
+	}
+	headersJSON, _ := json.Marshal(maskedHeaders)
+	maxAttempts := input.Action.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	return storage.AutomationDelivery{
+		ID:                    uuid.NewString(),
+		WorkspaceID:           s.workspaceID,
+		RuleScopeType:         storage.AutomationScopeWorkspace,
+		RuleScopeID:           s.workspaceID,
+		ProjectID:             nil,
+		RuleID:                rule.ID,
+		TriggerType:           ProjectAutomationTriggerSchedule,
+		DedupeKey:             dedupeKey,
+		APIKeyConfigKey:       input.Action.APIKeyConfigKey,
+		AllowedHostsConfigKey: input.Action.AllowedHostsConfigKey,
+		MaxAttempts:           maxAttempts,
+		Status:                storage.DeliveryStatusQueued,
+		ResolvedURL:           strings.TrimRight(baseURL, "/") + "/v1/chat/completions",
+		RenderedMethod:        "POST",
+		RenderedHeadersJSON:   string(headersJSON),
+		RequestBodyJSON:       string(bodyBytes),
+		RequestBodyPreview:    truncatePreview(string(bodyBytes), 12000),
+		RequestBodyHash:       "sha256:" + hex.EncodeToString(sum[:]),
+		UsageJSON:             "{}",
+		CreatedAt:             now,
+		ModifiedAt:            now,
+	}, nil
 }
 
 // Run 以 interval 间隔循环执行 RunOnce，直到 ctx 取消。供 server 后台调度使用。
