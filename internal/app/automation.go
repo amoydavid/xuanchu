@@ -625,11 +625,11 @@ func (s *Service) requireAutomationWrite(scope AutomationScope) error {
 // appendAutomationRuleAudit 把 scope-aware audit 写入；payload 不含 prompt/body/secret。
 func (s *Service) appendAutomationRuleAudit(action string, scope AutomationScope, row storage.AutomationRule, changedFields []string) error {
 	entry := AuditEntry{
-		Action:     action,
-		TargetType: "automation_rule",
-		TargetID:   row.ID,
+		Action:      action,
+		TargetType:  "automation_rule",
+		TargetID:    row.ID,
 		WorkspaceID: &row.WorkspaceID,
-		Payload:    automationRuleAuditPayload(scope, row, changedFields...),
+		Payload:     automationRuleAuditPayload(scope, row, changedFields...),
 	}
 	if scope.Type == AutomationScopeProject {
 		projectID := row.ScopeID

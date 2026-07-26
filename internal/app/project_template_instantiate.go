@@ -440,6 +440,20 @@ func (s *Service) instantiateProjectTemplate(templateRef string, input Instantia
 		if err := tx.failProjectTemplateInstantiate("audit-write"); err != nil {
 			return nil, nil, err
 		}
+		// 所有初始化内容写完后，再在同一事务内 route project.created 事件，
+		// 保证 Agent 看到的是初始化完成后的 Project/config 上下文。
+		templateMetadata := map[string]any{
+			"source":                           "template",
+			"source_template_id":               plan.Template.ID,
+			"source_template_snapshot_id":      plan.Snapshot.ID,
+			"source_template_snapshot_hash":    plan.Snapshot.SnapshotHash,
+			"initial_task_count":               len(plan.Tasks),
+			"initial_series_count":             len(plan.Series),
+			"initial_project_automation_count": len(plan.Automations),
+		}
+		if err := tx.routeProjectCreatedAutomation(project, templateMetadata); err != nil {
+			return nil, nil, err
+		}
 		return entries, events, nil
 	})
 	if err != nil {

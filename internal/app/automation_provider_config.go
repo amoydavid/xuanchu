@@ -10,10 +10,10 @@ import (
 
 // 默认 Provider config key，按 spec §9.3。规则可保存自定义 key，但默认指向这些。
 const (
-	defaultProviderBaseURLKey     = "agent.provider.base_url"
-	defaultProviderAPIKeyKey      = "agent.provider.api_key"
-	defaultProviderModelKey       = "agent.provider.model"
-	defaultProviderProtocolKey    = "agent.provider.protocol"
+	defaultProviderBaseURLKey      = "agent.provider.base_url"
+	defaultProviderAPIKeyKey       = "agent.provider.api_key"
+	defaultProviderModelKey        = "agent.provider.model"
+	defaultProviderProtocolKey     = "agent.provider.protocol"
 	defaultProviderAllowedHostsKey = "agent.provider.allowed_hosts"
 )
 

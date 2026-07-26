@@ -128,6 +128,11 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 		if err != nil {
 			return AuditEntry{}, err
 		}
+		// 同事务内匹配 Workspace project.created 规则并冻结 Delivery，消除
+		// “Project 已提交但事件 enqueue 失败”的丢失窗口。
+		if err := tx.routeProjectCreatedAutomation(project, nil); err != nil {
+			return AuditEntry{}, err
+		}
 		created = projectViewFromRow(tx.resourceBaseURL, tx.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
 		return AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
@@ -137,6 +142,42 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 		}, nil
 	})
 	return created, err
+}
+
+// routeProjectCreatedAutomation 是 AddProject / Template Instantiate 共用的
+// project.created 事件路由入口。snapshotMetadata 由调用方按来源填充（template id/hash 等），
+// 普通空项目传 nil。事件只在事务内产生一次，重复调用因 dedupe key 唯一而安全。
+//
+// 路由失败语义见 RouteAutomationEventTx：
+//   - Provider 缺失/URL 拒绝/body 超限 -> dead_lettered Delivery，不回滚。
+//   - 内部不变量/DB 错误 -> 回滚整个 Project 创建事务。
+func (s *Service) routeProjectCreatedAutomation(project storage.Project, snapshotMetadata map[string]any) error {
+	metadata := map[string]any{"source": "empty"}
+	for k, v := range snapshotMetadata {
+		metadata[k] = v
+	}
+	if _, ok := metadata["initial_task_count"]; !ok {
+		metadata["initial_task_count"] = 0
+	}
+	if _, ok := metadata["initial_series_count"]; !ok {
+		metadata["initial_series_count"] = 0
+	}
+	if _, ok := metadata["initial_project_automation_count"]; !ok {
+		metadata["initial_project_automation_count"] = 0
+	}
+	actor := HookActorSnapshot{
+		ActorType:        s.runtime.ActorType,
+		ActorUserID:      s.runtime.ActorUserID,
+		ActorTokenID:     s.runtime.ActorTokenID,
+		ActorTokenName:   s.runtime.ActorTokenName,
+		ActorTokenPrefix: s.runtime.ActorTokenPrefix,
+	}
+	event := buildProjectCreatedAutomationEvent(project, actor, metadata, s.clock.Unix())
+	snapshot, err := s.buildProjectCreatedContextSnapshot(project)
+	if err != nil {
+		return err
+	}
+	return s.RouteAutomationEventTx(event, snapshot)
 }
 
 func (s *Service) ListProjectsByStatus(statusFilter string) ([]ProjectView, error) {
