@@ -2,6 +2,7 @@ import type React from "react"
 
 import type { PageKey } from "@/components/AppShell"
 import { AuditConsole } from "@/features/workspace/audit/audit-console"
+import { WorkspaceAutomationsConsole } from "@/features/workspace/automations/workspace-automations-page"
 import { WorkspaceConsole } from "@/features/workspace/workspaces/workspace-console"
 import {
   OutboundConsole,
@@ -35,6 +36,8 @@ export function ResourceDispatch({
   switch (page) {
     case "audit":
       return <AuditConsole workspaceSlug={workspaceSlug} />
+    case "automations":
+      return <WorkspaceAutomationsConsole workspaceSlug={workspaceSlug} />
     case "hooks":
       return (
         <OutboundConsole

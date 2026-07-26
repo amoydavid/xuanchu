@@ -13,6 +13,7 @@ export const zhCN = {
     members: "成员",
     tokens: "令牌",
     sso: "单点登录",
+    automations: "自动化",
     hooks: "Hook",
     notifications: "通知",
     audit: "审计",
@@ -761,6 +762,28 @@ export const zhCN = {
     notifications: "通知",
     audit: "审计日志",
     settings: "设置",
+    workspaceAutomations: "工作空间自动化",
+  },
+  automation: {
+    workspace: {
+      intro:
+        "工作空间自动化监听整个工作空间。只处理单个项目的规则，请进入对应项目的「自动化」。",
+    },
+    tab: { rules: "规则", deliveries: "运行记录" },
+    action: {
+      enable: "启用",
+      disable: "停用",
+      replay: "重新投递",
+    },
+    empty: {
+      rules:
+        "还没有工作空间自动化。创建规则，在项目创建或定时时让 Agent 处理工作空间任务。",
+      deliveries: "规则触发后，Agent 调用会显示在这里。",
+    },
+    lastRun: { never: "从未运行" },
+    provider: {
+      incomplete: "工作空间 Agent Provider 配置不完整，规则不会成功投递。",
+    },
   },
   audit: {
     export: "导出 CSV",

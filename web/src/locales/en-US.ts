@@ -14,6 +14,7 @@ export const enUS = {
     members: "Members",
     tokens: "Tokens",
     sso: "SSO",
+    automations: "Automations",
     hooks: "Hooks",
     notifications: "Notifications",
     audit: "Audit",
@@ -783,6 +784,29 @@ export const enUS = {
     notifications: "Notifications",
     audit: "Audit log",
     settings: "Settings",
+    workspaceAutomations: "Workspace Automations",
+  },
+  automation: {
+    workspace: {
+      intro:
+        "Workspace automations listen to the entire workspace. For project-only rules, open the project's Automations tab.",
+    },
+    tab: { rules: "Rules", deliveries: "Deliveries" },
+    action: {
+      enable: "Enable",
+      disable: "Disable",
+      replay: "Replay",
+    },
+    empty: {
+      rules:
+        "No workspace automations yet. Create a rule so Agent can handle workspace tasks on project creation or schedule.",
+      deliveries: "Agent invocations will appear here once rules fire.",
+    },
+    lastRun: { never: "never" },
+    provider: {
+      incomplete:
+        "Workspace Agent Provider config is incomplete; rules will not deliver successfully.",
+    },
   },
   audit: {
     export: "Export CSV",

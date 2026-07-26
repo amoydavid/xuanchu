@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Users,
   Webhook,
+  Workflow,
 } from "lucide-react"
 import { Link, useLocation } from "@tanstack/react-router"
 import * as React from "react"
@@ -25,6 +26,7 @@ import { useBrandName } from "@/brand/BrandContext"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
+import { canReadAutomation } from "@/features/workspace/automations/workspace-automation-permissions"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -56,6 +58,7 @@ export type PageKey =
   | "members"
   | "tokens"
   | "sso"
+  | "automations"
   | "hooks"
   | "notifications"
   | "integrations"
@@ -67,6 +70,8 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>
   to: string
   ssoOnly?: boolean
+  // requiresAutomationRead: owner/admin (OIDC) 或 token 同时具备 workspace:read + hook:read 才显示。
+  requiresAutomationRead?: boolean
 }
 
 // 按角色任务流分组：个人 / 管理 / 系统
@@ -84,6 +89,7 @@ const navGroups: Array<{ labelKey: string; items: NavItem[] }> = [
     items: [
       { key: "members", icon: Users, to: "/members" },
       { key: "tokens", icon: KeyRound, to: "/tokens" },
+      { key: "automations", icon: Workflow, to: "/automations", requiresAutomationRead: true },
       { key: "hooks", icon: Webhook, to: "/hooks" },
       { key: "notifications", icon: Bell, to: "/notifications" },
       { key: "sso", icon: ShieldCheck, to: "/sso", ssoOnly: true },
@@ -126,6 +132,12 @@ export function AppShell({
   const tenantSwitch = !acting && tenantContext !== null
   const systemActor = me.data?.actor_type === "tenant_access_token"
   const showSso = isOwner || systemActor || tenantSwitch
+  // Automation 入口按 workspace:read + hook:read 双 scope 判定，浏览器 session fallback owner/admin。
+  const showAutomation = canReadAutomation({
+    role,
+    actorType: me.data?.actor_type,
+    scopes: me.data?.token.scopes,
+  })
   const showRisk = acting || systemActor || tenantSwitch
   // 移动端导航抽屉开关。路由变化后由 NavItem 的 onClick 关闭。
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -148,6 +160,7 @@ export function AppShell({
       <aside className="fixed inset-y-0 left-0 hidden w-[248px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <SidebarNav
           showSso={showSso}
+          showAutomation={showAutomation}
           pathname={location.pathname}
           logoHeader
         />
@@ -186,6 +199,7 @@ export function AppShell({
                 </SheetHeader>
                 <SidebarNav
                   showSso={showSso}
+                  showAutomation={showAutomation}
                   pathname={location.pathname}
                   onNavigate={() => setMobileNavOpen(false)}
                 />
@@ -224,11 +238,13 @@ export function AppShell({
 // logoHeader=true 时渲染顶部 logo 行（桌面端用），移动端在 SheetHeader 单独渲染。
 function SidebarNav({
   showSso,
+  showAutomation,
   pathname,
   logoHeader = false,
   onNavigate,
 }: {
   showSso: boolean
+  showAutomation: boolean
   pathname: string
   logoHeader?: boolean
   onNavigate?: () => void
@@ -246,9 +262,11 @@ function SidebarNav({
         className="flex-1 overflow-y-auto p-2"
       >
         {navGroups.map((group) => {
-          const items = group.items.filter(
-            (item) => !item.ssoOnly || showSso
-          )
+          const items = group.items.filter((item) => {
+            if (item.ssoOnly && !showSso) return false
+            if (item.requiresAutomationRead && !showAutomation) return false
+            return true
+          })
           if (items.length === 0) return null
           return (
             <div className="mb-3" key={group.labelKey}>
@@ -480,6 +498,10 @@ function isNavItemActive(key: PageKey, to: string, pathname: string): boolean {
   }
   if (key === "workspaces") {
     return pathname === "/workspaces"
+  }
+  // 顶层「自动化」只匹配 /automations；Project 深层 automations 路由仍归「项目」高亮。
+  if (key === "automations") {
+    return pathname === "/automations" || pathname.startsWith("/automations/")
   }
   if (to === "/") {
     return pathname === "/"
