@@ -122,10 +122,10 @@ func TestWorkspaceAutomationDispatcherUsesFrozenMaxAttemptsAfterRuleDeleted(t *t
 		DedupeKey: "k1", Status: storage.DeliveryStatusQueued,
 		ResolvedURL: target.URL + "/v1/chat/completions", RenderedMethod: "POST",
 		RenderedHeadersJSON: "{}",
-		RequestBodyJSON: `{"model":"workspace-operator","messages":[{"role":"user","content":"hi"}]}`,
-		APIKeyConfigKey: "agent.provider.api_key", AllowedHostsConfigKey: "agent.provider.allowed_hosts",
+		RequestBodyJSON:     `{"model":"workspace-operator","messages":[{"role":"user","content":"hi"}]}`,
+		APIKeyConfigKey:     "agent.provider.api_key", AllowedHostsConfigKey: "agent.provider.allowed_hosts",
 		MaxAttempts: 3,
-		CreatedAt: 100, ModifiedAt: 100,
+		CreatedAt:   100, ModifiedAt: 100,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -228,10 +228,10 @@ func TestWorkspaceAutomationDispatcherReadsWorkspaceSecretForWorkspaceScope(t *t
 		DedupeKey: "ws-k", Status: storage.DeliveryStatusQueued,
 		ResolvedURL: target.URL + "/v1/chat/completions", RenderedMethod: "POST",
 		RenderedHeadersJSON: "{}",
-		RequestBodyJSON: `{"model":"workspace-operator","messages":[{"role":"user","content":"hi"}]}`,
-		APIKeyConfigKey: "agent.provider.api_key", AllowedHostsConfigKey: "agent.provider.allowed_hosts",
+		RequestBodyJSON:     `{"model":"workspace-operator","messages":[{"role":"user","content":"hi"}]}`,
+		APIKeyConfigKey:     "agent.provider.api_key", AllowedHostsConfigKey: "agent.provider.allowed_hosts",
 		MaxAttempts: 3,
-		CreatedAt: 100, ModifiedAt: 100,
+		CreatedAt:   100, ModifiedAt: 100,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestWorkspaceAutomationDispatcherStaleRecoveryAfterServerRestart(t *testing
 		RequestBodyJSON: `{"model":"workspace-operator","messages":[{"role":"user","content":"hi"}]}`,
 		APIKeyConfigKey: "agent.provider.api_key", AllowedHostsConfigKey: "agent.provider.allowed_hosts",
 		MaxAttempts: 3,
-		CreatedAt: 100, ModifiedAt: 100,
+		CreatedAt:   100, ModifiedAt: 100,
 	}}); err != nil {
 		t.Fatal(err)
 	}

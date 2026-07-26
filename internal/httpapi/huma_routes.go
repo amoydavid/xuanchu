@@ -1278,5 +1278,26 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries", Tag: "Project Automations", Summary: "List project automation deliveries.", Handler: s.handleProjectAutomationDeliveryList},
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}", Tag: "Project Automations", Summary: "Get project automation delivery details.", Handler: s.handleProjectAutomationDeliveryInfo},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}/replay", Tag: "Project Automations", Summary: "Replay project automation delivery.", Handler: s.handleProjectAutomationDeliveryReplay},
+
+		// Workspace Automations: scope=workspace 的规则与跨 Project 运行记录。
+		{Method: http.MethodGet, Path: "/api/v1/automations", Tag: "Workspace Automations", Summary: "List workspace automations.", Handler: s.handleWorkspaceAutomationList},
+		{Method: http.MethodPost, Path: "/api/v1/automations", Tag: "Workspace Automations", Summary: "Create a workspace automation.", Handler: s.handleWorkspaceAutomationCreate, Status: http.StatusCreated},
+		{Method: http.MethodGet, Path: "/api/v1/automations/template-vars", Tag: "Workspace Automations", Summary: "List workspace automation template variables.", Handler: s.handleAutomationTemplateVars},
+		{Method: http.MethodGet, Path: "/api/v1/automations/provider-config", Tag: "Workspace Automations", Summary: "Get workspace automation provider config (safe facade).", Handler: s.handleWorkspaceAutomationProviderConfigGet},
+		{Method: http.MethodPut, Path: "/api/v1/automations/provider-config", Tag: "Workspace Automations", Summary: "Update workspace automation provider config (safe facade).", Handler: s.handleWorkspaceAutomationProviderConfigPut},
+		{Method: http.MethodGet, Path: "/api/v1/automations/{ruleID}", Tag: "Workspace Automations", Summary: "Get workspace automation details.", Handler: s.handleWorkspaceAutomationInfo},
+		{Method: http.MethodPatch, Path: "/api/v1/automations/{ruleID}", Tag: "Workspace Automations", Summary: "Modify a workspace automation.", Handler: s.handleWorkspaceAutomationModify},
+		{Method: http.MethodDelete, Path: "/api/v1/automations/{ruleID}", Tag: "Workspace Automations", Summary: "Delete a workspace automation.", Handler: s.handleWorkspaceAutomationDelete},
+		{Method: http.MethodPost, Path: "/api/v1/automations/{ruleID}/enable", Tag: "Workspace Automations", Summary: "Enable a workspace automation.", Handler: s.handleWorkspaceAutomationEnable},
+		{Method: http.MethodPost, Path: "/api/v1/automations/{ruleID}/disable", Tag: "Workspace Automations", Summary: "Disable a workspace automation.", Handler: s.handleWorkspaceAutomationDisable},
+
+		// Workspace Automation Deliveries: 跨 Project 运行记录。
+		{Method: http.MethodGet, Path: "/api/v1/automation-deliveries", Tag: "Workspace Automations", Summary: "List workspace automation deliveries.", Handler: s.handleWorkspaceAutomationDeliveryList},
+		{Method: http.MethodGet, Path: "/api/v1/automation-deliveries/{deliveryID}", Tag: "Workspace Automations", Summary: "Get automation delivery details.", Handler: s.handleWorkspaceAutomationDeliveryInfo},
+		{Method: http.MethodPost, Path: "/api/v1/automation-deliveries/{deliveryID}/replay", Tag: "Workspace Automations", Summary: "Replay automation delivery.", Handler: s.handleWorkspaceAutomationDeliveryReplay},
+
+		// Project Automation Provider config：安全 facade 替代通用 Project config list。
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automations/provider-config", Tag: "Project Automations", Summary: "Get project automation provider config (safe facade).", Handler: s.handleProjectAutomationProviderConfigGet},
+		{Method: http.MethodPut, Path: "/api/v1/projects/{projectRef}/automations/provider-config", Tag: "Project Automations", Summary: "Update project automation provider config (safe facade).", Handler: s.handleProjectAutomationProviderConfigPut},
 	}
 }

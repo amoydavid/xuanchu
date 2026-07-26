@@ -13,16 +13,16 @@ import (
 
 // projectAutomationRuleRequest 是 HTTP 请求体 DTO，对齐 app.ProjectAutomationRuleAddInput。
 type projectAutomationRuleRequest struct {
-	Name                string                            `json:"name"`
-	Description         string                            `json:"description"`
-	Enabled             bool                              `json:"enabled"`
-	TriggerType         string                            `json:"trigger_type"`
+	Name                string                             `json:"name"`
+	Description         string                             `json:"description"`
+	Enabled             bool                               `json:"enabled"`
+	TriggerType         string                             `json:"trigger_type"`
 	TriggerConfig       app.ProjectAutomationTriggerConfig `json:"trigger_config"`
 	Condition           app.ProjectAutomationCondition     `json:"condition"`
 	Action              app.ProjectAutomationActionConfig  `json:"action"`
 	Context             app.ProjectAutomationContextConfig `json:"context"`
-	InstructionTemplate string                            `json:"instruction_template"`
-	SystemPrompt        string                            `json:"system_prompt"`
+	InstructionTemplate string                             `json:"instruction_template"`
+	SystemPrompt        string                             `json:"system_prompt"`
 }
 
 func projectAutomationAddInput(req projectAutomationRuleRequest) app.ProjectAutomationRuleAddInput {
