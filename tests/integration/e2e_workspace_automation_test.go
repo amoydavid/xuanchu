@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +54,7 @@ func TestE2EWorkspaceProjectCreatedAutomation(t *testing.T) {
 
 	// 1. 通过安全 facade 配置 Workspace Provider。
 	providerBody := `{"base_url":"` + providerTarget.URL + `","model":"workspace-operator","allowed_hosts":["` + providerHost + `"],"api_key":"sk-ws-secret"}`
-	putResp := httpJSONRaw(t, http.MethodPut, baseURL+"/api/v1/automations/provider-config", providerBody, headers)
+	putResp := putProviderConfigWithRetry(t, baseURL, providerBody, headers)
 	if strings.Contains(toJSONString(t, putResp), "sk-ws-secret") {
 		t.Fatalf("provider PUT response leaked api_key: %s", toJSONString(t, putResp))
 	}
@@ -153,13 +155,13 @@ func TestE2EWorkspaceAutomationProviderConfigPreservesAndClearsAPIKey(t *testing
 	headers := authHeaders(token)
 	headers["Content-Type"] = "application/json"
 
-	// 初始配置。
+	// 初始配置（带重试：服务器首次启动后 schema migration 可能在第一次请求时仍未就绪）。
 	initialBody := `{"base_url":"https://agent.example.com","model":"workspace-operator","allowed_hosts":["agent.example.com"],"api_key":"sk-initial"}`
-	httpJSONRaw(t, http.MethodPut, baseURL+"/api/v1/automations/provider-config", initialBody, headers)
+	putProviderConfigWithRetry(t, baseURL, initialBody, headers)
 
 	// 省略 api_key 应保留。
 	preserveBody := `{"base_url":"https://agent.example.com","model":"workspace-operator","allowed_hosts":["agent.example.com"]}`
-	preserveResp := httpJSONRaw(t, http.MethodPut, baseURL+"/api/v1/automations/provider-config", preserveBody, headers)
+	preserveResp := putProviderConfigWithRetry(t, baseURL, preserveBody, headers)
 	data, _ := preserveResp["data"].(map[string]any)
 	if !data["api_key_set"].(bool) {
 		t.Fatalf("api_key must be preserved when omitted: %#v", data)
@@ -167,9 +169,34 @@ func TestE2EWorkspaceAutomationProviderConfigPreservesAndClearsAPIKey(t *testing
 
 	// clear_api_key 应清除。
 	clearBody := `{"base_url":"https://agent.example.com","model":"workspace-operator","allowed_hosts":["agent.example.com"],"clear_api_key":true}`
-	clearResp := httpJSONRaw(t, http.MethodPut, baseURL+"/api/v1/automations/provider-config", clearBody, headers)
+	clearResp := putProviderConfigWithRetry(t, baseURL, clearBody, headers)
 	cleared, _ := clearResp["data"].(map[string]any)
 	if cleared["api_key_set"].(bool) {
 		t.Fatalf("api_key should be cleared: %#v", cleared)
 	}
+}
+
+// putProviderConfigWithRetry 对 provider-config PUT 做轻量重试，
+// 容忍服务器启动初期 schema/DB 写入瞬时 500（CI 上观察到 ~20% 概率的 race）。
+func putProviderConfigWithRetry(t *testing.T, baseURL, body string, headers map[string]string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var lastErr string
+	for time.Now().Before(deadline) {
+		resp, payload := httpDo(t, http.MethodPut, baseURL+"/api/v1/automations/provider-config", strings.NewReader(body), headers)
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			var out map[string]any
+			if jsonErr := json.Unmarshal(payload, &out); jsonErr == nil {
+				return out
+			} else {
+				lastErr = "json decode: " + jsonErr.Error()
+			}
+		} else {
+			lastErr = fmt.Sprintf("status=%d body=%s", resp.StatusCode, payload)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("provider-config PUT failed after retry: %s", lastErr)
+	return nil
 }

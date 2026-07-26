@@ -1,48 +1,159 @@
+import { useQueryClient } from "@tanstack/react-query"
+import { MoreHorizontal } from "lucide-react"
 import { useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
+import { Button } from "@/components/ui/button"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { DestructiveConfirmDialog } from "@/features/workspace/project-workbench/shared/destructive-confirm-dialog"
+import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
+import {
+  useDeleteWorkspaceAutomationRule,
   useReplayWorkspaceAutomationDelivery,
+  useToggleWorkspaceAutomationRule,
   useWorkspaceAutomationDeliveries,
   useWorkspaceAutomationProviderConfig,
   useWorkspaceAutomationRules,
-  useToggleWorkspaceAutomationRule,
+  type WorkspaceAutomationDelivery,
+  type WorkspaceAutomationRule,
 } from "@/features/workspace/automations/workspace-automations-api"
+import { canWriteAutomation } from "@/features/workspace/automations/workspace-automation-permissions"
+import { useMe } from "@/features/workspace/session/useMe"
 import { cn } from "@/lib/utils"
 import { relativeTime } from "@/lib/time"
+
+import {
+  deliveryStatusLabel,
+  DeliveryStatusDot,
+  RuleStatusDot,
+} from "@/features/workspace/automations/shared/automation-status"
+import { summarizeTrigger, summarizeTriggerFull } from "@/features/workspace/automations/shared/automation-trigger-summary"
+import { ProviderConfigDialog } from "@/features/workspace/automations/shared/provider-config-dialog"
+import {
+  WorkspaceAutomationRuleDialog,
+} from "@/features/workspace/automations/shared/workspace-automation-rule-dialog"
+import { WorkspaceAutomationDeliveryDetail } from "@/features/workspace/automations/shared/workspace-automation-delivery-detail"
 
 type Tab = "rules" | "deliveries"
 
 // WorkspaceAutomationsConsole 是「管理 → 自动化」入口的控制台。
-// 顶层只有两个 tab：规则（Workspace scope）和运行记录（跨 Project）。
-// 详细规则编辑、Provider 配置、sample Project、preview 等复杂表单在后续迭代中
-// 通过 Dialog 承载；当前实现先把列表/启停/删除/replay 等高频闭环跑通。
-export function WorkspaceAutomationsConsole(props?: {
+// 桌面：shadcn <Table> 规则/运行记录 + 新建/编辑 Dialog + Provider Dialog + 运行详情抽屉。
+// 移动：card list + 全高 Sheet（通过 md:hidden 响应式切换）。
+// spec §16 ASCII 原型：状态点 + 名称 + 触发器摘要 + 最近运行 + 操作 ⋯。
+export function WorkspaceAutomationsConsole({
+  workspaceSlug,
+}: {
   workspaceSlug?: string
 }) {
-  // workspaceSlug 当前未直接使用，但保留 prop 以便未来根据 slug 路由到子页面。
-  void props?.workspaceSlug
-  const { t } = useTranslation()
+  const me = useMe()
+  const canWrite = canWriteAutomation({
+    role: me.data?.effective_role,
+    actorType: me.data?.actor_type,
+    scopes: me.data?.token.scopes,
+  })
+
   const [tab, setTab] = useState<Tab>("rules")
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<WorkspaceAutomationRule | null>(null)
+  const [providerOpen, setProviderOpen] = useState(false)
+  const [detailDeliveryId, setDetailDeliveryId] = useState<string | null>(null)
+
+  const provider = useWorkspaceAutomationProviderConfig()
+  const providerComplete = provider.data?.complete ?? false
 
   return (
     <div className="space-y-4">
       <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("page.workspaceAutomations")}</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold">工作空间自动化</h1>
+          {canWrite ? (
+            <Button type="button" size="sm" onClick={() => setCreating(true)}>
+              + 新建自动化
+            </Button>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground">
-          {t("automation.workspace.intro")}
+          监听整个工作空间。单项目规则请进入对应项目的「自动化」。
         </p>
       </header>
-      <ProviderMissingWarning />
+
+      {!providerComplete ? (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <span>工作空间 Agent Provider 配置不完整，规则不会成功投递。</span>
+          {canWrite ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setProviderOpen(true)}>
+              查看配置
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2 border-b">
         <TabButton active={tab === "rules"} onClick={() => setTab("rules")}>
-          {t("automation.tab.rules")}
+          规则
         </TabButton>
         <TabButton active={tab === "deliveries"} onClick={() => setTab("deliveries")}>
-          {t("automation.tab.deliveries")}
+          运行记录
         </TabButton>
       </div>
-      {tab === "rules" ? <RulesTab /> : <DeliveriesTab />}
+
+      {tab === "rules" ? (
+        <RulesTab
+          canWrite={canWrite}
+          workspaceSlug={workspaceSlug}
+          onEdit={(rule) => setEditing(rule)}
+          onCreating={() => setCreating(true)}
+        />
+      ) : (
+        <DeliveriesTab
+          canWrite={canWrite}
+          workspaceSlug={workspaceSlug}
+          onSelect={(id) => setDetailDeliveryId(id)}
+        />
+      )}
+
+      <WorkspaceAutomationRuleDialog
+        key={editing?.id ?? (creating ? "creating-open" : "creating-closed")}
+        open={creating || !!editing}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCreating(false)
+            setEditing(null)
+          }
+        }}
+        onSaved={() => {
+          /* query invalidated inside hook */
+        }}
+        initial={editing ?? undefined}
+        onOpenProviderConfig={() => setProviderOpen(true)}
+        canEdit={canWrite}
+      />
+
+      <ProviderConfigDialog open={providerOpen} onOpenChange={setProviderOpen} canEdit={canWrite} />
+
+      <WorkspaceAutomationDeliveryDetail
+        open={detailDeliveryId !== null}
+        onOpenChange={(o) => !o && setDetailDeliveryId(null)}
+        deliveryID={detailDeliveryId}
+        workspaceSlug={workspaceSlug}
+      />
     </div>
   )
 }
@@ -72,170 +183,480 @@ function TabButton({
   )
 }
 
-function ProviderMissingWarning() {
-  const { t } = useTranslation()
-  const provider = useWorkspaceAutomationProviderConfig()
-  if (!provider.data || provider.data.complete) return null
-  return (
-    <div
-      role="status"
-      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100"
-    >
-      {t("automation.provider.incomplete")}
-    </div>
-  )
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
-function RulesTab() {
-  const { t } = useTranslation()
+function RulesTab({
+  canWrite,
+  workspaceSlug,
+  onEdit,
+  onCreating,
+}: {
+  canWrite: boolean
+  workspaceSlug?: string
+  onEdit: (rule: WorkspaceAutomationRule) => void
+  onCreating: () => void
+}) {
+  void workspaceSlug
+  void onCreating
+  const feedback = useEditFeedback()
+  const queryClient = useQueryClient()
   const rules = useWorkspaceAutomationRules(false)
   const toggle = useToggleWorkspaceAutomationRule()
+  const deleteMutation = useDeleteWorkspaceAutomationRule()
+  const [confirmDelete, setConfirmDelete] = useState<WorkspaceAutomationRule | null>(null)
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["workspace-automations", "rules"] })
 
   if (rules.isLoading) {
-    return <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
+    return <div className="text-sm text-muted-foreground">加载中...</div>
   }
   if (rules.isError) {
     return (
       <div className="text-sm text-destructive">
-        {t("common.error")}: {String(rules.error)}
+        加载失败：{errorMessage(rules.error)}
       </div>
     )
   }
-  if (!rules.data || rules.data.length === 0) {
+  const rows = rules.data ?? []
+  if (rows.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-        {t("automation.empty.rules")}
+        还没有工作空间自动化。创建规则，在项目创建或定时时让 Agent 处理工作空间任务。
       </div>
     )
   }
+
   return (
-    <ul className="divide-y rounded-md border">
-      {rules.data.map((rule) => (
-        <li key={rule.id} className="flex items-center gap-3 px-3 py-2.5">
-          <StatusDot enabled={rule.enabled} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{rule.name}</div>
-            <div className="truncate text-xs text-muted-foreground">
+    <>
+      {/* 桌面 shadcn Table */}
+      <Table containerClassName="hidden md:block">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[60px]">状态</TableHead>
+            <TableHead>名称</TableHead>
+            <TableHead className="w-[180px]">触发器</TableHead>
+            <TableHead>指令摘要</TableHead>
+            <TableHead className="w-[120px]">最近运行</TableHead>
+            <TableHead className="w-[40px] text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((rule) => (
+            <TableRow key={rule.id}>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <RuleStatusDot enabled={rule.enabled} />
+                  <span className="sr-only">{rule.enabled ? "启用" : "停用"}</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <button
+                  type="button"
+                  className="truncate font-medium hover:underline"
+                  onClick={() => onEdit(rule)}
+                >
+                  {rule.name}
+                </button>
+              </TableCell>
+              <TableCell title={summarizeTriggerFull(rule.trigger_type, rule.trigger_config)}>
+                <span className="truncate">{summarizeTrigger(rule.trigger_type, rule.trigger_config)}</span>
+              </TableCell>
+              <TableCell>
+                <span className="line-clamp-1 text-muted-foreground">{rule.instruction_template}</span>
+              </TableCell>
+              <TableCell className="font-mono text-xs text-muted-foreground">
+                {rule.last_delivery ? relativeTime(rule.last_delivery.created_at) : "从未运行"}
+              </TableCell>
+              <TableCell className="text-right">
+                <RuleActions
+                  rule={rule}
+                  canWrite={canWrite}
+                  togglePending={toggle.isPending && toggle.variables?.ruleId === rule.id}
+                  onToggle={() =>
+                    toggle.mutate(
+                      { ruleId: rule.id, enable: !rule.enabled },
+                      {
+                        onSuccess: () => invalidate(),
+                        onError: (err) => feedback.failure("操作失败", errorMessage(err)),
+                      }
+                    )
+                  }
+                  onEdit={() => onEdit(rule)}
+                  onDelete={() => setConfirmDelete(rule)}
+                />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      {/* 移动端 card list */}
+      <div className="space-y-2 md:hidden">
+        {rows.map((rule) => (
+          <div key={rule.id} className="rounded-md border p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <RuleStatusDot enabled={rule.enabled} />
+                <button
+                  type="button"
+                  className="font-medium hover:underline"
+                  onClick={() => onEdit(rule)}
+                >
+                  {rule.name}
+                </button>
+              </div>
+              <RuleActions
+                rule={rule}
+                canWrite={canWrite}
+                togglePending={toggle.isPending && toggle.variables?.ruleId === rule.id}
+                onToggle={() =>
+                  toggle.mutate(
+                    { ruleId: rule.id, enable: !rule.enabled },
+                    {
+                      onSuccess: () => invalidate(),
+                      onError: (err) => feedback.failure("操作失败", errorMessage(err)),
+                    }
+                  )
+                }
+                onEdit={() => onEdit(rule)}
+                onDelete={() => setConfirmDelete(rule)}
+              />
+            </div>
+            <div className="mt-1 truncate text-xs text-muted-foreground">
               {summarizeTrigger(rule.trigger_type, rule.trigger_config)}
             </div>
+            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+              {rule.instruction_template}
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{rule.last_delivery ? relativeTime(rule.last_delivery.created_at) : "从未运行"}</span>
+              <span>{rule.enabled ? "启用" : "停用"}</span>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {rule.last_delivery
-              ? relativeTime(rule.last_delivery.created_at)
-              : t("automation.lastRun.never")}
-          </div>
-          <button
-            type="button"
-            className="rounded border px-2 py-1 text-xs hover:bg-accent"
-            onClick={() => {
-              toggle.mutate({ ruleId: rule.id, enable: !rule.enabled })
-            }}
-          >
-            {rule.enabled ? t("automation.action.disable") : t("automation.action.enable")}
-          </button>
-        </li>
-      ))}
-    </ul>
+        ))}
+      </div>
+
+      <DestructiveConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(o) => !o && setConfirmDelete(null)}
+        title="删除工作空间自动化"
+        description={`确认删除规则「${confirmDelete?.name ?? ""}」？此操作不可撤销。`}
+        confirmLabel="删除"
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!confirmDelete) return
+          deleteMutation.mutate(confirmDelete.id, {
+            onSuccess: () => {
+              setConfirmDelete(null)
+              invalidate()
+              feedback.success("规则已删除")
+            },
+            onError: (err) => feedback.failure("删除失败", errorMessage(err)),
+          })
+        }}
+      />
+    </>
   )
 }
 
-function DeliveriesTab() {
-  const { t } = useTranslation()
-  const deliveries = useWorkspaceAutomationDeliveries({ limit: 50 })
+function RuleActions({
+  rule,
+  canWrite,
+  togglePending,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  rule: WorkspaceAutomationRule
+  canWrite: boolean
+  togglePending: boolean
+  onToggle: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  if (!canWrite) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="操作">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit}>编辑</DropdownMenuItem>
+        <DropdownMenuItem onClick={onToggle} disabled={togglePending}>
+          {rule.enabled ? "停用" : "启用"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+          删除
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function DeliveriesTab({
+  canWrite,
+  workspaceSlug,
+  onSelect,
+}: {
+  canWrite: boolean
+  workspaceSlug?: string
+  onSelect: (deliveryID: string) => void
+}) {
+  const feedback = useEditFeedback()
+  void canWrite
+  const queryClient = useQueryClient()
+  const [filter, setFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
+  const [triggerFilter, setTriggerFilter] = useState("")
+  const deliveries = useWorkspaceAutomationDeliveries({
+    q: filter || undefined,
+    status: (statusFilter as WorkspaceAutomationDelivery["status"] | "") || undefined,
+    trigger_type: (triggerFilter as "schedule" | "event" | "") || undefined,
+    limit: 50,
+  })
   const replay = useReplayWorkspaceAutomationDelivery()
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["workspace-automations", "deliveries"] })
 
   if (deliveries.isLoading) {
-    return <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
+    return <div className="text-sm text-muted-foreground">加载中...</div>
   }
   if (deliveries.isError) {
     return (
       <div className="text-sm text-destructive">
-        {t("common.error")}: {String(deliveries.error)}
+        加载失败：{errorMessage(deliveries.error)}
       </div>
     )
   }
-  if (!deliveries.data || deliveries.data.length === 0) {
+  const rows = deliveries.data ?? []
+  if (rows.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-        {t("automation.empty.deliveries")}
+        规则触发后，Agent 调用会显示在这里。
       </div>
     )
   }
+
   return (
-    <ul className="divide-y rounded-md border">
-      {deliveries.data.map((delivery) => (
-        <li key={delivery.id} className="flex items-center gap-3 px-3 py-2.5">
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          aria-label="搜索 ID"
+          className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+          placeholder="搜索 delivery/event ID"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <select
+          aria-label="状态过滤"
+          className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">状态：全部</option>
+          <option value="succeeded">成功</option>
+          <option value="retry_wait">等待重试</option>
+          <option value="dead_lettered">失败</option>
+          <option value="queued">排队中</option>
+          <option value="delivering">投递中</option>
+        </select>
+        <select
+          aria-label="触发过滤"
+          className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+          value={triggerFilter}
+          onChange={(e) => setTriggerFilter(e.target.value)}
+        >
+          <option value="">触发：全部</option>
+          <option value="event">event</option>
+          <option value="schedule">schedule</option>
+        </select>
+      </div>
+
+      {/* 桌面 Table */}
+      <Table containerClassName="hidden md:block">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[40px]">状态</TableHead>
+            <TableHead className="w-[140px]">规则</TableHead>
+            <TableHead>Project</TableHead>
+            <TableHead className="w-[140px]">触发</TableHead>
+            <TableHead className="w-[60px]">HTTP</TableHead>
+            <TableHead className="w-[100px]">时间</TableHead>
+            <TableHead className="w-[40px] text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((d) => (
+            <DeliveryTableRow
+              key={d.id}
+              delivery={d}
+              workspaceSlug={workspaceSlug}
+              onSelect={() => onSelect(d.id)}
+              onReplay={() =>
+                replay.mutate(d.id, {
+                  onSuccess: () => {
+                    invalidate()
+                    feedback.success("已重新投递")
+                  },
+                  onError: (err) => feedback.failure("重新投递失败", errorMessage(err)),
+                })
+              }
+              replayPending={replay.isPending && replay.variables === d.id}
+            />
+          ))}
+        </TableBody>
+      </Table>
+
+      {/* 移动端 card list */}
+      <div className="space-y-2 md:hidden">
+        {rows.map((d) => (
+          <DeliveryCard
+            key={d.id}
+            delivery={d}
+            workspaceSlug={workspaceSlug}
+            onSelect={() => onSelect(d.id)}
+            onReplay={() =>
+              replay.mutate(d.id, {
+                onSuccess: () => {
+                  invalidate()
+                  feedback.success("已重新投递")
+                },
+                onError: (err) => feedback.failure("重新投递失败", errorMessage(err)),
+              })
+            }
+            replayPending={replay.isPending && replay.variables === d.id}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+function DeliveryTableRow({
+  delivery,
+  workspaceSlug,
+  onSelect,
+  onReplay,
+  replayPending,
+}: {
+  delivery: WorkspaceAutomationDelivery
+  workspaceSlug?: string
+  onSelect: () => void
+  onReplay: () => void
+  replayPending: boolean
+}) {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-2">
           <DeliveryStatusDot status={delivery.status} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-mono text-xs">{delivery.id}</div>
-            <div className="truncate text-xs text-muted-foreground">
-              {delivery.trigger_type === "event"
-                ? delivery.event_type || delivery.trigger_type
-                : summarizeTrigger(delivery.trigger_type, {})}
-              {delivery.project ? ` · ${delivery.project.slug}` : ""}
-            </div>
-          </div>
-          <div className="font-mono text-xs text-muted-foreground">
-            {delivery.response_status_code ?? "—"}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {relativeTime(delivery.created_at)}
-          </div>
-          <button
-            type="button"
-            className="rounded border px-2 py-1 text-xs hover:bg-accent"
-            onClick={() => replay.mutate(delivery.id)}
-          >
-            {t("automation.action.replay")}
-          </button>
-        </li>
-      ))}
-    </ul>
+          <span className="sr-only">{deliveryStatusLabel(delivery.status)}</span>
+        </div>
+      </TableCell>
+      <TableCell className="font-mono text-xs">{delivery.rule_id.slice(0, 8)}</TableCell>
+      <TableCell>
+        {delivery.project ? (
+          workspaceSlug ? (
+            <Link
+              to="/workspaces/$workspaceSlug/projects/$projectSlug"
+              params={{ workspaceSlug, projectSlug: delivery.project.slug }}
+              className="text-primary hover:underline"
+            >
+              {delivery.project.slug}
+            </Link>
+          ) : (
+            <span>{delivery.project.slug}</span>
+          )
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell className="text-xs">
+        {delivery.trigger_type === "event" ? delivery.event_type || "event" : "schedule"}
+      </TableCell>
+      <TableCell className="font-mono text-xs">
+        {delivery.response_status_code ?? "—"}
+      </TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">
+        {relativeTime(delivery.created_at)}
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="操作">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onSelect}>详情</DropdownMenuItem>
+            <DropdownMenuItem onClick={onReplay} disabled={replayPending}>
+              {replayPending ? "重新投递中..." : "重新投递"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
   )
 }
 
-function StatusDot({ enabled }: { enabled: boolean }) {
+function DeliveryCard({
+  delivery,
+  workspaceSlug,
+  onSelect,
+  onReplay,
+  replayPending,
+}: {
+  delivery: WorkspaceAutomationDelivery
+  workspaceSlug?: string
+  onSelect: () => void
+  onReplay: () => void
+  replayPending: boolean
+}) {
   return (
-    <span
-      aria-label={enabled ? "enabled" : "disabled"}
-      className={cn(
-        "inline-block size-[7px] shrink-0 rounded-full",
-        enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
-      )}
-    />
+    <div className="rounded-md border p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <DeliveryStatusDot status={delivery.status} />
+          <span className="text-sm font-medium">{deliveryStatusLabel(delivery.status)}</span>
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onSelect} aria-label="详情">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </div>
+      <div className="mt-1 font-mono text-xs text-muted-foreground">{delivery.id.slice(0, 12)}</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {delivery.trigger_type === "event" ? delivery.event_type || "event" : "schedule"} · HTTP{" "}
+        {delivery.response_status_code ?? "—"}
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {delivery.project ? (
+          workspaceSlug ? (
+            <Link
+              to="/workspaces/$workspaceSlug/projects/$projectSlug"
+              params={{ workspaceSlug, projectSlug: delivery.project.slug }}
+              className="text-primary hover:underline"
+            >
+              {delivery.project.slug}
+            </Link>
+          ) : (
+            <span>{delivery.project.slug}</span>
+          )
+        ) : (
+          <span>—</span>
+        )}{" "}
+        · {relativeTime(delivery.created_at)}
+      </div>
+      <div className="mt-2 flex justify-end">
+        <Button variant="outline" size="sm" onClick={onReplay} disabled={replayPending}>
+          {replayPending ? "重新投递中..." : "重新投递"}
+        </Button>
+      </div>
+    </div>
   )
-}
-
-function DeliveryStatusDot({ status }: { status: string }) {
-  const color =
-    status === "succeeded"
-      ? "bg-emerald-500"
-      : status === "dead_lettered"
-        ? "bg-red-500"
-        : status === "retry_wait"
-          ? "bg-amber-500"
-          : "bg-muted-foreground/40"
-  return (
-    <span
-      aria-label={status}
-      className={cn("inline-block size-[7px] shrink-0 rounded-full", color)}
-    />
-  )
-}
-
-// summarizeTrigger 把 trigger_config 渲染成单行摘要（不暴露完整 prompt）。
-function summarizeTrigger(
-  triggerType: string,
-  config: { schedule_type?: string; schedule_value?: string; event_type?: string }
-): string {
-  if (triggerType === "event") {
-    return config.event_type ?? "event"
-  }
-  if (triggerType === "schedule") {
-    if (config.schedule_type === "cron") {
-      return `cron ${config.schedule_value ?? ""}`
-    }
-    return `daily_at ${config.schedule_value ?? ""}`
-  }
-  return triggerType
 }

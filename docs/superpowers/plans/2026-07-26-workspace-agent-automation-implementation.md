@@ -604,10 +604,10 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL="$XUANCHU_E2E_POSTGRES_ADMIN_URL" go test ./tests
 - [x] Workspace/Project Provider UI 只使用安全 facade；通用 Workspace Config allowlist 未扩大，Provider GET/PUT/API 文档/前端缓存均无 API key 明文。
 - [x] Agent 使用现有 MCP 回写 Project config，Audit 可确认 actor 和结果写入。（`TestE2EWorkspaceProjectCreatedMCPWriteback` 用真实 HTTP MCP transport 跑通 `project_config_list` → `project_config_set` 写 `yaoguang.knowledge_base.id` → `audit_list` 断言 `project.config.set` audit 与 Project 创建 audit 分开记录；真实 Agent 平台调用外部工具的部分由平台负责。）
 - [x] Workspace/Project 权限、closed Project、sample Project 和 scope 隔离完整。
-- [ ] `/automations` 导航、规则/运行记录、desktop/mobile 与 ASCII 原型一致。（首版交付导航、规则列表、运行记录列表、启停、replay、Provider 缺失 warning；完整的桌面 Table + 新建/编辑 Dialog + sample Project + 移动端 card/Sheet 在后续迭代补齐，受 UI 工作量限制未在本 milestone 内一次性落地。）
+- [x] `/automations` 导航、规则/运行记录、desktop/mobile 与 ASCII 原型一致。（桌面 shadcn `<Table>` 规则/运行记录 + 移动端 card list；新建/编辑 Dialog 含 sample Project 选择、preview、Provider 摘要入口；Provider 配置 Dialog 只消费安全 facade，api_key 永不回显；运行详情右侧 Sheet 抽屉展示 frozen request/response/usage/error + Project 引用 + replay；Playwright smoke 覆盖桌面/移动渲染、无横向滚动、Dialog 不泄漏 secret。）
 - [x] Project Automation、Project Template、Hook/Notification 没有行为回归或范围偷扩。
 - [x] HTTP/OpenAPI/Web/README/ROADMAP/spec/plan 同步。
-- [x] 普通/零 CGO Go、Web 全套、真实 E2E 全部留下验证记录；PostgreSQL 未在本次开发机执行（无可用 admin URL），Playwright 未集成。
+- [x] 普通/零 CGO Go、Web 全套、真实 E2E、Playwright smoke 全部留下验证记录；PostgreSQL 未在本次开发机执行（无可用 admin URL），可在具备对应环境时补跑。
 
 ## 实施记录（2026-07-26）
 
@@ -632,3 +632,25 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL="$XUANCHU_E2E_POSTGRES_ADMIN_URL" go test ./tests
 
 仍未完成项：desktop/mobile 完整 UI（新建/编辑 Dialog、sample Project、preview/test debug、移动端 card/Sheet）、Playwright smoke 脚本、PostgreSQL opt-in 验证。这些工作可在后续迭代或具备对应环境时补齐。
 
+### Task 8 Web Console 与韧性 E2E 验收（2026-07-27）
+
+补齐 spec §16 ASCII 原型对应的 Web Console 完整 UI 和 Playwright smoke：
+
+- `feat: 完成工作空间自动化控制台 UI`：
+  - 桌面 shadcn `<Table>` 规则列表（状态点 / 名称 / 触发器摘要 / 指令摘要 / 最近运行 / 操作 ⋯），列 `min-w-0 + truncate` 避免横向滚动。
+  - 桌面 shadcn `<Table>` 运行记录列表 + 状态/触发/ID 搜索过滤。
+  - 移动端 card list（`md:hidden`）+ 桌面 Table（`hidden md:block`）响应式切换。
+  - 新建/编辑 Dialog（`WorkspaceAutomationRuleDialog`）：触发方式、事件白名单（project.created）、Provider 摘要入口、执行指令、sample Project 选择器（event 必填）、预览投递 JSON。
+  - Provider 配置 Dialog（`ProviderConfigDialog`）：只消费安全 facade DTO，`api_key_set` 只控制占位文案，`clear_api_key` 二次确认，保存/关闭时清空本地 state（mount/unmount 自然清理，无 effect setState）。
+  - 运行详情右侧 Sheet 抽屉（`WorkspaceAutomationDeliveryDetail`）：frozen request/response/usage/error tabs + delivery/event/provider ID + Project 引用（可点击）+ replay；2xx 文案明确「Agent 调用成功，不是业务动作成功的证明」。
+  - 共享 helper：`automation-status.tsx`（状态点 + 标签）、`automation-trigger-summary.ts`（cron/daily_at/event 摘要 + tooltip 全文）。
+- Playwright smoke（`web/scripts/playwright-workspace-automation-smoke.mjs` + `pnpm --dir web run smoke:workspace-automation`）：mock API 下验证桌面/移动布局、规则 Dialog、Provider Dialog、运行详情抽屉渲染正常、无横向滚动、不暴露 `sk-` 开头的 api key 明文；7 张截图全部生成。
+
+补齐 plan 原 Task 8 列出但首版未单独验收的韧性子项：
+
+- `TestE2EWorkspaceAutomationDeliverySurvivesRuleDeletion`：规则删除后，已 queued 的 Delivery 仍能被 dispatcher 发送并进入 succeeded（dispatcher 只读 Delivery 冻结字段，不读当前 Rule）。
+- `TestE2EWorkspaceAutomationProjectProviderFacadeHidesSecret`：Project Provider 安全 facade GET 永不回显 `agent.provider.api_key` 明文，浏览器通过 facade 而不是 project config list 取 secret。
+- 重复 Agent no-op：已由 `TestE2EWorkspaceProjectCreatedMCPWriteback` 的「重复 set 走幂等路径」断言覆盖。
+- stale claim 恢复：已由 `TestWorkspaceAutomationDispatcherStaleRecoveryAfterServerRestart`（app 层）+ `TestAutomationDeliveryClaimDueRecoversStale`（storage 层）覆盖；server 重启场景的端到端验证由 dispatcher 共享 generic runtime 保证。
+
+仍未完成项：PostgreSQL opt-in 验证（`XUANCHU_E2E_POSTGRES_ADMIN_URL=... go test ./tests/integration -run 'Postgres.*Automation'`）需要在具备 PostgreSQL admin URL 的环境执行，本次开发机无对应环境。
