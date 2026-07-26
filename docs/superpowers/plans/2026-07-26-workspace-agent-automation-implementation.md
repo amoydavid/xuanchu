@@ -602,7 +602,7 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL="$XUANCHU_E2E_POSTGRES_ADMIN_URL" go test ./tests
 - [x] Delivery 是唯一 outbox/run，Rule 删除后仍能执行，replay 创建新记录。
 - [x] Workspace Provider 不受 Project config 覆盖，secret 全链路不泄漏。
 - [x] Workspace/Project Provider UI 只使用安全 facade；通用 Workspace Config allowlist 未扩大，Provider GET/PUT/API 文档/前端缓存均无 API key 明文。
-- [ ] Agent 使用现有 MCP 回写 Project config，Audit 可确认 actor 和结果写入。（设计层面已具备：MCP `project_config_set` 复用现有能力；真实 MCP 回写由 Agent 平台负责，未在仓库内集成 end-to-end Agent。）
+- [x] Agent 使用现有 MCP 回写 Project config，Audit 可确认 actor 和结果写入。（`TestE2EWorkspaceProjectCreatedMCPWriteback` 用真实 HTTP MCP transport 跑通 `project_config_list` → `project_config_set` 写 `yaoguang.knowledge_base.id` → `audit_list` 断言 `project.config.set` audit 与 Project 创建 audit 分开记录；真实 Agent 平台调用外部工具的部分由平台负责。）
 - [x] Workspace/Project 权限、closed Project、sample Project 和 scope 隔离完整。
 - [ ] `/automations` 导航、规则/运行记录、desktop/mobile 与 ASCII 原型一致。（首版交付导航、规则列表、运行记录列表、启停、replay、Provider 缺失 warning；完整的桌面 Table + 新建/编辑 Dialog + sample Project + 移动端 card/Sheet 在后续迭代补齐，受 UI 工作量限制未在本 milestone 内一次性落地。）
 - [x] Project Automation、Project Template、Hook/Notification 没有行为回归或范围偷扩。
@@ -621,5 +621,14 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL="$XUANCHU_E2E_POSTGRES_ADMIN_URL" go test ./tests
 - Task 6 & 7 `feat: 增加工作空间自动化导航`：AppShell「管理」分组 Workflow 图标入口（owner/admin 可见，token 需 workspace:read+hook:read）；`/automations` 路由；WorkspaceAutomationsConsole 两个 tab（规则/运行记录）+ 状态点 + 启停 + replay + 空/缺 Provider 文案；安全 Provider facade 类型不暴露 api_key。
 - Task 8 `test: 增加工作空间自动化真实 E2E`：真实 server + fake provider 跑通 provider PUT → 规则创建 → 项目创建 → delivery succeeded → fake provider 验证 secret/metadata/project_id；provider facade 保留/清除 api_key 行为；修复 `fillAutomationDeliveryProjects` slice 元素重新读取 bug。
 
-未完成项已在验收清单里如实标注：真实 Agent MCP 回写、desktop/mobile 完整 UI、Playwright、PostgreSQL 验证。这些工作可在后续迭代或具备对应环境时补齐。
+### Task 8 补充验收（同日）
+
+后续追加三个验收测试覆盖 spec/plan 明确列出、但首版未落地的边界：
+
+- `test: 增加工作空间自动化 MCP 回写与边界 E2E`：
+  - `TestE2EWorkspaceProjectCreatedMCPWriteback`：用真实 HTTP MCP transport 跑通 `project_config_list`（确认 knowledge_id 为空，幂等前置）→ `project_config_set` 写 `yaoguang.knowledge_base.id` → `audit_list` 断言 `project.config.set` audit 含 key/value，且与 `project.add` audit 分开记录；最后再次 `project_config_list` 验证持久化、重复 set 走幂等路径。Agent 使用独立 PAT，回写产生的 audit 不与 Project 创建者混淆。
+  - `TestProjectCreatedEventRejectedByHookWhitelist|HookCreate|NotificationRule` + `AllowedByWorkspaceAutomationWhitelist`：验证 `project.created` 不在 Hook/Notification 白名单（边界回归），但仍在 `workspaceAutomationAllowedEvents` 中；两个白名单交集为空。
+  - `TestE2EWorkspaceAutomationServerGenericRuntime`：真实 server 在同一进程内同时跑通 Workspace event 路径（project.created）与 Project event 路径（task.created manual test），证明 server wiring 只有一个 generic scheduler + 一个 generic dispatcher，不存在 workspace/project 两套 worker。
+
+仍未完成项：desktop/mobile 完整 UI（新建/编辑 Dialog、sample Project、preview/test debug、移动端 card/Sheet）、Playwright smoke 脚本、PostgreSQL opt-in 验证。这些工作可在后续迭代或具备对应环境时补齐。
 
