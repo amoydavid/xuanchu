@@ -136,6 +136,7 @@ export function AppShell({
   const showAutomation = canReadAutomation({
     role,
     actorType: me.data?.actor_type,
+    tokenType: me.data?.token.type,
     scopes: me.data?.token.scopes,
   })
   const showRisk = acting || systemActor || tenantSwitch

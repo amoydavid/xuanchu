@@ -74,6 +74,17 @@ describe("canReadAutomation", () => {
       })
     ).toBe(false)
   })
+
+  it("returns true for owner browser_session regardless of missing workspace scope", () => {
+    expect(
+      canReadAutomation({
+        role: "owner",
+        actorType: "user",
+        tokenType: "browser_session",
+        scopes: ["workspace:read", "hook:read"],
+      })
+    ).toBe(true)
+  })
 })
 
 describe("canWriteAutomation", () => {
@@ -81,6 +92,30 @@ describe("canWriteAutomation", () => {
     expect(
       canWriteAutomation({ role: "owner", actorType: "user", scopes: null })
     ).toBe(true)
+  })
+
+  it("returns true for owner browser_session even without workspace:write scope", () => {
+    // browser session 的 scope 集合是交互层人为收紧（httpapi.browserSessionScopes
+    // 刻意不放 workspace:write），授权由 membership role 决定。
+    expect(
+      canWriteAutomation({
+        role: "owner",
+        actorType: "user",
+        tokenType: "browser_session",
+        scopes: ["workspace:read", "hook:read", "hook:write"],
+      })
+    ).toBe(true)
+  })
+
+  it("returns false for member browser_session", () => {
+    expect(
+      canWriteAutomation({
+        role: "member",
+        actorType: "user",
+        tokenType: "browser_session",
+        scopes: ["workspace:read", "hook:read", "hook:write"],
+      })
+    ).toBe(false)
   })
 
   it("tenant token requires both workspace:write and hook:write", () => {

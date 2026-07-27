@@ -63,6 +63,7 @@ export function WorkspaceAutomationsConsole({
   const canWrite = canWriteAutomation({
     role: me.data?.effective_role,
     actorType: me.data?.actor_type,
+    tokenType: me.data?.token.type,
     scopes: me.data?.token.scopes,
   })
 

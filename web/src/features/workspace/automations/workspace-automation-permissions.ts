@@ -14,11 +14,20 @@ export type AutomationPermissionInput = {
   role?: string
   /** actor_type: user / tenant_access_token */
   actorType?: string
+  /** token.type: pat / agent / tenant_access_token / browser_session */
+  tokenType?: string
   /** token scopes，null/undefined 表示无 token 上下文（OIDC session） */
   scopes?: string[] | null
 }
 
 const ADMIN_ROLES = new Set(["owner", "admin"])
+
+// browser session 的 scope 集合是交互层人为收紧（见 httpapi.browserSessionScopes），
+// 真实授权由 membership role 决定（runtime.go CredentialIsBrowserSession）。
+// 因此 browser session 一律按 role 判定，不参与 scope AND 收紧。
+function isBrowserSession(input: AutomationPermissionInput): boolean {
+  return input.tokenType === "browser_session"
+}
 
 /** 判断 scope 列表是否包含目标 scope，"*" 表示通配。 */
 export function hasScope(
@@ -36,8 +45,8 @@ export function hasScope(
  * 后端规则（permission.go）：
  *   - owner / admin 角色允许 PermissionWorkspaceRead + PermissionHookRead。
  *   - tenant_access_token 必须同时具备 workspace:read 和 hook:read。
- *   - OIDC browser session（无 token scopes）按 effective_role 判断。
- *   - 任意带 scopes 的 token 必须同时满足两个 scope 才显示入口。
+ *   - browser session 按 effective_role 判断（scope 是交互层收紧，不是真实授权边界）。
+ *   - 普通 PAT/Agent token 必须同时满足两个 scope 才显示入口。
  */
 export function canReadAutomation(input: AutomationPermissionInput): boolean {
   const { role, actorType, scopes } = input
@@ -45,6 +54,10 @@ export function canReadAutomation(input: AutomationPermissionInput): boolean {
     return (
       hasScope(scopes, SCOPE_WORKSPACE_READ) && hasScope(scopes, SCOPE_HOOK_READ)
     )
+  }
+  // browser session：scope 集合是交互层人为收紧，按 role 判定（与 OIDC 无 token 等价）。
+  if (isBrowserSession(input)) {
+    return !!role && ADMIN_ROLES.has(role)
   }
   if (scopes && scopes.length > 0) {
     return (
@@ -59,6 +72,10 @@ export function canReadAutomation(input: AutomationPermissionInput): boolean {
 
 /**
  * 判断当前身份是否能写 Workspace Automation（workspace:write + hook:write）。
+ *
+ * 注意 browser session：httpapi.browserSessionScopes 刻意不放 workspace:write
+ * （SSO 配置仅 owner/tenant actor 可改），但 Workspace 自动化规则治理不属于 SSO 配置，
+ * 授权最终由 membership role 决定，因此 browser session 走 role-only 分支。
  */
 export function canWriteAutomation(input: AutomationPermissionInput): boolean {
   const { role, actorType, scopes } = input
@@ -67,6 +84,9 @@ export function canWriteAutomation(input: AutomationPermissionInput): boolean {
       hasScope(scopes, SCOPE_WORKSPACE_WRITE) &&
       hasScope(scopes, SCOPE_HOOK_WRITE)
     )
+  }
+  if (isBrowserSession(input)) {
+    return !!role && ADMIN_ROLES.has(role)
   }
   if (scopes && scopes.length > 0) {
     return (
