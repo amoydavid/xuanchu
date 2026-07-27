@@ -28,6 +28,23 @@ vi.mock("@/features/workspace/automations/workspace-automations-api", () => ({
       missing_fields: [],
     },
   })),
+  useWorkspaceAutomationTemplateVars: vi.fn(() => ({
+    data: {
+      triggers: [
+        {
+          trigger: "event",
+          vars: [
+            { name: "workspace.name", description: "workspace 名称" },
+            { name: "project.slug", description: "项目 slug" },
+          ],
+        },
+        {
+          trigger: "schedule",
+          vars: [{ name: "workspace.name", description: "workspace 名称" }],
+        },
+      ],
+    },
+  })),
   useCreateWorkspaceAutomationRule: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useModifyWorkspaceAutomationRule: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   WORKSPACE_AUTOMATION_EVENTS: [{ value: "project.created", label: "project.created" }],

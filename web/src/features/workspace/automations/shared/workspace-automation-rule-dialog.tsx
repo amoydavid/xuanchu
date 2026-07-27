@@ -34,6 +34,7 @@ import {
 } from "@/features/workspace/automations/workspace-automations-api"
 import { AutomationPreviewDialog } from "@/features/workspace/project-workbench/automations/automation-preview-dialog"
 import { ProviderConfigSummary } from "./provider-config-dialog"
+import { WorkspaceTemplateVariablePicker } from "./workspace-template-variable-picker"
 
 type Props = {
   open: boolean
@@ -66,7 +67,7 @@ function ruleToInput(rule: WorkspaceAutomationRule): WorkspaceAutomationRuleInpu
 }
 
 const defaultWorkspaceInput: WorkspaceAutomationRuleInput = {
-  name: "新项目知识库初始化",
+  name: "",
   description: "",
   enabled: true,
   trigger_type: "event",
@@ -80,13 +81,12 @@ const defaultWorkspaceInput: WorkspaceAutomationRuleInput = {
     temperature: 0.2,
   },
   context: { include: ["workspace", "project", "project_config", "event"] },
-  instruction_template:
-    "你负责初始化新项目的知识库。\n\n1. 读取事件中的 workspace、project 和 project_config。\n2. 如果 feishu_drive_folder_token 为空，不创建任何资源，直接说明跳过原因。\n3. 先用 project_config_list 再次检查 knowledge_id；若已有非空值，视为已完成，不重复创建。\n4. 创建或取得知识库后，调用 project_config_set 把知识库 ID 写回 yaoguang.knowledge_base.id。",
+  instruction_template: "",
   system_prompt: "",
 }
 
 const defaultWorkspaceScheduleInput: WorkspaceAutomationRuleInput = {
-  name: "每周项目治理巡检",
+  name: "",
   description: "",
   enabled: true,
   trigger_type: "schedule",
@@ -94,7 +94,7 @@ const defaultWorkspaceScheduleInput: WorkspaceAutomationRuleInput = {
   condition: { task_filter: "", max_tasks: 50 },
   action: defaultWorkspaceInput.action,
   context: { include: ["workspace"] },
-  instruction_template: "巡检整个工作空间。使用 MCP 工具按需查询项目与任务，输出治理摘要。",
+  instruction_template: "",
   system_prompt: "",
 }
 
@@ -347,9 +347,33 @@ export function WorkspaceAutomationRuleDialog({
                 disabled={!canEdit}
                 rows={6}
               />
-              <p className="text-xs text-muted-foreground">
-                提示：写清目标、前置条件、幂等条件和 project_config_set 回写规则。Secret config 永不进入上下文。
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  提示：写清目标、前置条件、幂等条件和 project_config_set 回写规则。
+                </p>
+                <WorkspaceTemplateVariablePicker
+                  trigger={form.trigger_type}
+                  onInsert={(token) => setForm({ ...form, instruction_template: form.instruction_template + token })}
+                  disabled={!canEdit}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="wa-system-prompt">系统提示词（可选）</Label>
+              <Textarea
+                id="wa-system-prompt"
+                value={form.system_prompt}
+                onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
+                disabled={!canEdit}
+                rows={3}
+                placeholder="留空使用默认 Workspace 自动化提示词"
+              />
+              <WorkspaceTemplateVariablePicker
+                trigger={form.trigger_type}
+                onInsert={(token) => setForm({ ...form, system_prompt: form.system_prompt + token })}
+                disabled={!canEdit}
+              />
             </div>
 
             {form.trigger_type === "event" ? (

@@ -120,6 +120,31 @@ export type AutomationProviderConfigInput = {
 const RULES_KEY = ["workspace-automations", "rules"] as const
 const DELIVERIES_KEY = ["workspace-automations", "deliveries"] as const
 const PROVIDER_CONFIG_KEY = ["workspace-automations", "provider-config"] as const
+const TEMPLATE_VARS_KEY = ["workspace-automations", "template-vars"] as const
+
+export type AutomationTemplateVar = {
+  name: string
+  description: string
+  is_prefix?: boolean
+}
+
+export type AutomationTemplateVarsView = {
+  triggers: Array<{
+    trigger: string
+    vars: AutomationTemplateVar[]
+  }>
+}
+
+export function useWorkspaceAutomationTemplateVars() {
+  return useQuery({
+    queryKey: TEMPLATE_VARS_KEY,
+    queryFn: () =>
+      workspaceApiGet<AutomationTemplateVarsView>(
+        "/api/v1/automations/template-vars",
+      ),
+    staleTime: Infinity,
+  })
+}
 
 export function useWorkspaceAutomationRules(enabledOnly: boolean = false) {
   return useQuery({
