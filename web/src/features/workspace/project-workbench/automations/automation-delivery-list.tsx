@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { Button } from "@/components/ui/button"
+import {
+  DeliveryStatusDot,
+  deliveryStatusLabel,
+} from "@/features/workspace/automations/shared/automation-status"
 
 import { listProjectAutomationDeliveries } from "./project-automations-api"
 
@@ -41,7 +45,12 @@ export function AutomationDeliveryList({ projectSlug, ruleID, onSelectDelivery }
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b">
-                  <td className="p-2">{row.status}</td>
+                  <td className="p-2">
+                    <div className="flex items-center gap-2">
+                      <DeliveryStatusDot status={row.status} />
+                      <span>{deliveryStatusLabel(row.status)}</span>
+                    </div>
+                  </td>
                   <td className="p-2">{row.event_type || row.trigger_type}</td>
                   <td className="p-2">{row.response_status_code ?? "-"}</td>
                   <td className="p-2">{row.provider_request_id || "-"}</td>
