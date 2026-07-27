@@ -58,6 +58,8 @@ func workspaceAutomationModifyInput(req workspaceAutomationRuleRequest) app.Auto
 
 // scopedWorkspaceAutomationService 校验 workspace + hook 双重 scope；
 // write=true 时使用 workspace:write + hook:write。
+// browser session 的 scope 是交互层人为收紧，capability 检查在 AuthorizeTokenRequest
+// 中对 browser session 自动跳过（真实授权由 role 决定）。
 func (s *Server) scopedWorkspaceAutomationService(r *http.Request, write bool) (*app.Service, error) {
 	wsScope := auth.ScopeWorkspaceRead
 	wsPermission := app.PermissionWorkspaceRead

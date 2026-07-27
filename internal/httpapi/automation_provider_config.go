@@ -24,6 +24,8 @@ type automationProviderConfigRequest struct {
 // scopedAutomationProviderConfigService 校验 Provider config 双 scope。
 // Workspace：config:read/write + workspace.read/modify；
 // Project：复用现有 Project config token/role + project read/manage。
+// browser session 的 scope 是交互层人为收紧，capability 检查在 AuthorizeTokenRequest
+// 中对 browser session 自动跳过（真实授权由 role 决定）。
 func (s *Server) scopedAutomationProviderConfigService(r *http.Request, projectRef string, write bool) (*app.Service, error) {
 	if projectRef == "" {
 		// Workspace scope。

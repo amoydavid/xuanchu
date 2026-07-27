@@ -83,8 +83,13 @@ func requestScopeProjectFilterExpr(scope *RequestScope) query.Expr {
 
 func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (AuthorizedRequest, error) {
 	scope := NewRequestScope(input.Token.Token)
-	if input.RequiredCapability != "" && !scope.HasCapability(input.RequiredCapability) {
-		return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "token scope denied"}
+	// browser session 的 scope 集合是交互层人为收紧（见 httpapi.browserSessionScopes），
+	// 刻意不放 workspace:write 等 SSO 专用 scope。真实授权由 membership role 决定，
+	// 因此对 browser session 跳过 capability 检查，由后续 role permission 校验把关。
+	if input.Token.Token.Type != BrowserSessionTokenType {
+		if input.RequiredCapability != "" && !scope.HasCapability(input.RequiredCapability) {
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "token scope denied"}
+		}
 	}
 	subjectUserRef := strings.TrimSpace(input.SubjectUserRef)
 	if subjectUserRef != "" {
