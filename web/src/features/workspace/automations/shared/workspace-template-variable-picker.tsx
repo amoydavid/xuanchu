@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { VariableIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -25,17 +25,16 @@ type Props = {
 // schedule 触发不绑定 Project，不展示 project_config 变量。
 export function WorkspaceTemplateVariablePicker({ trigger, onInsert, disabled }: Props) {
   const [open, setOpen] = useState(false)
-  const listRef = useRef<HTMLDivElement>(null)
   const { data } = useWorkspaceAutomationTemplateVars()
 
   // AGENTS.md Dialog 浮层滚动陷阱：Popover 通过 portal 挂到 document.body，
   // 在 Radix Dialog 内时 react-remove-scroll 会取消锁容器外的 wheel。
-  // 在 CommandList 上注册原生 wheel 隔离，列表可滚动时手动更新 scrollTop
-  // 并阻止事件冒泡到 document 滚动锁。
-  useEffect(() => {
-    if (!open || !listRef.current) return
-    return installWheelScrollIsolation(listRef.current)
-  }, [open])
+  // 使用 callback ref 在 CommandList 实际挂载时注册原生 wheel 隔离，避免
+  // open effect 早于 Radix portal 挂载而漏装监听器；返回值会在卸载时清理。
+  const setListRef = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return
+    return installWheelScrollIsolation(element)
+  }, [])
 
   // event 触发时加载 config schema，展示非 secret key 作为 project_config 变量。
   const schemaQuery = useQuery({
@@ -62,7 +61,7 @@ export function WorkspaceTemplateVariablePicker({ trigger, onInsert, disabled }:
       <PopoverContent className="w-80 p-0" align="start">
         <Command className="overflow-hidden">
           <CommandInput placeholder="搜索变量..." />
-          <CommandList ref={listRef} className="max-h-[300px] overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
+          <CommandList ref={setListRef} className="max-h-[300px] overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
             <CommandEmpty>无匹配变量</CommandEmpty>
             <CommandGroup heading="通用变量">
               {vars.map((v) => (
@@ -105,4 +104,3 @@ export function WorkspaceTemplateVariablePicker({ trigger, onInsert, disabled }:
     </Popover>
   )
 }
-

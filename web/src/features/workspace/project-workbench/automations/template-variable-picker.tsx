@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { VariableIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
+import { installWheelScrollIsolation } from "@/lib/scroll-propagation"
 
 import { useAutomationTemplateVars } from "./project-automations-api"
 
@@ -23,6 +24,14 @@ type Props = {
 export function TemplateVariablePicker({ projectSlug, workspaceSlug, trigger, onInsert, disabled }: Props) {
   const [open, setOpen] = useState(false)
   const { data } = useAutomationTemplateVars(projectSlug)
+
+  // Popover 通过 portal 挂到 Dialog 外；在 CommandList 上使用原生 wheel 隔离，
+  // 避免 react-remove-scroll 的 document 监听器取消列表滚动。使用 callback ref
+  // 可确保监听器在 Radix 延迟挂载 portal 内容时仍会注册，并在卸载时自动清理。
+  const setListRef = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return
+    return installWheelScrollIsolation(element)
+  }, [])
 
   // 获取项目配置项（非 secret），用于 project_config:xxx 变量。
   const configQuery = useQuery({
@@ -47,7 +56,7 @@ export function TemplateVariablePicker({ projectSlug, workspaceSlug, trigger, on
       <PopoverContent className="w-80 p-0" align="start">
         <Command className="overflow-hidden">
           <CommandInput placeholder="搜索变量..." />
-          <CommandList className="max-h-[300px] overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
+          <CommandList ref={setListRef} className="max-h-[300px] overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
             <CommandEmpty>无匹配变量</CommandEmpty>
             <CommandGroup heading="通用变量">
               {vars.map((v) => (

@@ -100,4 +100,41 @@ describe("TemplateVariablePicker", () => {
     expect(await screen.findByText(/event\.type/)).toBeTruthy()
     expect(screen.queryByText(/tasks/)).toBeNull()
   })
+
+  it("keeps the command list scrollable inside a Dialog scroll lock", async () => {
+    renderPicker({
+      projectSlug: "adsops",
+      workspaceSlug: "local",
+      trigger: "schedule",
+      onInsert: vi.fn(),
+      disabled: false,
+    })
+    await userEvent.click(screen.getByRole("button", { name: "插入变量" }))
+
+    const list = document.querySelector<HTMLElement>('[data-slot="command-list"]')
+    expect(list).toBeTruthy()
+    if (!list) return
+
+    // jsdom 不计算布局，手动构造 CommandList 内容溢出的真实条件。
+    Object.defineProperty(list, "scrollHeight", { value: 300, configurable: true })
+    Object.defineProperty(list, "clientHeight", { value: 100, configurable: true })
+
+    // 模拟 Radix Dialog 底层 react-remove-scroll 的 document wheel 锁。
+    const documentWheel = vi.fn((event: WheelEvent) => event.preventDefault())
+    document.addEventListener("wheel", documentWheel)
+    try {
+      const event = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 80,
+      })
+      list.dispatchEvent(event)
+
+      expect(list.scrollTop).toBe(80)
+      expect(documentWheel).not.toHaveBeenCalled()
+      expect(event.defaultPrevented).toBe(true)
+    } finally {
+      document.removeEventListener("wheel", documentWheel)
+    }
+  })
 })
