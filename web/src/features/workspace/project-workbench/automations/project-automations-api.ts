@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import {
   workspaceApiDelete,
@@ -190,5 +190,23 @@ export function useAutomationTemplateVars(projectSlug: string) {
     queryKey: ["automation-template-vars", projectSlug],
     queryFn: () => getAutomationTemplateVars(projectSlug),
     staleTime: Infinity,
+  })
+}
+
+// useToggleProjectAutomationRule 封装 enable/disable 二选一，与 workspace 侧 useToggleWorkspaceAutomationRule 对称。
+export function useToggleProjectAutomationRule(projectSlug: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { ruleId: string; enable: boolean }) => {
+      return vars.enable
+        ? enableProjectAutomationRule(projectSlug, vars.ruleId)
+        : disableProjectAutomationRule(projectSlug, vars.ruleId)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["project", projectSlug, "automations"] })
+      void queryClient.invalidateQueries({
+        queryKey: ["project", projectSlug, "automation-deliveries"],
+      })
+    },
   })
 }

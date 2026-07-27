@@ -3,6 +3,8 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
+import { RuleStatusDot } from "@/features/workspace/automations/shared/automation-status"
 import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { DestructiveConfirmDialog } from "@/features/workspace/project-workbench/shared/destructive-confirm-dialog"
@@ -13,6 +15,7 @@ import {
   deleteProjectAutomation,
   listProjectAutomations,
   testProjectAutomationRule,
+  useToggleProjectAutomationRule,
   type ProjectAutomationRule,
   type ProjectAutomationRuleInput,
 } from "./project-automations-api"
@@ -88,6 +91,9 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
     },
   })
 
+  // enable/disable 共用一个 mutation；onSuccess 内由调用方决定 success 文案。
+  const toggle = useToggleProjectAutomationRule(projectSlug)
+
   if (rules.isPending) {
     return <Skeleton className="h-48 w-full" />
   }
@@ -134,7 +140,28 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
           <tbody>
             {(rules.data ?? []).map((rule) => (
               <tr key={rule.id} className="border-b">
-                <td className="p-2">{rule.enabled ? "启用" : "停用"}</td>
+                <td className="p-2">
+                  <div className="flex items-center gap-2">
+                    <RuleStatusDot enabled={rule.enabled} />
+                    <Switch
+                      checked={rule.enabled}
+                      disabled={writeDisabled}
+                      aria-label={rule.enabled ? "启用" : "停用"}
+                      onCheckedChange={(checked) => {
+                        toggle.mutate(
+                          { ruleId: rule.id, enable: checked },
+                          {
+                            onSuccess: () => {
+                              invalidateRules()
+                              feedback.success(checked ? "规则已启用" : "规则已停用")
+                            },
+                            onError: (err) => feedback.failure("操作失败", errorMessage(err)),
+                          },
+                        )
+                      }}
+                    />
+                  </div>
+                </td>
                 <td className="p-2 font-medium">{rule.name}</td>
                 <td className="p-2">{triggerSummary(rule)}</td>
                 <td className="p-2">Agent Provider</td>
@@ -148,6 +175,29 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                       onClick={() => setEditing(rule)}
                     >
                       编辑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={
+                        writeDisabled ||
+                        (toggle.isPending && toggle.variables?.ruleId === rule.id)
+                      }
+                      onClick={() => {
+                        toggle.mutate(
+                          { ruleId: rule.id, enable: !rule.enabled },
+                          {
+                            onSuccess: () => {
+                              invalidateRules()
+                              feedback.success(!rule.enabled ? "规则已启用" : "规则已停用")
+                            },
+                            onError: (err) => feedback.failure("操作失败", errorMessage(err)),
+                          },
+                        )
+                      }}
+                    >
+                      {rule.enabled ? "停用" : "启用"}
                     </Button>
                     <Button
                       type="button"

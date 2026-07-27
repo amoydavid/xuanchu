@@ -14,6 +14,7 @@ import {
   previewProjectAutomation,
   testProjectAutomationRule,
   updateProjectAutomation,
+  useToggleProjectAutomationRule,
 } from "./project-automations-api"
 
 // 可变的 layout mock，允许单个测试切换 closed 状态。
@@ -48,6 +49,13 @@ vi.mock("./project-automations-api", () => ({
   deleteProjectAutomation: vi.fn(),
   listProjectAutomationDeliveries: vi.fn(),
   getProjectAutomationDelivery: vi.fn(),
+  useToggleProjectAutomationRule: vi.fn(() => ({
+    // 默认 mutate 同步触发 onSuccess，让 toggle 测试能断言 feedback.success。
+    mutate: vi.fn((_vars, opts) => {
+      if (opts?.onSuccess) opts.onSuccess()
+    }),
+    isPending: false,
+  })),
   useAutomationTemplateVars: vi.fn(() => ({
     data: {
       triggers: [
@@ -275,5 +283,83 @@ describe("ProjectAutomationsPage", () => {
     await screen.findByRole("dialog", { name: "新建自动化规则" })
     await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
     await waitFor(() => expect(feedback.failure).toHaveBeenCalledWith("预览失败", expect.stringContaining("base_url")))
+  })
+
+  it("toggles a rule off via the row switch", async () => {
+    const toggleMutate = vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => {
+      if (opts?.onSuccess) opts.onSuccess()
+    })
+    vi.mocked(useToggleProjectAutomationRule).mockReturnValue({
+      mutate: toggleMutate,
+      isPending: false,
+    } as never)
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    // Switch 的可访问名来自 RuleStatusDot 的 aria-label「启用」。
+    const sw = screen.getByRole("switch", { name: "启用" })
+    await userEvent.click(sw)
+    // 断言 toggle hook 的 mutate 被以「停用」参数调用。
+    await waitFor(() =>
+      expect(toggleMutate).toHaveBeenCalledWith(
+        { ruleId: "rule-1", enable: false },
+        expect.objectContaining({}),
+      ),
+    )
+    expect(feedback.success).toHaveBeenCalledWith("规则已停用")
+  })
+
+  it("toggles a rule on via the row action button", async () => {
+    // 把默认规则改成停用态，测「启用」分支。
+    vi.mocked(listProjectAutomations).mockResolvedValue([
+      {
+        id: "rule-1",
+        workspace_id: "ws",
+        project_id: "proj",
+        name: "每日项目巡检",
+        description: "每天检查",
+        enabled: false,
+        trigger_type: "schedule",
+        trigger_config: { schedule_type: "daily_at", schedule_value: "09:30", timezone: "Asia/Shanghai" },
+        condition: { task_filter: "status:pending", max_tasks: 50 },
+        action_type: "openai_compatible",
+        action: {
+          protocol: "chat_completions",
+          base_url_config_key: "agent.provider.base_url",
+          api_key_config_key: "agent.provider.api_key",
+          model_config_key: "agent.provider.model",
+          temperature: 0.2,
+        },
+        context: { include: ["workspace", "project", "task_summary", "matched_tasks", "project_config"] },
+        instruction_template: "生成巡检",
+        system_prompt: "",
+        created_at: 1,
+        modified_at: 1,
+      },
+    ])
+    const toggleMutate = vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => {
+      if (opts?.onSuccess) opts.onSuccess()
+    })
+    vi.mocked(useToggleProjectAutomationRule).mockReturnValue({
+      mutate: toggleMutate,
+      isPending: false,
+    } as never)
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "启用" }))
+    await waitFor(() =>
+      expect(toggleMutate).toHaveBeenCalledWith(
+        { ruleId: "rule-1", enable: true },
+        expect.objectContaining({}),
+      ),
+    )
+    expect(feedback.success).toHaveBeenCalledWith("规则已启用")
+  })
+
+  it("disables toggle switch for closed projects", async () => {
+    layoutState.closed = true
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    const sw = screen.getByRole("switch", { name: "启用" })
+    expect((sw as HTMLButtonElement).disabled).toBe(true)
   })
 })
