@@ -34,7 +34,7 @@ export function deliveryDotColor(status: AutomationDeliveryStatus): string {
     case "retry_wait":
       return "bg-amber-500"
     case "delivering":
-      return "bg-primary/60"
+      return "bg-primary/60 animate-automation-delivering"
     default:
       return "bg-muted-foreground/40"
   }

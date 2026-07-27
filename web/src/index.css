@@ -197,3 +197,20 @@
     background: var(--sidebar-primary);
   }
 }
+
+/*
+ * 投递中状态点的呼吸动画：7px 圆点 opacity 在 0.4~1.0 之间循环，
+ * 让用户感知「正在投递」。尊重 prefers-reduced-motion。
+ */
+@keyframes automation-delivering {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.animate-automation-delivering {
+  animation: automation-delivering 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-automation-delivering {
+    animation: none;
+  }
+}
