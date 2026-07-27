@@ -262,11 +262,16 @@ function RulesTab({
                   {rule.name}
                 </button>
               </TableCell>
-              <TableCell title={summarizeTriggerFull(rule.trigger_type, rule.trigger_config)}>
-                <span className="truncate">{summarizeTrigger(rule.trigger_type, rule.trigger_config)}</span>
+              <TableCell className="min-w-0" title={summarizeTriggerFull(rule.trigger_type, rule.trigger_config)}>
+                <span className="block truncate">{summarizeTrigger(rule.trigger_type, rule.trigger_config)}</span>
               </TableCell>
-              <TableCell>
-                <span className="line-clamp-1 text-muted-foreground">{rule.instruction_template}</span>
+              <TableCell className="min-w-0">
+                <span
+                  className="block truncate text-muted-foreground"
+                  title={rule.instruction_template}
+                >
+                  {rule.instruction_template}
+                </span>
               </TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground">
                 {rule.last_delivery ? relativeTime(rule.last_delivery.created_at) : "从未运行"}
