@@ -232,16 +232,24 @@ function RulesTab({
 
   return (
     <>
-      {/* 桌面 shadcn Table */}
-      <Table containerClassName="hidden md:block">
+      {/* 桌面 shadcn Table：table-fixed 让列宽由 colgroup 决定，配合 truncate 真正截断。 */}
+      <Table containerClassName="hidden md:block" className="table-fixed">
+        <colgroup>
+          <col className="w-[60px]" />
+          <col />
+          <col className="w-[180px]" />
+          <col />
+          <col className="w-[120px]" />
+          <col className="w-[48px]" />
+        </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[60px]">状态</TableHead>
+            <TableHead>状态</TableHead>
             <TableHead>名称</TableHead>
-            <TableHead className="w-[180px]">触发器</TableHead>
+            <TableHead>触发器</TableHead>
             <TableHead>指令摘要</TableHead>
-            <TableHead className="w-[120px]">最近运行</TableHead>
-            <TableHead className="w-[40px] text-right">操作</TableHead>
+            <TableHead>最近运行</TableHead>
+            <TableHead className="text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -256,16 +264,17 @@ function RulesTab({
               <TableCell>
                 <button
                   type="button"
-                  className="truncate font-medium hover:underline"
+                  className="block truncate font-medium hover:underline"
+                  title={rule.name}
                   onClick={() => onEdit(rule)}
                 >
                   {rule.name}
                 </button>
               </TableCell>
-              <TableCell className="min-w-0" title={summarizeTriggerFull(rule.trigger_type, rule.trigger_config)}>
+              <TableCell title={summarizeTriggerFull(rule.trigger_type, rule.trigger_config)}>
                 <span className="block truncate">{summarizeTrigger(rule.trigger_type, rule.trigger_config)}</span>
               </TableCell>
-              <TableCell className="min-w-0">
+              <TableCell>
                 <span
                   className="block truncate text-muted-foreground"
                   title={rule.instruction_template}

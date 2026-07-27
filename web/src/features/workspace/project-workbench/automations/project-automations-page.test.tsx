@@ -168,7 +168,8 @@ describe("ProjectAutomationsPage", () => {
   it("opens edit dialog and updates a rule", async () => {
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "编辑" }))
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "编辑" }))
     // 编辑弹窗标题为「编辑自动化规则」。
     expect(await screen.findByRole("dialog", { name: "编辑自动化规则" })).toBeTruthy()
     // 表单加载了规则名称。
@@ -211,7 +212,8 @@ describe("ProjectAutomationsPage", () => {
     })
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "立即测试" }))
     await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
     // Debug 弹窗打开，标题含「测试投递结果」。
     expect(await screen.findByRole("dialog", { name: /测试投递结果/ })).toBeTruthy()
@@ -233,7 +235,8 @@ describe("ProjectAutomationsPage", () => {
     } as never)
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "立即测试" }))
     // Debug 弹窗打开并展示成功状态。
     await waitFor(() => expect(screen.getByText("成功")).toBeTruthy())
     // usage tab 展示 prompt_tokens。
@@ -244,7 +247,8 @@ describe("ProjectAutomationsPage", () => {
   it("deletes a rule with confirmation", async () => {
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "删除" }))
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "删除" }))
     // AlertDialog 出现。
     expect(await screen.findByText("删除自动化规则")).toBeTruthy()
     // 确认按钮在 AlertDialog 中，是页面上第二个「删除」按钮。
@@ -258,9 +262,9 @@ describe("ProjectAutomationsPage", () => {
     renderPage()
     expect(await screen.findByText("每日项目巡检")).toBeTruthy()
     expect((screen.getByRole("button", { name: "新建规则" }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "编辑" }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "删除" }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "立即测试" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "从模板创建" }) as HTMLButtonElement).disabled).toBe(true)
+    // 行内操作收进 ⋯ 菜单，关闭项目时不渲染。
+    expect(screen.queryByRole("button", { name: "操作" })).toBeNull()
   })
 
   it("opens preview dialog from within the create dialog", async () => {
@@ -285,7 +289,7 @@ describe("ProjectAutomationsPage", () => {
     await waitFor(() => expect(feedback.failure).toHaveBeenCalledWith("预览失败", expect.stringContaining("base_url")))
   })
 
-  it("toggles a rule off via the row switch", async () => {
+  it("toggles a rule off via the row actions menu", async () => {
     const toggleMutate = vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => {
       if (opts?.onSuccess) opts.onSuccess()
     })
@@ -295,10 +299,9 @@ describe("ProjectAutomationsPage", () => {
     } as never)
     renderPage()
     await screen.findByText("每日项目巡检")
-    // Switch 的可访问名来自 RuleStatusDot 的 aria-label「启用」。
-    const sw = screen.getByRole("switch", { name: "启用" })
-    await userEvent.click(sw)
-    // 断言 toggle hook 的 mutate 被以「停用」参数调用。
+    // 启用态规则点 ⋯ 后菜单项文案为「停用」。
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "停用" }))
     await waitFor(() =>
       expect(toggleMutate).toHaveBeenCalledWith(
         { ruleId: "rule-1", enable: false },
@@ -308,7 +311,7 @@ describe("ProjectAutomationsPage", () => {
     expect(feedback.success).toHaveBeenCalledWith("规则已停用")
   })
 
-  it("toggles a rule on via the row action button", async () => {
+  it("toggles a rule on via the row actions menu", async () => {
     // 把默认规则改成停用态，测「启用」分支。
     vi.mocked(listProjectAutomations).mockResolvedValue([
       {
@@ -345,7 +348,8 @@ describe("ProjectAutomationsPage", () => {
     } as never)
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "启用" }))
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "启用" }))
     await waitFor(() =>
       expect(toggleMutate).toHaveBeenCalledWith(
         { ruleId: "rule-1", enable: true },
@@ -355,11 +359,11 @@ describe("ProjectAutomationsPage", () => {
     expect(feedback.success).toHaveBeenCalledWith("规则已启用")
   })
 
-  it("disables toggle switch for closed projects", async () => {
+  it("hides row actions menu for closed projects", async () => {
     layoutState.closed = true
     renderPage()
     await screen.findByText("每日项目巡检")
-    const sw = screen.getByRole("switch", { name: "启用" })
-    expect((sw as HTMLButtonElement).disabled).toBe(true)
+    // 关闭项目时不渲染 ⋯ 操作按钮。
+    expect(screen.queryByRole("button", { name: "操作" })).toBeNull()
   })
 })

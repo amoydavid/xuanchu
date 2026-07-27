@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { MoreHorizontal } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
 import { RuleStatusDot } from "@/features/workspace/automations/shared/automation-status"
 import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
@@ -127,14 +134,21 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
         </div>
       </div>
       <div className="overflow-hidden rounded-md border">
-        <table className="w-full text-sm">
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-[48px]" />
+            <col />
+            <col className="w-[180px]" />
+            <col className="w-[120px]" />
+            <col className="w-[48px]" />
+          </colgroup>
           <thead>
             <tr className="border-b bg-muted/40 text-left">
               <th className="p-2">状态</th>
               <th className="p-2">名称</th>
               <th className="p-2">触发器</th>
               <th className="p-2">动作</th>
-              <th className="p-2">操作</th>
+              <th className="p-2" aria-label="操作" />
             </tr>
           </thead>
           <tbody>
@@ -143,48 +157,27 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                 <td className="p-2">
                   <div className="flex items-center gap-2">
                     <RuleStatusDot enabled={rule.enabled} />
-                    <Switch
-                      checked={rule.enabled}
-                      disabled={writeDisabled}
-                      aria-label={rule.enabled ? "启用" : "停用"}
-                      onCheckedChange={(checked) => {
-                        toggle.mutate(
-                          { ruleId: rule.id, enable: checked },
-                          {
-                            onSuccess: () => {
-                              invalidateRules()
-                              feedback.success(checked ? "规则已启用" : "规则已停用")
-                            },
-                            onError: (err) => feedback.failure("操作失败", errorMessage(err)),
-                          },
-                        )
-                      }}
-                    />
+                    <span className="sr-only">{rule.enabled ? "启用" : "停用"}</span>
                   </div>
                 </td>
-                <td className="p-2 font-medium">{rule.name}</td>
-                <td className="p-2">{triggerSummary(rule)}</td>
-                <td className="p-2">Agent Provider</td>
+                <td className="p-2 font-medium">
+                  <span className="block truncate" title={rule.name}>
+                    {rule.name}
+                  </span>
+                </td>
                 <td className="p-2">
-                  <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={writeDisabled}
-                      onClick={() => setEditing(rule)}
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={
-                        writeDisabled ||
-                        (toggle.isPending && toggle.variables?.ruleId === rule.id)
-                      }
-                      onClick={() => {
+                  <span className="block truncate" title={triggerSummary(rule)}>
+                    {triggerSummary(rule)}
+                  </span>
+                </td>
+                <td className="p-2">Agent Provider</td>
+                <td className="p-2 text-right">
+                  {writeDisabled ? null : (
+                    <ProjectRuleActions
+                      rule={rule}
+                      togglePending={toggle.isPending && toggle.variables?.ruleId === rule.id}
+                      testPending={testMutation.isPending}
+                      onToggle={() =>
                         toggle.mutate(
                           { ruleId: rule.id, enable: !rule.enabled },
                           {
@@ -195,29 +188,12 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                             onError: (err) => feedback.failure("操作失败", errorMessage(err)),
                           },
                         )
-                      }}
-                    >
-                      {rule.enabled ? "停用" : "启用"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={writeDisabled || testMutation.isPending}
-                      onClick={() => testMutation.mutate(rule.id)}
-                    >
-                      立即测试
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={writeDisabled}
-                      onClick={() => setDeleting(rule)}
-                    >
-                      删除
-                    </Button>
-                  </div>
+                      }
+                      onEdit={() => setEditing(rule)}
+                      onTest={() => testMutation.mutate(rule.id)}
+                      onDelete={() => setDeleting(rule)}
+                    />
+                  )}
                 </td>
               </tr>
             ))}
@@ -276,6 +252,49 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
         deliveryID={debugDeliveryId}
       />
     </section>
+  )
+}
+
+// ProjectRuleActions 把行内操作收进 ⋯ 下拉，与工作区页 RuleActions 视觉一致。
+// 项目页比工作区页多一个「立即测试」入口。
+function ProjectRuleActions({
+  rule,
+  togglePending,
+  testPending,
+  onToggle,
+  onEdit,
+  onTest,
+  onDelete,
+}: {
+  rule: ProjectAutomationRule
+  togglePending: boolean
+  testPending: boolean
+  onToggle: () => void
+  onEdit: () => void
+  onTest: () => void
+  onDelete: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="操作">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit}>编辑</DropdownMenuItem>
+        <DropdownMenuItem onClick={onToggle} disabled={togglePending}>
+          {rule.enabled ? "停用" : "启用"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onTest} disabled={testPending}>
+          立即测试
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+          删除
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
