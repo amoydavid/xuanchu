@@ -157,3 +157,34 @@
 - **风险**：Switch 在原生 `<table>` 的 `<td>` 内高度对齐可能需要微调。缓解：状态列内用 `flex items-center gap-2` 包裹圆点 + Switch。
 - **风险**：自定义 keyframes 名字与第三方冲突概率低（前缀 `automation-delivering` 已足够特化）。
 - **回退**：三处改动彼此独立，可分别 revert。
+
+## 8. 修订记录（2026-07-27 实现后回炉）
+
+初版实现后用户反馈两个问题，本节记录根因与修订。
+
+### 8.1 指令摘要列截断未生效
+
+**现象**：工作区页面改完后，浏览器里指令摘要列仍然很长、没有省略号。
+
+**根因**：shadcn `<Table>` 与项目页原生 `<table>` 都是默认 `table-layout: auto`，列宽由内容撑开。在 auto 布局下，table-cell 的 `min-w-0` 与子元素的 `truncate` 都**无法触发省略号**——因为列宽本身就被内容撑开了，子元素 `clientWidth === scrollWidth`。我用 playwright 实测：auto 布局下指令摘要列 `clientWidth=904, scrollWidth=904, truncated=false`，整张表被撑到 1974px（超出 1280 视口）。
+
+**修订**：给两处表格都加 `table-layout: fixed`（Tailwind `table-fixed`），并用 `<colgroup>` 定义列宽比例。fixed 布局下列宽由 `<col>` 决定、不被内容撑开，`truncate` 才真正生效。实测：fixed 布局下指令摘要列 `clientWidth=486, scrollWidth=904, truncated=true`。列宽分配：状态 48px / 触发器 180px / 最近运行 120px / 操作 48px 为固定，名称与指令摘要为弹性列。
+
+**验证手段**：新增 `web/scripts/verify-truncate-css.mjs`，用 playwright 渲染 auto 与 fixed 两张表，断言 `scrollWidth > clientWidth`。jsdom 无法验证布局（clientWidth/scrollWidth 恒为 0），所以截断类视觉回归必须用真实浏览器测量。
+
+### 8.2 项目页启停入口冗余
+
+**现象**：初版给项目页同时加了「状态列 Switch」和「操作列启用/停用文字按钮」，两个入口干同一件事，视觉吵闹。用户指出优秀数据表格不应这样设计。
+
+**根因**：设计决策时把「可见性」和「操作密度」混在一起，没有遵循「高频外露、低频收起」的原则。
+
+**修订**：去掉 Switch，状态列只保留 `RuleStatusDot`；操作列的所有行操作（编辑 / 启用-停用 / 立即测试 / 删除）收进一个 `⋯` 下拉菜单（项目页新增 `ProjectRuleActions` 组件，结构与工作区页 `RuleActions` 一致，仅多一个「立即测试」项）。这同时让两个页面的行操作交互完全统一。
+
+**收益**：状态列一眼看到启用态，操作列只有一个 `⋯` 不抢戏，与工作区页一致。
+
+### 8.3 对验收标准与实现计划的同步影响
+
+- 验收标准 1「状态列 Switch」作废，改为「状态列状态点 + 操作收进 ⋯ 菜单，菜单含启用/停用项」。
+- 实现计划 Task 3 的 Switch 步骤作废，替换为 `ProjectRuleActions` 下拉菜单。
+- 指令摘要截断的验收从「检查 className 含 truncate」升级为「playwright 测量 `scrollWidth > clientWidth`」。
+
