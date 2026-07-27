@@ -13,7 +13,7 @@ description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序
 
 ## 核心原则
 
-- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `report_run` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **先遵循 `xuanchu-mcp-base` 技能的工具名解析规则。** 本文中的 `report_run` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - 所有操作只读，不修改任何数据。
 - `report_run` 的 `name` 必填，内置报表名固定（见 references/report-tools.md）；可用 `query` 在报表上叠加过滤。
 - `urgency_explain` 回答"为什么这个任务排前面"，返回各因素的贡献值。

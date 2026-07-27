@@ -13,7 +13,7 @@ description: 建立和归档项目、从已有模板创建项目、给项目分�
 
 ## 核心原则
 
-- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `project_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **先遵循 `xuanchu-mcp-base` 技能的工具名解析规则。** 本文中的 `project_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **每次调用都显式传 `workspace`。** 不要依赖隐式状态；用参数定位，不用 `workspace_use`/`user_use` 切换隐式上下文（那两个只影响 stdio MCP）。
 - project 用 `project`(slug) 或 `project_id`(UUID) 定位。不知道 project_id 时先 `project_list`。
 - MCP 只提供 `project_template_list` 和 `project_template_instantiate`。模板 Capture、候选项筛选、Preview、归档和版本治理只能在 Web Console 完成，Agent 不要尝试寻找或拼造治理 tool。

@@ -13,7 +13,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 
 ## 核心原则
 
-- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `task_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **先遵循 `xuanchu-mcp-base` 技能的工具名解析规则。** 本文中的 `task_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **每次调用都显式传 `workspace`**，任务归 project 时带 `project_id` / `project`。
 - **任务引用使用 UUID、已物化 `task_slug`（如 `api-1`）或循环实例 `occurrence_ref`**；projected 实例只有 occurrence_ref。不要使用本地 working-set 数字 ID。
 - 不确定 workspace/project 时先 `project_list` 发现，不要依赖隐式状态。

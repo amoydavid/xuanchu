@@ -13,7 +13,7 @@ description: 管理 API token（创建/轮换/撤销）、查可用权限、调�
 
 ## 核心原则
 
-- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `token_create` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **先遵循 `xuanchu-mcp-base` 技能的工具名解析规则。** 本文中的 `token_create` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **当前高权限接入方通常由后台预先发放 `["*"]` agent_token**，本 skill 不教你给自己建 token。这里讲的 token 操作是给别的系统/agent 发凭证。
 - **每次调用都显式传 `workspace`**，不依赖隐式状态。
 - 给别的系统发 token：通用 `["*"]` 或最小化专用 scope；**raw_token 只出现一次，必须保存**。
