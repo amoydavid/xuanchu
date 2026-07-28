@@ -2,12 +2,26 @@ import type { ProjectAutomationRuleInput } from "./project-automations-api"
 
 // AUTOMATION_EVENT_OPTIONS 是事件触发可选的事件类型，对齐后端 allowedHookEventTypes 白名单。
 export const AUTOMATION_EVENT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "task.assigned", label: "task.assigned（任务分配）" },
-  { value: "task.completed", label: "task.completed（任务完成）" },
+  { value: "task.created", label: "task.created（任务创建）" },
   { value: "task.modified", label: "task.modified（任务修改）" },
+  { value: "task.completed", label: "task.completed（任务完成）" },
+  { value: "task.deleted", label: "task.deleted（任务删除）" },
+  { value: "task.started", label: "task.started（任务开始）" },
+  { value: "task.stopped", label: "task.stopped（任务停止）" },
+  { value: "task.reopened", label: "task.reopened（任务重新打开）" },
+  { value: "task.assigned", label: "task.assigned（任务分配）" },
+  { value: "task.unassigned", label: "task.unassigned（移除负责人）" },
+  { value: "task.blocked", label: "task.blocked（任务被阻塞）" },
+  { value: "task.due_changed", label: "task.due_changed（截止日期变更）" },
+  { value: "task.priority_changed", label: "task.priority_changed（优先级变更）" },
+  { value: "task.project_changed", label: "task.project_changed（所属项目变更）" },
+  { value: "task.tags_changed", label: "task.tags_changed（标签变更）" },
   { value: "task.unblocked", label: "task.unblocked（任务解除阻塞）" },
-  { value: "project.annotated", label: "project.annotated（项目备注变更）" },
+  { value: "task.user_mentioned", label: "task.user_mentioned（用户被提及）" },
+  { value: "project.archived", label: "project.archived（项目归档）" },
   { value: "project.transitioned", label: "project.transitioned（项目状态转移）" },
+  { value: "project.annotated", label: "project.annotated（项目添加备注）" },
+  { value: "project.denotated", label: "project.denotated（项目删除备注）" },
 ]
 
 // defaultAutomationSystemPrompt 是 system prompt 的默认值，与后端 defaultAutomationSystemPrompt 一致。
