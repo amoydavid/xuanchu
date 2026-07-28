@@ -40,7 +40,7 @@ type TaskQueryInput struct {
 	Workspace      string `json:"workspace,omitempty"`
 	Project        string `json:"project,omitempty"`
 	ProjectID      string `json:"project_id,omitempty"`
-	Query          string `json:"query,omitempty" jsonschema:"task filter expression; an explicit status predicate overrides default visibility"`
+	Query          string `json:"query,omitempty" jsonschema:"filter expression combining predicates with and/or/not (lowercase) and parens; space-separated terms mean implicit AND. Predicates: '+tag' or '-tag' to require/exclude a tag (do NOT write 'tag:...'); a bare word matches the title substring; 'field:value' for equality; suffixes '.before'/'.after'/'.isnull'/'.notnull' for dates (no other suffixes). Common fields: status(pending|completed|deleted|waiting), priority(H|M|L), project, assignee, due/start/end. Dates: today, tomorrow, YYYY-MM-DD, now+24h. Examples: '+work status:pending', 'due.before:tomorrow and priority:H', 'start.notnull'. An explicit status predicate overrides the default non-deleted visibility."`
 	Status         string `json:"status,omitempty" jsonschema:"explicit task status filter; overrides default non-deleted visibility"`
 	Sort           string `json:"sort,omitempty" jsonschema:"task sort expression, for example due, due-, urgency-"`
 	Limit          int    `json:"limit,omitempty" jsonschema:"max tasks to return (default 200)"`
@@ -368,7 +368,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			items = append(items, occurrenceViewToMCPJSON(item))
 		}
 		data := map[string]any{
-			"items": items, "tasks": items, "total": page.Total, "count": page.Total,
+			"items": items, "total": page.Total,
 			"limit": page.Limit, "offset": page.Offset, "occurrence_mode": page.OccurrenceMode,
 		}
 		if page.Range != nil {
@@ -506,6 +506,14 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			map[string]any{"imported_tasks": result.TasksImported, "imported_series": result.SeriesImported},
 			fmt.Sprintf("imported %d task(s), %d series", result.TasksImported, result.SeriesImported),
 		)
+	})
+
+	addTool(s, opts, &mcp.Tool{
+		Name:        "task_query_help",
+		Description: "Return the full syntax reference (markdown) for the task filter expression used by task_query and report_run; read-only, no side effects.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryHelpInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		data := map[string]any{"syntax": taskFilterSyntaxDoc}
+		return successWithEnvelope(data, "task filter expression syntax")
 	})
 }
 

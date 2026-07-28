@@ -36,7 +36,7 @@
         "type": "string"
       },
       "query": {
-        "description": "task filter expression; an explicit status predicate overrides default visibility",
+        "description": "filter expression combining predicates with and/or/not (lowercase) and parens; space-separated terms mean implicit AND. Predicates: '+tag' or '-tag' to require/exclude a tag (do NOT write 'tag:...'); a bare word matches the title substring; 'field:value' for equality; suffixes '.before'/'.after'/'.isnull'/'.notnull' for dates (no other suffixes). Common fields: status(pending|completed|deleted|waiting), priority(H|M|L), project, assignee, due/start/end. Dates: today, tomorrow, YYYY-MM-DD, now+24h. Examples: '+work status:pending', 'due.before:tomorrow and priority:H', 'start.notnull'. An explicit status predicate overrides the default non-deleted visibility.",
         "type": "string"
       },
       "sort": {

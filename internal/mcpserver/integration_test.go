@@ -269,7 +269,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 	}
 
 	expectedTools := []string{
-		"task_add", "task_query", "task_get",
+		"task_add", "task_query", "task_query_help", "task_get",
 		"task_modify", "task_done", "task_delete",
 		"task_annotate", "task_denotate", "task_depends",
 		"task_start", "task_stop", "task_reopen",
@@ -738,7 +738,7 @@ func TestTaskQueryReturnsTasks(t *testing.T) {
 	if !ok {
 		t.Fatalf("data type = %T, want map", env.Data)
 	}
-	count, _ := dataMap["count"].(float64)
+	count, _ := dataMap["total"].(float64)
 	if int(count) < 2 {
 		t.Fatalf("expected at least 2 tasks, got %d", int(count))
 	}
@@ -763,7 +763,7 @@ func TestTaskQueryDefaultsToAllNonDeletedTasks(t *testing.T) {
 		t.Fatalf("task.query error: %v", parseError(t, result))
 	}
 	data := envelopeData(t, parseEnvelope(t, result))
-	if count := data["count"]; count != float64(2) {
+	if count := data["total"]; count != float64(2) {
 		t.Fatalf("count = %v, want pending + completed", count)
 	}
 	items := nestedSlice(t, data, "items")
@@ -797,7 +797,7 @@ func TestTaskQueryIncludeDeletedExtendsDefaultSet(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("task.query error: %v", parseError(t, result))
 	}
-	if count := envelopeData(t, parseEnvelope(t, result))["count"]; count != float64(3) {
+	if count := envelopeData(t, parseEnvelope(t, result))["total"]; count != float64(3) {
 		t.Fatalf("count = %v, want all three statuses", count)
 	}
 }
@@ -815,8 +815,29 @@ func TestTaskQueryExplicitStatusFilterOverridesDefaultVisibility(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("task.query error: %v", parseError(t, result))
 	}
-	if count := envelopeData(t, parseEnvelope(t, result))["count"]; count != float64(1) {
+	if count := envelopeData(t, parseEnvelope(t, result))["total"]; count != float64(1) {
 		t.Fatalf("count = %v, want explicit deleted task", count)
+	}
+}
+
+func TestTaskQueryHelpReturnsSyntaxDoc(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task_query_help", TaskQueryHelpInput{})
+	if result.IsError {
+		t.Fatalf("task_query_help error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	syntax, ok := data["syntax"].(string)
+	if !ok || syntax == "" {
+		t.Fatalf("syntax = %v, want non-empty string", data["syntax"])
+	}
+	// 关键标记必须出现，确保文档内容完整且覆盖高频场景与核心语法。
+	for _, want := range []string{"assignee:me", "status", "priority", "and", "+tag", "before"} {
+		if !strings.Contains(syntax, want) {
+			t.Errorf("syntax doc missing %q", want)
+		}
 	}
 }
 
@@ -1855,7 +1876,7 @@ func TestMCPTenantAccessTokenCanQueryTasksByExplicitAssignee(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("task_query assignee error: %v", parseError(t, result))
 	}
-	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "items")
 	if len(tasks) != 1 {
 		t.Fatalf("tasks len = %d, want 1", len(tasks))
 	}
@@ -1899,7 +1920,7 @@ func TestMCPTenantAccessTokenTaskQueryIgnoresActorlessActiveContextState(t *test
 	if result.IsError {
 		t.Fatalf("task_query error: %v", parseError(t, result))
 	}
-	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "items")
 	if len(tasks) != 2 {
 		t.Fatalf("tasks len = %d, want 2; tasks=%#v", len(tasks), tasks)
 	}
@@ -2328,7 +2349,7 @@ func TestMCPAgentFlow(t *testing.T) {
 	if queryEmpty.IsError {
 		t.Fatalf("task.query empty error: %v", parseError(t, queryEmpty))
 	}
-	if count := envelopeData(t, parseEnvelope(t, queryEmpty))["count"]; count != float64(0) {
+	if count := envelopeData(t, parseEnvelope(t, queryEmpty))["total"]; count != float64(0) {
 		t.Fatalf("empty project task count = %v, want 0", count)
 	}
 

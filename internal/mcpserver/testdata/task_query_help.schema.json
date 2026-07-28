@@ -1,0 +1,22 @@
+{
+  "description": "Return the full syntax reference (markdown) for the task filter expression used by task_query and report_run; read-only, no side effects.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "type": "object"
+  },
+  "name": "task_query_help",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}
