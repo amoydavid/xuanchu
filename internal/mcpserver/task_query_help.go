@@ -16,7 +16,7 @@ task_query 与 report_run 的 query 参数、CLI 的 list/next/report 位置参�
 | 场景 | 写法 | 说明 |
 |------|------|------|
 | 某个用户的待办任务 | assignee:<user ref> status:pending | user ref 支持四种形式：用户 ID（UUID）/ 用户名 / email / provider:external_id，详见下方 assignee 字段说明 |
-| 飞书用户的任务 | assignee:feishu:ou_xxx status:pending | provider:external_id 可直接写，无需先查 ID；provider 名以入库为准（如 feishu / wecom / dingtalk） |
+| 飞书用户的任务 | assignee:feishu:<external_id> status:pending | external_id 以 user_list_external_ids 实际返回值为准（飞书通常存 user_id / 员工号）；provider 名固定 feishu / wecom / dingtalk |
 | 高优先级待办 | status:pending priority:H | priority 取值 H / M / L |
 | 今天到期 | due:today | 不自动排除已完成；要"今天到期且未完成"写 due:today status:pending |
 | 本周到期 | due.before:eow | eow = 本周日 23:59:59 |
@@ -63,7 +63,7 @@ task_query 与 report_run 的 query 参数、CLI 的 list/next/report 位置参�
 | status | 枚举 | pending / completed / deleted / waiting |
 | priority | 枚举 | H / M / L |
 | project | 字符串 | 项目 slug（App 层解析为 project_id） |
-| assignee | 列表 | 支持四种写法：用户 ID（UUID）/ 用户名 / email / provider:external_id（如 feishu:ou_xxx）；空值=未指派。解析按 ID → external_id → name → email 顺序短路匹配，找不到用户会报错（不是返回空结果），用户不在当前 workspace 也报错。无法解析 display_name 和不带 provider 的裸 external_id |
+| assignee | 列表 | 支持四种写法：用户 ID（UUID）/ 用户名 / email / provider:external_id（如 feishu:12345）；空值=未指派。解析按 ID → external_id → name → email 顺序短路匹配，找不到用户会报错（不是返回空结果），用户不在当前 workspace 也报错。external_id 值以 user_list_external_ids 返回为准，不区分为 user_id/open_id/union_id |
 | due / start / wait / scheduled / until / end / entry / modified | 日期 | 支持 eq/before/after/isnull/notnull |
 | recurrence_at | 日期 | 循环实例的发生时刻 |
 | title / description / annotations | 子串 | eq 与 contains 同义，大小写不敏感；annotations 强制子串 |
@@ -151,7 +151,7 @@ UDA 值类型自动推断：能解析为 RFC3339 日期则按日期比较；都�
 负责人：
   assignee:550e8400-e29b-41d4-a716-446655440000
   assignee:alice
-  assignee:feishu:ou_xxx
+  assignee:feishu:12345
   assignee:alice@example.com
   (assignee:id-a or assignee:id-b)
 
