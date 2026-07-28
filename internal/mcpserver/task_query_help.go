@@ -15,8 +15,8 @@ task_query 与 report_run 的 query 参数、CLI 的 list/next/report 位置参�
 
 | 场景 | 写法 | 说明 |
 |------|------|------|
-| 我的待办任务 | assignee:me status:pending | assignee:me 在 App 层被改写为当前用户 ID；MCP task_query 默认只排除 deleted（含 waiting），CLI list/next 默认 status:pending |
-| 某个用户（知道 ID）的任务 | assignee:<id> | id 是用户 UUID，精确匹配 |
+| 某个用户的待办任务 | assignee:<user ref> status:pending | user ref 支持四种形式：用户 ID（UUID）/ 用户名 / email / provider:external_id，详见下方 assignee 字段说明 |
+| 飞书用户的任务 | assignee:feishu:ou_xxx status:pending | provider:external_id 可直接写，无需先查 ID；provider 名以入库为准（如 feishu / wecom / dingtalk） |
 | 高优先级待办 | status:pending priority:H | priority 取值 H / M / L |
 | 今天到期 | due:today | 不自动排除已完成；要"今天到期且未完成"写 due:today status:pending |
 | 本周到期 | due.before:eow | eow = 本周日 23:59:59 |
@@ -63,7 +63,7 @@ task_query 与 report_run 的 query 参数、CLI 的 list/next/report 位置参�
 | status | 枚举 | pending / completed / deleted / waiting |
 | priority | 枚举 | H / M / L |
 | project | 字符串 | 项目 slug（App 层解析为 project_id） |
-| assignee | 列表 | 用户 ID；支持 me（当前用户）；空值=未指派 |
+| assignee | 列表 | 支持四种写法：用户 ID（UUID）/ 用户名 / email / provider:external_id（如 feishu:ou_xxx）；空值=未指派。解析按 ID → external_id → name → email 顺序短路匹配，找不到用户会报错（不是返回空结果），用户不在当前 workspace 也报错。无法解析 display_name 和不带 provider 的裸 external_id |
 | due / start / wait / scheduled / until / end / entry / modified | 日期 | 支持 eq/before/after/isnull/notnull |
 | recurrence_at | 日期 | 循环实例的发生时刻 |
 | title / description / annotations | 子串 | eq 与 contains 同义，大小写不敏感；annotations 强制子串 |
@@ -132,7 +132,7 @@ UDA 值类型自动推断：能解析为 RFC3339 日期则按日期比较；都�
 7. **逻辑关键字必须小写**：AND / Or 会被当成普通词。
 8. **不等用 not**：not status:completed；没有 .neq 后缀。
 9. **recur / mask / imask 已废弃**，写出来报错。
-10. **assignee:me 不支持 tenant token**：用 tenant_access_token 调用时，assignee:me 会报错；需要先 me_get 拿到用户 ID 再用 assignee:<id>。
+10. **assignee 找不到用户会报错**：不是返回空结果，而是整个查询失败（错误码 assignee_not_found / assignee_not_member）。display_name、不带 provider 的裸 external_id、含冒号的用户名/邮箱都无法解析。
 11. **status / priority 无效值不会报错**：parser 不校验枚举，求值时静默不匹配。
 
 ## 9. 完整示例
@@ -149,8 +149,10 @@ UDA 值类型自动推断：能解析为 RFC3339 日期则按日期比较；都�
   due:today status:pending
 
 负责人：
-  assignee:me
   assignee:550e8400-e29b-41d4-a716-446655440000
+  assignee:alice
+  assignee:feishu:ou_xxx
+  assignee:alice@example.com
   (assignee:id-a or assignee:id-b)
 
 UDA：

@@ -834,7 +834,7 @@ func TestTaskQueryHelpReturnsSyntaxDoc(t *testing.T) {
 		t.Fatalf("syntax = %v, want non-empty string", data["syntax"])
 	}
 	// 关键标记必须出现，确保文档内容完整且覆盖高频场景与核心语法。
-	for _, want := range []string{"assignee:me", "status", "priority", "and", "+tag", "before"} {
+	for _, want := range []string{"assignee", "status", "priority", "and", "+tag", "before", "feishu"} {
 		if !strings.Contains(syntax, want) {
 			t.Errorf("syntax doc missing %q", want)
 		}
