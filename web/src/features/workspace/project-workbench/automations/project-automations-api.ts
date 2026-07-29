@@ -210,3 +210,25 @@ export function useToggleProjectAutomationRule(projectSlug: string) {
     },
   })
 }
+
+// AutomationProviderFacade 对应后端 app.AutomationProviderConfigView（safe facade，不回传 api_key 原值）。
+export type AutomationProviderFacade = {
+  base_url: string
+  model: string
+  allowed_hosts: string[]
+  api_key_set: boolean
+  complete: boolean
+  missing_fields: string[]
+}
+
+// 项目级 provider 配置的 safe facade（按 effective 值计算 complete）。后端路由：
+// GET /api/v1/projects/{projectRef}/automations/provider-config
+export function useProjectAutomationProviderConfig(projectSlug: string) {
+  return useQuery({
+    queryKey: ["project", projectSlug, "automation-provider-config"],
+    queryFn: () =>
+      workspaceApiGet<AutomationProviderFacade>(
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/automations/provider-config`
+      ),
+  })
+}
