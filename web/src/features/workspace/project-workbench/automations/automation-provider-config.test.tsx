@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { i18n } from "@/i18n"
 import * as projectApi from "@/features/workspace/project-workbench/api/project-api"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { AutomationProviderConfigSection } from "./automation-provider-config"
 
@@ -18,14 +19,21 @@ vi.mock("@/features/workspace/project-workbench/api/project-api", () => ({
   setProjectConfig: vi.fn(async () => undefined),
 }))
 
+// useMe 走网络请求，这里直接 mock 成内存对象，避免测试真的发起 fetch。
+vi.mock("@/features/workspace/session/useMe", () => ({
+  useMe: () => ({ data: { effective_workspace: { slug: "acme" } } }),
+}))
+
 function renderSection() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
-    <QueryClientProvider client={qc}>
-      <AutomationProviderConfigSection projectSlug="adsops" workspaceSlug="local" />
-    </QueryClientProvider>
+    renderWithRouter(
+      <QueryClientProvider client={qc}>
+        <AutomationProviderConfigSection projectSlug="adsops" workspaceSlug="local" />
+      </QueryClientProvider>
+    )
   )
 }
 
@@ -33,6 +41,18 @@ describe("AutomationProviderConfigSection", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
+  })
+
+  it("declares writes go to project-level config and links to workspace config", async () => {
+    vi.mocked(projectApi.listProjectConfig).mockResolvedValue([
+      { key: "agent.provider.base_url", value: "" },
+    ])
+    renderSection()
+    // 声明写入 project 级配置
+    expect(await screen.findByText(/当前项目（project 级）配置/)).toBeTruthy()
+    // 引导链接指向当前 workspace（slug=acme）
+    const link = screen.getByRole("link", { name: "acme" })
+    expect(link.getAttribute("href")).toContain("/workspaces/acme/config")
   })
 
   it("shows missing hint when provider config incomplete", async () => {

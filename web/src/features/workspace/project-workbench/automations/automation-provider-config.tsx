@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { useState } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -9,6 +10,7 @@ import {
   setProjectConfig,
 } from "@/features/workspace/project-workbench/api/project-api"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
+import { useMe } from "@/features/workspace/session/useMe"
 
 import {
   EMPTY_AUTOMATION_PROVIDER_CONFIG,
@@ -50,6 +52,8 @@ export function isProviderConfigComplete(cfg: AutomationProviderConfig): boolean
 // 而是用 localEdits 记录用户改动，输入框显示值 = localEdits ?? current。
 export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, disabled }: Props) {
   const feedback = useEditFeedback()
+  const me = useMe()
+  const effectiveSlug = me.data?.effective_workspace.slug ?? ""
   const queryClient = useQueryClient()
   const queryKey = ["project", projectSlug, "config"]
   const config = useQuery({
@@ -106,6 +110,21 @@ export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, di
           {complete ? "已配置" : `缺少 ${missing.join("、")}`}
         </span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        此处的 base_url / API Key / model / allowed_hosts 将写入<strong>当前项目（project 级）配置</strong>。
+      </p>
+      {effectiveSlug ? (
+        <p className="text-xs text-muted-foreground">
+          建议优先配置 workspace 级 provider，同 workspace 下所有项目可共享，无需逐项目配置。前往配置：
+          <Link
+            className="ml-1 font-medium text-primary hover:underline"
+            to="/workspaces/$workspaceSlug/config"
+            params={{ workspaceSlug: effectiveSlug }}
+          >
+            {effectiveSlug}
+          </Link>
+        </p>
+      ) : null}
       {!complete ? (
         <Alert variant="default">
           <AlertTitle>预览和测试需要先配置 Agent Provider</AlertTitle>
