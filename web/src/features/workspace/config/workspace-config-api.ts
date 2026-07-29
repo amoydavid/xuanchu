@@ -11,11 +11,13 @@ function workspaceQuery(workspaceSlug: string): string {
   return `workspace=${encodeURIComponent(workspaceSlug)}`
 }
 
-export function workspaceConfigEffectivePath(workspaceSlug: string): string {
+// path helper 用 ForSlug 后缀，与 config-definition-api.ts 里无 slug 版（依赖 token）的
+// workspaceConfigEffectivePath 区分，避免重名混淆。
+export function workspaceConfigEffectivePathForSlug(workspaceSlug: string): string {
   return `/api/v1/config/effective?${workspaceQuery(workspaceSlug)}`
 }
 
-export function workspaceConfigKeyPath(
+export function workspaceConfigKeyPathForSlug(
   workspaceSlug: string,
   key: string
 ): string {
@@ -26,7 +28,7 @@ export function listWorkspaceEffectiveConfigForSlug(
   workspaceSlug: string
 ): Promise<ConfigEffectiveValue[]> {
   return workspaceApiGet<ConfigEffectiveValue[]>(
-    workspaceConfigEffectivePath(workspaceSlug)
+    workspaceConfigEffectivePathForSlug(workspaceSlug)
   )
 }
 
@@ -35,7 +37,7 @@ export function setWorkspaceConfig(
   key: string,
   value: string
 ): Promise<void> {
-  return workspaceApiPut<void>(workspaceConfigKeyPath(workspaceSlug, key), {
+  return workspaceApiPut<void>(workspaceConfigKeyPathForSlug(workspaceSlug, key), {
     value,
   })
 }
@@ -44,5 +46,5 @@ export function deleteWorkspaceConfig(
   workspaceSlug: string,
   key: string
 ): Promise<void> {
-  return workspaceApiDelete<void>(workspaceConfigKeyPath(workspaceSlug, key))
+  return workspaceApiDelete<void>(workspaceConfigKeyPathForSlug(workspaceSlug, key))
 }

@@ -85,6 +85,7 @@ export function ProjectConfigTab({
         rows={rows}
         scope="project"
         canManage={writable}
+        loading={effectiveQuery.isLoading}
         onSave={(key, value) => saveMut.mutateAsync({ key, value })}
         onRestore={(key) => deleteMut.mutateAsync(key)}
       />

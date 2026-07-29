@@ -100,6 +100,7 @@ export function WorkspaceConfigPage({ workspaceSlug }: WorkspaceConfigPageProps)
         rows={rows}
         scope="workspace"
         canManage={canManage}
+        loading={effectiveQuery.isLoading}
         onSave={(key, value) => saveMut.mutateAsync({ key, value })}
         onRestore={(key) => deleteMut.mutateAsync(key)}
       />

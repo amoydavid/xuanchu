@@ -47,12 +47,15 @@ export function EffectiveConfigList({
   rows,
   scope,
   canManage,
+  loading,
   onSave,
   onRestore,
 }: {
   rows: ConfigEffectiveValue[]
   scope: ConfigAllowedScope
   canManage: boolean
+  // loading 为 true 时不渲染「无值」空态，避免加载期与父组件 loading 提示同时闪烁。
+  loading?: boolean
   onSave: (key: string, value: string) => Promise<void>
   onRestore: (key: string) => Promise<void>
 }) {
@@ -72,7 +75,7 @@ export function EffectiveConfigList({
           onRestore={() => onRestore(row.key)}
         />
       ))}
-      {!rows.length ? (
+      {!loading && !rows.length ? (
         <p className="py-2 text-sm text-muted-foreground">
           {t("configDefinitions.noValues")}
         </p>
