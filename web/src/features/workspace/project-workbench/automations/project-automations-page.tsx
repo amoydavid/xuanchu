@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RuleStatusDot } from "@/features/workspace/automations/shared/automation-status"
-import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { DestructiveConfirmDialog } from "@/features/workspace/project-workbench/shared/destructive-confirm-dialog"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
@@ -22,12 +21,13 @@ import {
   deleteProjectAutomation,
   listProjectAutomations,
   testProjectAutomationRule,
+  useProjectAutomationProviderConfig,
   useToggleProjectAutomationRule,
   type ProjectAutomationRule,
   type ProjectAutomationRuleInput,
 } from "./project-automations-api"
 import { AutomationDeliveryList } from "./automation-delivery-list"
-import { AutomationProviderConfigSection, isProviderConfigComplete, providerConfigFromEntries } from "./automation-provider-config"
+import { AutomationProviderConfigSection } from "./automation-provider-config"
 import { AutomationRuleDialog } from "./automation-rule-dialog"
 import { assigneeFeishuTemplateInput } from "./automation-rule-form"
 import { AutomationTestDebugDialog } from "./automation-test-debug-dialog"
@@ -61,15 +61,10 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
     queryFn: () => listProjectAutomations(projectSlug, true),
   })
 
-  // 读取 project config 判断 provider 是否已配齐；与 AutomationProviderConfigSection 共享同一 query key，React Query 自动去重。
-  const configQueryKey = ["project", projectSlug, "config"]
-  const projectConfig = useQuery({
-    queryKey: configQueryKey,
-    queryFn: () => listProjectConfig(workspaceSlug, projectSlug),
-  })
-  const providerComplete = projectConfig.data
-    ? isProviderConfigComplete(providerConfigFromEntries(projectConfig.data))
-    : false
+  // provider 是否配齐按 effective 值判断（project → workspace → default）。
+  // 数据源是后端 safe facade，complete=true 表示 effective 链已配齐 base_url/api_key/model。
+  const providerConfig = useProjectAutomationProviderConfig(projectSlug)
+  const providerComplete = providerConfig.data?.complete ?? false
 
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: rulesQueryKey })
 

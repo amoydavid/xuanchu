@@ -64,6 +64,10 @@ vi.mock("./project-automations-api", () => ({
       ],
     },
   })),
+  useProjectAutomationProviderConfig: vi.fn(() => ({
+    data: { complete: false, base_url: "", model: "", allowed_hosts: [], api_key_set: false, missing_fields: ["base_url", "api_key_set", "model"] },
+    isLoading: false,
+  })),
   EMPTY_AUTOMATION_PROVIDER_CONFIG: { base_url: "", api_key_set: false, model: "", allowed_hosts: "" },
   AUTOMATION_PROVIDER_KEYS: ["agent.provider.base_url"],
 }))
