@@ -567,7 +567,7 @@ declare module "@tanstack/react-router" {
   }
 }
 
-function createResourceRoute(page: PageKey, path: string) {
+function createResourceRoute<P extends string>(page: PageKey, path: P) {
   return createRoute({
     getParentRoute: () => workspaceRootRoute,
     path,

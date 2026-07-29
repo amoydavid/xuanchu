@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,7 +15,6 @@ import {
 } from "@/features/workspace/config/workspace-config-api"
 import { useMe } from "@/features/workspace/session/useMe"
 import { canConfigManage } from "@/features/workspace/project-workbench/permissions/permissions"
-import { navigateToDocument } from "@/lib/browser-navigation"
 
 type WorkspaceConfigPageProps = {
   workspaceSlug: string
@@ -64,13 +64,12 @@ export function WorkspaceConfigPage({ workspaceSlug }: WorkspaceConfigPageProps)
       <Alert>
         <AlertDescription>
           {t("workspaceConfig.readonlyNotCurrent")}（
-          <button
+          <Link
             className="font-medium text-primary hover:underline"
-            onClick={() => navigateToDocument("/workspaces")}
-            type="button"
+            to="/workspaces"
           >
             {t("page.workspaces")}
-          </button>
+          </Link>
           ）
         </AlertDescription>
       </Alert>
