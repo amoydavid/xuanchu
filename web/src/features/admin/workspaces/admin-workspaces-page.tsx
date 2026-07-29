@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 
@@ -15,18 +16,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ApiError } from "@/lib/api"
-import { navigateToDocument } from "@/lib/browser-navigation"
 
 import { listAdminWorkspaces } from "./admin-workspace-api"
 
 export function AdminWorkspacesPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [includeArchived, setIncludeArchived] = useState(false)
 
   const openWorkspace = (slug: string) => {
-    // admin 页面是 SPA fallback，直接用浏览器导航即可，
-    // 不依赖 TanStack router 的类型化 to，避免跨路由注册耦合。
-    navigateToDocument(`/admin/workspaces/${encodeURIComponent(slug)}`)
+    navigate({ to: "/admin/workspaces/$workspaceSlug", params: { workspaceSlug: slug } })
   }
 
   const query = useQuery({

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { setAdminToken } from "@/features/admin/session/admin-token"
 import { i18n } from "@/i18n"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { AdminWorkspacesPage } from "./admin-workspaces-page"
 import type { AdminWorkspaceSummary } from "./admin-workspace-api"
@@ -15,13 +16,15 @@ function renderPage() {
     defaultOptions: { queries: { retry: false } },
   })
   render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminWorkspacesPage />
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    renderWithRouter(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminWorkspacesPage />
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    )
   )
 }
 
