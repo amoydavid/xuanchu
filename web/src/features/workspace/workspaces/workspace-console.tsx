@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { workspaceApiGet, workspaceApiPost } from "@/features/workspace/session/workspace-api"
+import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
 
 type WorkspaceRow = {
@@ -31,6 +33,8 @@ type WorkspaceRow = {
 export function WorkspaceConsole({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const me = useMe()
+  const effectiveSlug = me.data?.effective_workspace.slug
   const query = useQuery<WorkspaceRow[]>({
     queryKey: ["workspaces"],
     queryFn: () => workspaceApiGet<WorkspaceRow[]>("/api/v1/workspaces"),
@@ -94,6 +98,16 @@ export function WorkspaceConsole({ canWrite }: { canWrite: boolean }) {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
+                    {ws.slug === effectiveSlug ? (
+                      <Link
+                        params={{ workspaceSlug: ws.slug }}
+                        to="/workspaces/$workspaceSlug/config"
+                      >
+                        <Button size="sm" variant="outline">
+                          {t("workspacesConsole.config")}
+                        </Button>
+                      </Link>
+                    ) : null}
                     {ws.archived ? (
                       <Tooltip>
                         <TooltipTrigger asChild>

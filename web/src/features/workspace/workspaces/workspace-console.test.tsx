@@ -5,26 +5,47 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { i18n } from "@/i18n"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { WorkspaceConsole } from "./workspace-console"
 
+// 包裹 Provider 栈，配合 renderWithRouter 渲染（组件含 <Link>）。
 function renderConsole(canWrite = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <QueryClientProvider client={client}>
-      <ThemeProvider>
-        <TooltipProvider>
-          <WorkspaceConsole canWrite={canWrite} />
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    renderWithRouter(
+      <QueryClientProvider client={client}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <WorkspaceConsole canWrite={canWrite} />
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    )
   )
 }
 
 describe("WorkspaceConsole", () => {
   beforeEach(async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      Promise.resolve(
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/credentials/current")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                actor_type: "user",
+                actor: { id: "u1", name: "U" },
+                token: { type: "xuanchu_pat", scopes: ["config:write"] },
+                effective_workspace: { slug: "acme", name: "ACME" },
+                effective_role: "owner",
+              },
+            }),
+            { status: 200 }
+          )
+        )
+      }
+      return Promise.resolve(
         new Response(
           JSON.stringify({
             data: [
@@ -35,7 +56,7 @@ describe("WorkspaceConsole", () => {
           { status: 200 }
         )
       )
-    )
+    })
     await i18n.changeLanguage("zh-CN")
   })
 
@@ -59,5 +80,18 @@ describe("WorkspaceConsole", () => {
       expect(screen.getByText("acme")).toBeTruthy()
     })
     expect(screen.queryByRole("button", { name: /归档/ })).toBeNull()
+  })
+
+  it("shows config link only on effective workspace row", async () => {
+    renderConsole()
+    await waitFor(() => {
+      expect(screen.getByText("acme")).toBeTruthy()
+    })
+    // effective 行（acme）有「配置」链接，指向 /workspaces/acme/config
+    const configLink = screen.getByRole("link", { name: /配置/ })
+    expect(configLink.getAttribute("href")).toContain("/workspaces/acme/config")
+    // 非当前行（sandbox）无「配置」链接：整页只有一个配置链接
+    const allConfigLinks = screen.getAllByRole("link", { name: /配置/ })
+    expect(allConfigLinks.length).toBe(1)
   })
 })
