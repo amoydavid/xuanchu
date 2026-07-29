@@ -917,6 +917,7 @@ export const enUS = {
     restore: "Restore",
     restoreUnavailable:
       "Workspace unarchive is not yet supported by the backend.",
+    config: "Config",
   },
   notificationConsole: {
     managementHint:
@@ -1223,6 +1224,11 @@ export const enUS = {
     overviewTitle: "Config overview",
     overviewGoToDefinitions: "Go to config definitions",
     overviewEmpty: "No configs marked for home display",
+  },
+  workspaceConfig: {
+    title: "Workspace Config",
+    description: "Edit config values for the current workspace. Manage schema definitions in /settings.",
+    readonlyNotCurrent: "Config can only be edited within the current workspace context. To modify another workspace, contact an admin or switch context.",
   },
   projectSettings: {
     title: "Project Settings",

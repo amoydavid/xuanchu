@@ -890,6 +890,7 @@ export const zhCN = {
     archiveConfirm: "确认归档该 workspace？归档后变为只读。",
     restore: "恢复",
     restoreUnavailable: "后端暂不支持 workspace unarchive。",
+    config: "配置",
   },
   notificationConsole: {
     managementHint:
@@ -1175,6 +1176,11 @@ export const zhCN = {
     overviewTitle: "配置概览",
     overviewGoToDefinitions: "去配置定义",
     overviewEmpty: "没有标记为首页展示的配置",
+  },
+  workspaceConfig: {
+    title: "工作空间配置",
+    description: "编辑当前工作空间的配置值。schema 定义请前往 /settings。",
+    readonlyNotCurrent: "仅可在当前工作空间上下文编辑配置。如需修改其它工作空间，请联系管理员或切换上下文。",
   },
   projectSettings: {
     title: "项目设置",
