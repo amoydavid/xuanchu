@@ -131,6 +131,11 @@ const WorkspaceCustomFieldsRoute = lazy(() =>
     default: module.WorkspaceCustomFieldsRoute,
   }))
 )
+const WorkspaceConfigRoute = lazy(() =>
+  import("@/routes/workspace/WorkspaceConfigRoute").then((module) => ({
+    default: module.WorkspaceConfigRoute,
+  }))
+)
 const AdminLoginRoute = lazy(() =>
   import("@/routes/admin/AdminLoginRoute").then((module) => ({
     default: module.AdminLoginRoute,
@@ -498,6 +503,12 @@ const workspaceCustomFieldsAliasRoute = createRoute({
   component: lazyRoute(WorkspaceCustomFieldsRoute),
 })
 
+const workspaceConfigRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/workspaces/$workspaceSlug/config",
+  component: lazyRoute(WorkspaceConfigRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -526,6 +537,7 @@ const routeTree = rootRoute.addChildren([
     projectTemplatesRoute,
     workspaceCustomFieldsRoute,
     workspaceCustomFieldsAliasRoute,
+    workspaceConfigRoute,
     projectWorkbenchRoute,
     projectTasksRoute,
     projectSeriesRoute.addChildren([
