@@ -35,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -260,43 +261,47 @@ function SidebarNav({
       ) : null}
       <nav
         aria-label={t("shell.navLabel")}
-        className="flex-1 overflow-y-auto p-2"
+        className="min-h-0 flex-1"
       >
-        {navGroups.map((group) => {
-          const items = group.items.filter((item) => {
-            if (item.ssoOnly && !showSso) return false
-            if (item.requiresAutomationRead && !showAutomation) return false
-            return true
-          })
-          if (items.length === 0) return null
-          return (
-            <div className="mb-3" key={group.labelKey}>
-              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
-                {t(group.labelKey)}
-              </div>
-              {items.map((item) => {
-                const Icon = item.icon
-                const active = isNavItemActive(item.key, item.to, pathname)
-                return (
-                  <Link
-                    className={cn(
-                      "relative flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[13px] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                      active
-                        ? "is-nav-active bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                        : "text-sidebar-muted-foreground"
-                    )}
-                    key={item.key}
-                    onClick={onNavigate}
-                    to={item.to}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {t(`nav.${item.key}`)}
-                  </Link>
-                )
-              })}
-            </div>
-          )
-        })}
+        <ScrollArea className="h-full">
+          <div className="p-2">
+            {navGroups.map((group) => {
+              const items = group.items.filter((item) => {
+                if (item.ssoOnly && !showSso) return false
+                if (item.requiresAutomationRead && !showAutomation) return false
+                return true
+              })
+              if (items.length === 0) return null
+              return (
+                <div className="mb-3" key={group.labelKey}>
+                  <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
+                    {t(group.labelKey)}
+                  </div>
+                  {items.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(item.key, item.to, pathname)
+                    return (
+                      <Link
+                        className={cn(
+                          "relative flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[13px] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                          active
+                            ? "is-nav-active bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                            : "text-sidebar-muted-foreground"
+                        )}
+                        key={item.key}
+                        onClick={onNavigate}
+                        to={item.to}
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        {t(`nav.${item.key}`)}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </ScrollArea>
       </nav>
     </>
   )
