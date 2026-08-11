@@ -91,9 +91,10 @@ export function ProjectActivityPage({
       mergeActivity(
         timeline.data ?? [],
         auditEnabled ? audit.data : undefined,
-        filter
+        filter,
+        { workspaceSlug, projectSlug }
       ),
-    [timeline.data, audit.data, auditEnabled, filter]
+    [timeline.data, audit.data, auditEnabled, filter, workspaceSlug, projectSlug]
   )
 
   const canPublish = canManage && !closed
@@ -162,7 +163,11 @@ export function ProjectActivityPage({
           {t("projectSubpages.railTimelineError")}
         </p>
       ) : (
-        <ProjectActivityTimeline items={items} />
+        <ProjectActivityTimeline
+          items={items}
+          projectSlug={projectSlug}
+          workspaceSlug={workspaceSlug}
+        />
       )}
     </div>
   )

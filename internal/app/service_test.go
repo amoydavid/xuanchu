@@ -5082,9 +5082,6 @@ func TestServiceProjectTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("timeline entries = %d, want 2", len(entries))
-	}
 
 	sourceTypes := map[string]bool{}
 	for _, e := range entries {
@@ -5092,6 +5089,123 @@ func TestServiceProjectTimeline(t *testing.T) {
 	}
 	if !sourceTypes["project"] || !sourceTypes["task"] {
 		t.Fatalf("timeline missing source types: %+v", entries)
+	}
+	// 至少应包含：项目注释、任务注释、任务创建（task.add 生命周期事件）。
+	if len(entries) < 3 {
+		t.Fatalf("timeline entries = %d, want >= 3: %+v", len(entries), entries)
+	}
+	// 找到任务创建生命周期条目，验证 action 与任务标题。
+	var created *TimelineEntry
+	for i := range entries {
+		if entries[i].Action == "created" && entries[i].Kind == "lifecycle" {
+			created = &entries[i]
+			break
+		}
+	}
+	if created == nil {
+		t.Fatalf("timeline missing task created lifecycle entry: %+v", entries)
+	}
+	if created.SourceLabel != "task" {
+		t.Fatalf("created entry source_label = %q, want task title %q", created.SourceLabel, "task")
+	}
+	if created.SourceID != task.UUID {
+		t.Fatalf("created entry source_id = %q, want %q", created.SourceID, task.UUID)
+	}
+}
+
+// TestServiceProjectTimelineIncludesTaskLifecycle 验证任务完成、字段修改、关联变更
+// 等生命周期事件会出现在项目时间线里，且 action/changes/link 正确解析。
+func TestServiceProjectTimelineIncludesTaskLifecycle(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 1000, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "lifeproj", Name: "Life"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := svc.Add(AddInput{Title: "生命周期任务", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 字段修改（task.modify → fields_changed）。
+	if err := svc.Modify(tsk.UUID, ModifyInput{Priority: strPtr("H")}); err != nil {
+		t.Fatal(err)
+	}
+	// 关联变更（task.link.add → link_added）。
+	if _, err := svc.TaskAddLink(tsk.UUID, "github", "https://example.com/pr", "PR #1"); err != nil {
+		t.Fatal(err)
+	}
+	// 完成任务（task.done → completed）。
+	if err := svc.Done(tsk.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := svc.ProjectTimeline("lifeproj", TimelineOptions{Limit: 50, Offset: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byAction := map[string]TimelineEntry{}
+	for _, e := range entries {
+		if e.Action != "" {
+			byAction[e.Action] = e
+		}
+	}
+
+	for _, want := range []string{"created", "fields_changed", "link_added", "completed"} {
+		if _, ok := byAction[want]; !ok {
+			t.Fatalf("timeline missing action %q; entries=%+v", want, entries)
+		}
+	}
+
+	// completed 条目应带任务标题，可点击跳转所需信息齐全。
+	if got := byAction["completed"]; got.SourceLabel != "生命周期任务" || got.SourceID != tsk.UUID || got.Kind != "lifecycle" {
+		t.Fatalf("completed entry = %+v", got)
+	}
+	// fields_changed 条目应带 changes。
+	if got := byAction["fields_changed"]; len(got.Changes) == 0 || got.Kind != "change" {
+		t.Fatalf("fields_changed entry = %+v", got)
+	}
+	// link_added 条目应带 link 信息。
+	if got := byAction["link_added"]; got.Link == nil || got.Link.URL != "https://example.com/pr" || got.Kind != "relation" {
+		t.Fatalf("link_added entry = %+v", got)
+	}
+}
+
+// TestServiceProjectTimelineTaskAnnotationHasActor 验证任务注释条目现在带真实 actor
+// （修复了原先 task 注释 actor 列被硬编码为 NULL 的 bug）。
+func TestServiceProjectTimelineTaskAnnotationHasActor(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "actorproj", Name: "Actor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := svc.Add(AddInput{Title: "t", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Annotate(tsk.UUID, "task note"); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := svc.ProjectTimeline("actorproj", TimelineOptions{Limit: 50, Offset: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var note *TimelineEntry
+	for i := range entries {
+		if entries[i].SourceType == "task" && entries[i].Content == "task note" {
+			note = &entries[i]
+			break
+		}
+	}
+	if note == nil {
+		t.Fatalf("task annotation entry not found: %+v", entries)
+	}
+	// Annotate 走 user actor，actor type 应为 user，而非 unknown。
+	if note.CreatedBy.Type != "user" || note.CreatedBy.ID == "" {
+		t.Fatalf("task annotation actor = %+v, want user with id", note.CreatedBy)
 	}
 }
 

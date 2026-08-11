@@ -260,3 +260,52 @@ func TestProjectAnnotationRepoTimeline(t *testing.T) {
 		t.Fatalf("task timeline source_id = %q, want task uuid %q", rows[1].SourceID, taskUUID)
 	}
 }
+
+// TestProjectAnnotationRepoTimelineTaskActor 验证 task 注释条目携带真实 actor 列
+// （修复了原先 SQL 把 actor 列硬编码为 NULL 的 bug）。
+func TestProjectAnnotationRepoTimelineTaskActor(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ws, _ := store.LocalWorkspace()
+	projectRepo := NewProjectRepository(store.DB())
+	taskRepo := NewTaskRepository(store.DB())
+	annoRepo := NewProjectAnnotationRepository(store.DB())
+
+	project, err := projectRepo.Create(Project{
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "actor", Name: "Actor",
+		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	taskUUID := uuid.NewString()
+	domainTask := mkDomainTask(taskUUID, ws.ID, "actor task")
+	pid := project.ID
+	domainTask.ProjectID = &pid
+	domainTask.Project = strPtr("actor-proj")
+	if _, err := taskRepo.Create(domainTask); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	userID := "user-actor-1"
+	if err := taskRepo.AddAnnotationWithActor(ws.ID, taskUUID,
+		domain.Annotation{Entry: 300, Description: "by user"},
+		TaskAnnotationActor{Type: "user", UserID: &userID},
+		300, 300); err != nil {
+		t.Fatalf("AddAnnotationWithActor: %v", err)
+	}
+
+	rows, err := annoRepo.TimelineByProjectID(project.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("TimelineByProjectID: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].CreatedByActorType != "user" || rows[0].CreatedByUserID == nil || *rows[0].CreatedByUserID != userID {
+		t.Fatalf("task annotation actor not propagated: %+v", rows[0])
+	}
+}

@@ -28,12 +28,21 @@ type TimelineOptions struct {
 }
 
 type TimelineEntry struct {
-	SourceType  string         `json:"source_type"`
-	SourceID    string         `json:"source_id"`
-	SourceLabel string         `json:"source_label"`
-	Entry       int64          `json:"entry"`
-	Content     string         `json:"content"`
+	SourceType  string `json:"source_type"`
+	SourceID    string `json:"source_id"`
+	SourceLabel string `json:"source_label"`
+	Entry       int64  `json:"entry"`
+	Content     string `json:"content"`
 	CreatedBy   task.ActorInfo `json:"created_by"`
+	// 任务生命周期事件专用字段（annotation 条目留空）。
+	// Action 为 completed/started/fields_changed/link_added 等语义动作；
+	// Kind 区分 lifecycle/change/relation；Changes 承载 task.modify 的字段变更；
+	// Link 承载 task.link.* 的链接信息；CreatedAt 是 audit 行的时间戳。
+	Action    string            `json:"action,omitempty"`
+	Kind      string            `json:"kind,omitempty"`
+	Changes   []TaskFieldChange `json:"changes,omitempty"`
+	Link      *TaskActivityLink `json:"link,omitempty"`
+	CreatedAt int64             `json:"created_at,omitempty"`
 }
 
 type ProjectView struct {
@@ -680,11 +689,26 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 	if err != nil {
 		return nil, err
 	}
-	userInfos, err := s.resolveUserInfos(projectTimelineUserIDs(rows))
+	// 查询项目内任务的生命周期审计（完成/启动/字段修改/关联变更/周期实例化）。
+	// annotation 与 audit 在 app 层合并排序，避免在 SQL 里混合 entry 单调计数器
+	// 与 created_at 时间戳，并复用 task activity 的 action/changes/link 解析逻辑。
+	auditRows, err := s.auditRepo.List(storage.AuditListOptions{
+		WorkspaceID: &s.workspaceID,
+		ProjectID:   &project.ID,
+		TargetType:  stringPtr("task"),
+		Actions:     projectTimelineTaskActions,
+		Limit:       opts.Limit,
+		Offset:      opts.Offset,
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TimelineEntry, 0, len(rows))
+	taskByUUID, err := s.loadTimelineTaskTitles(auditRows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TimelineEntry, 0, len(rows)+len(auditRows))
+	// annotation 条目：保持原有 actor 解析（task 注释现在也带真实 actor）。
 	for _, r := range rows {
 		out = append(out, TimelineEntry{
 			SourceType:  r.SourceType,
@@ -698,9 +722,56 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 				TokenID:     r.CreatedByTokenID,
 				TokenName:   r.CreatedByTokenName,
 				TokenPrefix: r.CreatedByTokenPrefix,
-			}, r.CreatedBy, userInfos),
+			}, r.CreatedBy, nil),
+			CreatedAt: r.Entry,
 		})
 	}
+	// audit 条目：先收集 actor 列，稍后批量解析。
+	auditEntries := make([]TimelineEntry, 0, len(auditRows))
+	auditActorCols := make([]actorColumns, 0, len(auditRows))
+	for _, row := range auditRows {
+		entry, ok := taskTimelineEntryFromAudit(row, taskByUUID)
+		if !ok {
+			continue
+		}
+		cols := timelineAuditActorColumns(row)
+		auditActorCols = append(auditActorCols, cols)
+		auditEntries = append(auditEntries, entry)
+	}
+	// 统一批量解析 annotation + audit 的 user actor。
+	allActorCols := make([]actorColumns, 0, len(rows)+len(auditActorCols))
+	for _, r := range rows {
+		actorType := r.CreatedByActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		allActorCols = append(allActorCols, actorColumns{
+			Type:        actorType,
+			UserID:      r.CreatedByUserID,
+			TokenID:     r.CreatedByTokenID,
+			TokenName:   r.CreatedByTokenName,
+			TokenPrefix: r.CreatedByTokenPrefix,
+		})
+	}
+	allActorCols = append(allActorCols, auditActorCols...)
+	userInfos, err := s.resolveUserInfos(actorColumnsUserIDs(allActorCols))
+	if err != nil {
+		return nil, err
+	}
+	// 回填 annotation 条目的 actor。
+	for i := range out[:len(rows)] {
+		fallback := rows[i].CreatedBy
+		out[i].CreatedBy = actorInfoFromColumns(allActorCols[i], fallback, userInfos)
+	}
+	// 回填 audit 条目的 actor。
+	for i, entry := range auditEntries {
+		colIdx := len(rows) + i
+		fallback := ""
+		entry.CreatedBy = actorInfoFromColumns(allActorCols[colIdx], fallback, userInfos)
+		auditEntries[i] = entry
+	}
+	out = append(out, auditEntries...)
+	sortTimelineEntries(out)
 	return out, nil
 }
 
@@ -850,28 +921,55 @@ func projectAnnotationUserIDs(rows []storage.ProjectAnnotation) []string {
 	return ids
 }
 
-func projectTimelineUserIDs(rows []storage.TimelineRow) []string {
+// actorColumnsUserIDs 从 actor 列集合收集需要解析的 user id。
+// 非 user actor（system/unknown/token）跳过；nil UserID 跳过。
+func actorColumnsUserIDs(cols []actorColumns) []string {
 	seen := map[string]bool{}
 	var ids []string
-	for _, row := range rows {
-		actorType := row.CreatedByActorType
+	for _, col := range cols {
+		actorType := col.Type
 		if actorType == "" {
 			actorType = actorTypeUser
 		}
 		if actorType != actorTypeUser {
 			continue
 		}
-		id := row.CreatedBy
-		if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
-			id = *row.CreatedByUserID
-		}
-		if id == "" || seen[id] {
+		if col.UserID == nil || *col.UserID == "" {
 			continue
 		}
-		seen[id] = true
-		ids = append(ids, id)
+		if seen[*col.UserID] {
+			continue
+		}
+		seen[*col.UserID] = true
+		ids = append(ids, *col.UserID)
 	}
 	return ids
+}
+
+// loadTimelineTaskTitles 批量查审计行涉及的 task UUID 的标题。
+// ListByUUIDs 仅返回未删除任务；已删除任务的标题回退到 UUID 前 8 位（见 taskTimelineTitle）。
+func (s *Service) loadTimelineTaskTitles(auditRows []storage.AuditLogEntry) (map[string]task.Task, error) {
+	seen := map[string]bool{}
+	var uuids []string
+	for _, row := range auditRows {
+		if row.TargetID == "" || seen[row.TargetID] {
+			continue
+		}
+		seen[row.TargetID] = true
+		uuids = append(uuids, row.TargetID)
+	}
+	if len(uuids) == 0 {
+		return map[string]task.Task{}, nil
+	}
+	tasks, err := s.repo.ListByUUIDs(s.workspaceID, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]task.Task, len(tasks))
+	for _, t := range tasks {
+		out[t.UUID] = t
+	}
+	return out, nil
 }
 
 func isProjectClosed(project storage.Project) bool {

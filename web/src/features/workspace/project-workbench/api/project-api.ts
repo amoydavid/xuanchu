@@ -6,6 +6,8 @@ import {
   workspaceApiPut,
 } from "@/features/workspace/session/workspace-api"
 
+import type { TaskFieldChange } from "./task-api"
+
 export type ProjectStatus = "planning" | "active" | "archived" | "cancelled"
 
 export type UserInfo = {
@@ -124,6 +126,9 @@ export type ProjectTimelineEntry = {
   entry?: number
   content?: string
   action?: string
+  kind?: string
+  changes?: TaskFieldChange[]
+  link?: { id: string; type: string; url: string; title: string } | null
   event_type?: string
   summary?: string
   created_at?: number

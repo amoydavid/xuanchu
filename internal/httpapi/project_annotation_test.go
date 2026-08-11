@@ -128,26 +128,30 @@ func TestProjectTimeline(t *testing.T) {
 		t.Fatalf("timeline missing task annotation: %s", rr.Body.String())
 	}
 	// project timeline 的 source_id 必须是 annotation id（便于 Activity 去重和删除）。
+	type timelineRowJSON struct {
+		SourceType  string `json:"source_type"`
+		SourceID    string `json:"source_id"`
+		SourceLabel string `json:"source_label"`
+		Content     string `json:"content"`
+		Action      string `json:"action"`
+		Kind        string `json:"kind"`
+		Changes     []any  `json:"changes"`
+		Link        *struct {
+			URL string `json:"url"`
+		} `json:"link"`
+	}
 	var payload struct {
-		Data []struct {
-			SourceType string `json:"source_type"`
-			SourceID   string `json:"source_id"`
-			Content    string `json:"content"`
-		} `json:"data"`
+		Data []timelineRowJSON `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	var projectRow, taskRow *struct {
-		SourceType string `json:"source_type"`
-		SourceID   string `json:"source_id"`
-		Content    string `json:"content"`
-	}
+	var projectRow, taskRow *timelineRowJSON
 	for i := range payload.Data {
 		if payload.Data[i].SourceType == "project" && projectRow == nil {
 			projectRow = &payload.Data[i]
 		}
-		if payload.Data[i].SourceType == "task" && taskRow == nil {
+		if payload.Data[i].SourceType == "task" && payload.Data[i].Action == "" && taskRow == nil {
 			taskRow = &payload.Data[i]
 		}
 	}
@@ -156,5 +160,76 @@ func TestProjectTimeline(t *testing.T) {
 	}
 	if taskRow == nil || taskRow.SourceID != tsk.UUID {
 		t.Fatalf("timeline task source_id = %#v, want task uuid %q", taskRow, tsk.UUID)
+	}
+}
+
+// TestProjectTimelineIncludesTaskLifecycle 验证任务生命周期事件（完成/修改/关联变更）
+// 在 HTTP 层正确序列化为带 action/changes/link 的 timeline entry。
+func TestProjectTimelineIncludesTaskLifecycle(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "project:read", "project:write", "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "lifeproj", Name: "Life"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := svc.Add(app.AddInput{Title: "完成任务A", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorityH := "H"
+	if err := svc.Modify(tsk.UUID, app.ModifyInput{Priority: &priorityH}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TaskAddLink(tsk.UUID, "github", "https://example.com/x", "PR"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(tsk.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+	}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/projects/"+project.Slug+"/timeline?limit=50", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("timeline status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data []struct {
+			Action      string `json:"action"`
+			Kind        string `json:"kind"`
+			SourceID    string `json:"source_id"`
+			SourceLabel string `json:"source_label"`
+			Changes     []any  `json:"changes"`
+			Link        *struct {
+				URL string `json:"url"`
+			} `json:"link"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	byAction := map[string]bool{}
+	for _, e := range payload.Data {
+		byAction[e.Action] = true
+		if e.Action == "completed" {
+			if e.SourceLabel != "完成任务A" || e.SourceID != tsk.UUID || e.Kind != "lifecycle" {
+				t.Fatalf("completed entry = %+v", e)
+			}
+		}
+		if e.Action == "fields_changed" && (len(e.Changes) == 0 || e.Kind != "change") {
+			t.Fatalf("fields_changed entry = %+v", e)
+		}
+		if e.Action == "link_added" && (e.Link == nil || e.Link.URL != "https://example.com/x" || e.Kind != "relation") {
+			t.Fatalf("link_added entry = %+v", e)
+		}
+	}
+	for _, want := range []string{"created", "fields_changed", "link_added", "completed"} {
+		if !byAction[want] {
+			t.Fatalf("timeline missing action %q; payload=%+v", want, payload.Data)
+		}
 	}
 }

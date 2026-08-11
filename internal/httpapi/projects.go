@@ -332,6 +332,12 @@ type timelineEntryResponse struct {
 	Entry       int64              `json:"entry"`
 	Content     string             `json:"content"`
 	CreatedBy   task.JSONActorInfo `json:"created_by"`
+	// 任务生命周期事件专用字段（annotation 条目为空值）。
+	Action    string                   `json:"action,omitempty"`
+	Kind      string                   `json:"kind,omitempty"`
+	Changes   []any                    `json:"changes,omitempty"`
+	Link      *taskActivityLinkResponse `json:"link,omitempty"`
+	CreatedAt int64                    `json:"created_at,omitempty"`
 }
 
 func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Request) {
@@ -501,14 +507,24 @@ func projectAnnotationsToJSON(annotations []app.ProjectAnnotationInfo) []project
 func timelineEntriesToJSON(entries []app.TimelineEntry) []timelineEntryResponse {
 	out := make([]timelineEntryResponse, len(entries))
 	for i, e := range entries {
-		out[i] = timelineEntryResponse{
+		resp := timelineEntryResponse{
 			SourceType:  e.SourceType,
 			SourceID:    e.SourceID,
 			SourceLabel: e.SourceLabel,
 			Entry:       e.Entry,
 			Content:     e.Content,
 			CreatedBy:   task.ActorInfoToJSON(e.CreatedBy),
+			Action:      e.Action,
+			Kind:        e.Kind,
+			Changes:     taskFieldChangesToJSON(e.Changes),
+			CreatedAt:   e.CreatedAt,
 		}
+		if e.Link != nil {
+			resp.Link = &taskActivityLinkResponse{
+				ID: e.Link.ID, Type: e.Link.Type, URL: e.Link.URL, Title: e.Link.Title,
+			}
+		}
+		out[i] = resp
 	}
 	return out
 }

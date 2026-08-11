@@ -1169,6 +1169,7 @@ func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLi
 		result = created
 		entry := AuditEntry{
 			Action:     "task.link.add",
+			ProjectID:  updated.ProjectID,
 			TargetType: "task",
 			TargetID:   updated.UUID,
 			Payload:    taskLinkAuditPayload(created.ID, created.Type, created.URL, created.Title),
@@ -1250,6 +1251,7 @@ func (s *Service) TaskRemoveLink(taskRef, linkID string) error {
 		}
 		entry := AuditEntry{
 			Action:     "task.link.remove",
+			ProjectID:  updated.ProjectID,
 			TargetType: "task",
 			TargetID:   updated.UUID,
 			Payload:    taskLinkAuditPayload(removed.ID, removed.Type, removed.URL, removed.Title),
@@ -1272,6 +1274,7 @@ func (s *Service) TaskUpdateLink(taskRef, linkID, linkType, url, title string) (
 		result = updatedLink
 		entry := AuditEntry{
 			Action:     "task.link.update",
+			ProjectID:  updatedTask.ProjectID,
 			TargetType: "task",
 			TargetID:   updatedTask.UUID,
 			Payload:    taskLinkAuditPayload(updatedLink.ID, updatedLink.Type, updatedLink.URL, updatedLink.Title),

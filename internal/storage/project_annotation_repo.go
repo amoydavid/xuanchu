@@ -107,9 +107,9 @@ FROM (
     UNION ALL
     SELECT 'task' AS source_type, t.uuid AS source_id, t.title AS source_label,
            ta.entry, ta.description AS content, '' AS created_by,
-           'user' AS created_by_actor_type, NULL AS created_by_user_id,
-           NULL AS created_by_token_id, NULL AS created_by_token_name,
-           NULL AS created_by_token_prefix
+           ta.created_by_actor_type, ta.created_by_user_id,
+           ta.created_by_token_id, ta.created_by_token_name,
+           ta.created_by_token_prefix
     FROM task_annotations ta
     JOIN tasks t ON t.uuid = ta.task_uuid
     WHERE t.project_id = ?
