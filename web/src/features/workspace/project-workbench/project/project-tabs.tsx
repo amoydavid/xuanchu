@@ -12,6 +12,7 @@ export type ProjectTabKey =
 
 type ProjectTabsProps = {
   activeTab: ProjectTabKey
+  className?: string
   projectSlug: string
   workspaceSlug: string
 }
@@ -20,6 +21,7 @@ type ProjectTabsProps = {
 // 当前 tab 由父级根据当前路由 pathname 推断，不读取后端。
 export function ProjectTabs({
   activeTab,
+  className,
   projectSlug,
   workspaceSlug,
 }: ProjectTabsProps) {
@@ -56,17 +58,20 @@ export function ProjectTabs({
     },
   ]
   return (
-    <nav aria-label={t("projectSubpages.tabs")} className="flex items-center gap-1">
+    <nav
+      aria-label={t("projectSubpages.tabs")}
+      className={cn("flex items-center gap-1 overflow-x-auto", className)}
+    >
       {items.map((item) => {
         const active = item.key === activeTab
         return (
           <Link
             aria-current={active ? "page" : undefined}
             className={cn(
-              "border-b-2 px-3 py-2 text-sm transition-colors",
+              "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
               active
                 ? "border-primary font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
             key={item.key}
             params={{ projectSlug, workspaceSlug }}

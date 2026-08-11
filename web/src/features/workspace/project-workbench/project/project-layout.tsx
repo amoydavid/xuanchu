@@ -200,10 +200,11 @@ function ProjectLayoutContent({
         <div className="flex items-center justify-between gap-2 border-b pb-2">
           <ProjectTabs
             activeTab={activeTab}
+            className="min-w-0 flex-1"
             projectSlug={projectSlug}
             workspaceSlug={workspaceSlug}
           />
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             {tabActions}
             <Button
               aria-label={
