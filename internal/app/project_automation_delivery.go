@@ -75,7 +75,7 @@ func (s *Service) ProjectAutomationDeliveryInfo(projectRef string, deliveryID st
 	}
 	row, err := s.projectAutomationDeliveryRepo.GetByID(deliveryID)
 	if err != nil {
-		return ProjectAutomationDeliveryView{}, err
+		return ProjectAutomationDeliveryView{}, automationDeliveryNotFound(err)
 	}
 	if row.WorkspaceID != s.workspaceID || row.ProjectID == nil || *row.ProjectID != project.ID {
 		return ProjectAutomationDeliveryView{}, RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}
@@ -97,7 +97,7 @@ func (s *Service) ReplayProjectAutomationDelivery(projectRef string, deliveryID 
 	}
 	row, err := s.projectAutomationDeliveryRepo.GetByID(deliveryID)
 	if err != nil {
-		return ProjectAutomationDeliveryView{}, err
+		return ProjectAutomationDeliveryView{}, automationDeliveryNotFound(err)
 	}
 	if row.WorkspaceID != s.workspaceID || row.ProjectID == nil || *row.ProjectID != project.ID {
 		return ProjectAutomationDeliveryView{}, RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}

@@ -186,6 +186,22 @@ func (s *Service) ListProjectAutomationRules(projectRef string, includeDisabled 
 	return out, nil
 }
 
+// automationRuleNotFound / automationDeliveryNotFound 把仓储 ErrNotFound 归一为业务
+// 错误码，避免 HTTP/MCP 把「规则不存在」误报为 internal。
+func automationRuleNotFound(err error) error {
+	if err == storage.ErrNotFound {
+		return RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
+	}
+	return err
+}
+
+func automationDeliveryNotFound(err error) error {
+	if err == storage.ErrNotFound {
+		return RuntimeError{Code: "automation_delivery_not_found", Message: "automation delivery not found"}
+	}
+	return err
+}
+
 // ProjectAutomationRuleInfo 读取单条规则详情。
 func (s *Service) ProjectAutomationRuleInfo(projectRef string, ruleID string) (ProjectAutomationRuleView, error) {
 	if err := s.requireProjectAutomationRead(); err != nil {
@@ -197,7 +213,7 @@ func (s *Service) ProjectAutomationRuleInfo(projectRef string, ruleID string) (P
 	}
 	row, err := s.projectAutomationRuleRepo.GetByID(ruleID)
 	if err != nil {
-		return ProjectAutomationRuleView{}, err
+		return ProjectAutomationRuleView{}, automationRuleNotFound(err)
 	}
 	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationRuleView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
@@ -219,7 +235,7 @@ func (s *Service) ModifyProjectAutomationRule(projectRef string, ruleID string, 
 	}
 	row, err := s.projectAutomationRuleRepo.GetByID(ruleID)
 	if err != nil {
-		return ProjectAutomationRuleView{}, err
+		return ProjectAutomationRuleView{}, automationRuleNotFound(err)
 	}
 	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return ProjectAutomationRuleView{}, RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}
@@ -302,7 +318,7 @@ func (s *Service) DeleteProjectAutomationRule(projectRef string, ruleID string) 
 	}
 	row, err := s.projectAutomationRuleRepo.GetByID(ruleID)
 	if err != nil {
-		return err
+		return automationRuleNotFound(err)
 	}
 	if row.WorkspaceID != s.workspaceID || row.ScopeType != storage.AutomationScopeProject || row.ScopeID != project.ID {
 		return RuntimeError{Code: "automation_rule_not_found", Message: "automation rule not found"}

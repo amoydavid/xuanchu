@@ -79,7 +79,7 @@ func (s *Service) PreviewSavedProjectAutomation(projectRef string, ruleID string
 	}
 	row, err := s.projectAutomationRuleRepo.GetByID(ruleID)
 	if err != nil {
-		return ProjectAutomationPreviewView{}, err
+		return ProjectAutomationPreviewView{}, automationRuleNotFound(err)
 	}
 	project, err := s.ResolveProject(projectRef)
 	if err != nil {
