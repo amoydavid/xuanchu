@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { format } from "date-fns"
+import { enUS } from "date-fns/locale"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -54,6 +56,25 @@ function makeQueryClient() {
       mutations: { retry: false },
     },
   })
+}
+
+// pickCalendarDay 在打开的日历弹层里选中目标日期。
+// 日历默认显示当前月，写死某个月的日期按钮会在真实时间翻月后从视图里消失
+// （测试曾因 "Friday, July 3rd, 2026" 在 2026-08 起必挂），因此先按目标月
+// 与当前月的差值点导航按钮翻月，再点击日期；aria-label 是 react-day-picker
+// 默认 labelDayButton（date-fns PPPP + enUS），与 InlineDatePicker 实际渲染一致。
+async function pickCalendarDay(target: Date) {
+  const dayLabel = format(target, "PPPP", { locale: enUS })
+  const now = new Date()
+  const monthGap =
+    (target.getFullYear() - now.getFullYear()) * 12 +
+    (target.getMonth() - now.getMonth())
+  const navLabel =
+    monthGap < 0 ? "Go to the Previous Month" : "Go to the Next Month"
+  for (let step = 0; step < Math.abs(monthGap); step += 1) {
+    await userEvent.click(screen.getByRole("button", { name: navLabel }))
+  }
+  await userEvent.click(screen.getByRole("button", { name: dayLabel }))
 }
 
 describe("TaskCreateDialog", () => {
@@ -110,9 +131,7 @@ describe("TaskCreateDialog", () => {
     await userEvent.click(screen.getByRole("option", { name: "H" }))
     await userEvent.click(screen.getByRole("button", { name: "截止日期" }))
     await screen.findByRole("grid")
-    await userEvent.click(
-      screen.getByRole("button", { name: /Friday, July 3rd, 2026/i })
-    )
+    await pickCalendarDay(new Date(2026, 6, 3))
     await userEvent.click(screen.getByRole("button", { name: "选择负责人" }))
     expect(await screen.findByText("刘玮")).toBeTruthy()
     await userEvent.click(screen.getByRole("checkbox", { name: /刘玮/ }))
@@ -390,9 +409,7 @@ describe("TaskCreateDialog", () => {
     const form = within(screen.getByTestId("task-series-form"))
     await userEvent.type(form.getByLabelText("任务标题"), "每日巡检")
     await userEvent.click(form.getByRole("button", { name: "首次截止日期" }))
-    await userEvent.click(
-      screen.getByRole("button", { name: /Friday, July 3rd, 2026/i })
-    )
+    await pickCalendarDay(new Date(2026, 6, 3))
     await userEvent.click(form.getByRole("button", { name: "创建循环任务" }))
 
     await waitFor(() => {
@@ -440,9 +457,7 @@ describe("TaskCreateDialog", () => {
     await userEvent.click(await screen.findByRole("button", { name: /渠道/ }))
     await userEvent.type(await form.findByLabelText("渠道"), "search")
     await userEvent.click(form.getByRole("button", { name: "首次截止日期" }))
-    await userEvent.click(
-      screen.getByRole("button", { name: /Friday, July 3rd, 2026/i })
-    )
+    await pickCalendarDay(new Date(2026, 6, 3))
     await userEvent.click(form.getByRole("button", { name: "创建循环任务" }))
 
     await waitFor(() => expect(createTaskSeries).toHaveBeenCalledOnce())
@@ -473,9 +488,7 @@ describe("TaskCreateDialog", () => {
     await userEvent.type(screen.getByLabelText("任务标题"), "每日巡检")
     await userEvent.type(screen.getByLabelText("任务内容"), "保留这段说明")
     await userEvent.click(screen.getByRole("button", { name: "截止日期" }))
-    await userEvent.click(
-      screen.getByRole("button", { name: /Friday, July 3rd, 2026/i })
-    )
+    await pickCalendarDay(new Date(2026, 6, 3))
     await userEvent.click(screen.getByRole("tab", { name: "循环任务" }))
 
     expect((screen.getByLabelText("任务标题") as HTMLInputElement).value).toBe(
@@ -489,9 +502,7 @@ describe("TaskCreateDialog", () => {
     ).toContain("2026-07-03")
 
     await userEvent.click(screen.getByRole("button", { name: "首次截止日期" }))
-    await userEvent.click(
-      screen.getByRole("button", { name: /Saturday, July 4th, 2026/i })
-    )
+    await pickCalendarDay(new Date(2026, 6, 4))
     await userEvent.click(screen.getByRole("tab", { name: "普通任务" }))
     await userEvent.click(screen.getByRole("tab", { name: "循环任务" }))
 
