@@ -1,0 +1,55 @@
+{
+  "description": "Preview the rendered request for a saved rule as-is; to preview hypothetical changes use project_automation_preview; secrets are masked.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
+    "properties": {
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "rule_id": {
+        "description": "automation rule ID",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "required": [
+      "rule_id"
+    ],
+    "type": "object"
+  },
+  "name": "project_automation_preview_saved",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

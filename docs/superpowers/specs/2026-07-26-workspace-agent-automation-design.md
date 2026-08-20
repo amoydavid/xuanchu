@@ -544,7 +544,9 @@ PUT /api/v1/projects/{projectRef}/automations/provider-config
 
 ### 14.4 CLI、Remote 与 MCP 边界
 
-首版不新增 Workspace Automation CLI/Remote/MCP CRUD，管理面只做 HTTP/OpenAPI/Web，与现有 Project Automation 产品入口保持一致。后续如有 headless 治理需求，再基于统一 App service 增加入口。
+首版不新增 Workspace Automation CLI/Remote/MCP CRUD，管理面只做 HTTP/OpenAPI/Web。后续如有 headless 治理需求，再基于统一 App service 增加入口。
+
+> **2026-08-20 更新**：Project scope 的自动化管理已按 [2026-08-20-project-automation-mcp-tools-design.md](2026-08-20-project-automation-mcp-tools-design.md) 全量暴露为 MCP tools（14 个，含规则 CRUD、preview/test、投递查询/重放、模板变量）。Workspace scope 规则仍不暴露 MCP CRUD，本节其余约定不变。
 
 Agent 执行业务流程复用现有 MCP tools，至少包括：
 
@@ -900,5 +902,5 @@ git diff --check
 2. 为 Workspace event matcher 增加少量结构化、可索引条件；只有自然语言 no-op 带来明显成本时才引入。
 3. 支持 Responses API，但继续复用同一 Rule/Delivery。
 4. 为 Agent Provider 的异步 run 增加标准化状态回调；只有 Provider 契约稳定后才做，不解析自然语言响应。
-5. 如出现 headless 管理需求，再为统一 App service 增加 CLI/MCP 管理入口，并单独设计 automation scope，避免让业务 Agent 默认可修改触发器。
+5. 如出现 headless 管理需求，再为统一 App service 增加 CLI/MCP 管理入口，并单独设计 automation scope，避免让业务 Agent 默认可修改触发器。（Project scope 已于 2026-08-20 暴露 MCP 管理入口，见 [2026-08-20-project-automation-mcp-tools-design.md](2026-08-20-project-automation-mcp-tools-design.md)；Workspace scope 仍按本条约束保留。）
 6. 如需要人工批准、长事务补偿或可视化多节点状态，再评估独立 Workflow 产品；不要把这些能力塞进当前 instruction 字段。

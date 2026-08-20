@@ -323,3 +323,51 @@ project_config_list({"workspace": "dajee", "project": "apiplat"})
 // 删除
 project_config_unset({"workspace": "dajee", "project": "apiplat", "key": "agent.handoff"})
 ```
+
+## 项目自动化
+
+项目自动化规则由 schedule（daily_at/cron）或 event（hook 事件）触发，向 OpenAI 兼容 Provider 投递 chat_completions 请求。读操作需要 `project:read + hook:read` scope，写操作需要 `project:write + hook:write` scope。Provider 配置（`agent.provider.*`）仍用 `project_config_set` 管理。
+
+```json
+// 创建每日巡检规则
+project_automation_add({
+  "workspace": "dajee", "project": "apiplat",
+  "name": "每日巡检",
+  "trigger_type": "schedule",
+  "trigger_config": {"schedule_type": "daily_at", "schedule_value": "09:30", "timezone": "Asia/Shanghai"},
+  "action": {
+    "base_url_config_key": "agent.provider.base_url",
+    "api_key_config_key": "agent.provider.api_key",
+    "model_config_key": "agent.provider.model"
+  },
+  "instruction_template": "生成 {{project.name}} 巡检报告：{{task_summary}}"
+})
+
+// 创建事件规则：仅在真正新增负责人时触发
+project_automation_add({
+  "workspace": "dajee", "project": "apiplat",
+  "name": "分派通知",
+  "trigger_type": "event",
+  "trigger_config": {"event_type": "task.assigned"},
+  "condition": {"only_added_assignees": true},
+  "action": {"base_url_config_key": "agent.provider.base_url", "api_key_config_key": "agent.provider.api_key", "model_config_key": "agent.provider.model"},
+  "instruction_template": "通知负责人 {{added_assignees}} 处理 {{task.title}}"
+})
+
+// 查看可用模板变量（schedule/event 两组）
+project_automation_list_template_vars({"workspace": "dajee", "project": "apiplat"})
+
+// 预览渲染后的请求（secret 脱敏）；test 真实投递一条 manual_test
+project_automation_preview_saved({"workspace": "dajee", "project": "apiplat", "rule_id": "..."})
+project_automation_test({"workspace": "dajee", "project": "apiplat", "rule_id": "..."})
+
+// 规则管理与投递记录
+project_automation_list({"workspace": "dajee", "project": "apiplat", "include_disabled": true})
+project_automation_modify({"workspace": "dajee", "project": "apiplat", "rule_id": "...", "name": "新名字"})
+project_automation_enable / project_automation_disable / project_automation_remove
+project_automation_delivery_list({"workspace": "dajee", "project": "apiplat", "status": "failed"})
+project_automation_delivery_get({"workspace": "dajee", "project": "apiplat", "delivery_id": "..."})
+project_automation_delivery_replay({"workspace": "dajee", "project": "apiplat", "delivery_id": "..."})
+```
+
+注意：automation 规则变更目前不写审计日志；投递结果看 `project_automation_delivery_*`。

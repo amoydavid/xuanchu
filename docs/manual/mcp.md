@@ -809,6 +809,125 @@ token 走 HTTP `GET`（MCP 不提供 base64 upload/download）。
 | `project_id` | string | 否 | |
 | `key` | string | 是 | 配置键 |
 
+### Project Automation（14 tools）
+
+项目自动化的管理与观测。规则由 schedule/event 触发，向 OpenAI 兼容 Provider 投递 `chat_completions` 请求。读操作要求 `project:read + hook:read` scope，写操作要求 `project:write + hook:write` scope。provider 配置（`agent.provider.*`）仍通过 `project_config_*` 工具管理。设计见 `docs/superpowers/specs/2026-08-20-project-automation-mcp-tools-design.md`。
+
+所有工具都要求 `project` / `project_id` 至少传一个，可选 `workspace`，下表省略这三个公共参数。
+
+#### `project_automation_list`
+
+列出项目自动化规则。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `include_disabled` | boolean | 否 | 是否包含停用规则（默认 false） |
+
+#### `project_automation_get`
+
+查看单条规则详情。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+
+#### `project_automation_add`
+
+创建规则。`trigger_type` 支持 `schedule`（`trigger_config.schedule_type=daily_at|cron`）和 `event`（`trigger_config.event_type` 为 hook 事件类型）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | 是 | 规则名 |
+| `description` | string | 否 | 描述 |
+| `enabled` | boolean | 否 | 是否启用（默认 true） |
+| `trigger_type` | string | 是 | `schedule` 或 `event` |
+| `trigger_config` | object | 是 | `{schedule_type, schedule_value, timezone, event_type}` |
+| `condition` | object | 否 | `{task_filter, max_tasks, only_added_assignees}` |
+| `action` | object | 是 | `{protocol, base_url_config_key, api_key_config_key, model_config_key, allowed_hosts_config_key, model_override, temperature, max_attempts, attach_metadata}` |
+| `context` | object | 否 | `{include: []string}`（遗留字段，模板变量始终全量填充） |
+| `instruction_template` | string | 是 | user message 模板，支持 `{{var}}` |
+| `system_prompt` | string | 否 | system prompt 模板，默认内置 Agent prompt |
+
+#### `project_automation_modify`
+
+修改规则，省略的字段保持不变。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+| 其余字段 | 同 `project_automation_add` | 否 | 全部可选，指针语义 |
+
+#### `project_automation_remove`
+
+删除规则。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+
+#### `project_automation_enable` / `project_automation_disable`
+
+启用/停用规则。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+
+#### `project_automation_test`
+
+立即入队一条 `manual_test` 投递，由后台 dispatcher 真实发送到 Provider。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+
+#### `project_automation_preview`
+
+预览未保存规则渲染出的 OpenAI 兼容请求。secret 脱敏（`Authorization: Bearer ****`），不写任何记录。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| 同 `project_automation_add` | | 是 | 完整规则输入 |
+
+#### `project_automation_preview_saved`
+
+按当前配置预览已保存规则（不支持覆盖字段；预览假设性变更请用 `project_automation_preview`）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 是 | 规则 ID |
+
+#### `project_automation_delivery_list`
+
+列出投递记录。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `rule_id` | string | 否 | 按规则过滤 |
+| `status` | string | 否 | 按状态过滤（queued/claiming/succeeded/retried/failed） |
+| `limit` | integer | 否 | 默认 20 |
+| `offset` | integer | 否 | |
+
+#### `project_automation_delivery_get`
+
+查看单条投递记录（含 response、usage、重试信息）。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `delivery_id` | string | 是 | 投递 ID |
+
+#### `project_automation_delivery_replay`
+
+基于历史投递新建一条 queued 投递重新发送，原记录不变。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `delivery_id` | string | 是 | 投递 ID |
+
+#### `project_automation_list_template_vars`
+
+列出指令模板可用变量（按 schedule/event 触发器分组）。只读。无业务参数。
+
 ### Workspace（7 tools）
 
 #### `workspace_list`

@@ -1,0 +1,64 @@
+{
+  "description": "List project automation delivery records; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
+    "properties": {
+      "limit": {
+        "description": "max deliveries to return (default 20)",
+        "type": "integer"
+      },
+      "offset": {
+        "description": "number of deliveries to skip",
+        "type": "integer"
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "rule_id": {
+        "description": "filter by automation rule ID",
+        "type": "string"
+      },
+      "status": {
+        "description": "filter by delivery status (queued, claiming, succeeded, retried, failed)",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "project_automation_delivery_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

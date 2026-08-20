@@ -313,7 +313,15 @@ func projectRefRequired(v any) bool {
 		ProjectTransitionInput,
 		ProjectConfigSetInput,
 		ProjectConfigUnsetInput,
-		ProjectConfigListInput:
+		ProjectConfigListInput,
+		ProjectAutomationListInput,
+		ProjectAutomationRefInput,
+		ProjectAutomationAddInput,
+		ProjectAutomationModifyInput,
+		ProjectAutomationPreviewSavedInput,
+		ProjectAutomationDeliveryListInput,
+		ProjectAutomationDeliveryRefInput,
+		ProjectAutomationTemplateVarsInput:
 		return true
 	}
 	return false

@@ -1,0 +1,55 @@
+{
+  "description": "List project automation rules; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
+    "properties": {
+      "include_disabled": {
+        "description": "include disabled rules (default false)",
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "project_automation_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

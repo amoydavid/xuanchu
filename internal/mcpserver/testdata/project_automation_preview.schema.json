@@ -1,0 +1,188 @@
+{
+  "description": "Preview the rendered OpenAI-compatible request for an unsaved rule; no delivery is written; secrets are masked.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
+    "properties": {
+      "action": {
+        "additionalProperties": false,
+        "description": "OpenAI-compatible delivery action",
+        "properties": {
+          "allowed_hosts_config_key": {
+            "description": "scoped config key holding the JSON host allowlist (default agent.provider.allowed_hosts)",
+            "type": "string"
+          },
+          "api_key_config_key": {
+            "description": "scoped config key holding the provider API key",
+            "type": "string"
+          },
+          "attach_metadata": {
+            "description": "attach xuanchu source metadata to the request body",
+            "type": "boolean"
+          },
+          "base_url_config_key": {
+            "description": "scoped config key holding the provider base URL",
+            "type": "string"
+          },
+          "max_attempts": {
+            "description": "max delivery attempts including retries (default 5)",
+            "type": "integer"
+          },
+          "model_config_key": {
+            "description": "scoped config key holding the model name (or use model_override)",
+            "type": "string"
+          },
+          "model_override": {
+            "description": "fixed model name, bypassing model_config_key",
+            "type": "string"
+          },
+          "protocol": {
+            "description": "delivery protocol, only chat_completions (default)",
+            "type": "string"
+          },
+          "temperature": {
+            "description": "sampling temperature (default 0.2)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "base_url_config_key",
+          "api_key_config_key"
+        ],
+        "type": "object"
+      },
+      "condition": {
+        "additionalProperties": false,
+        "description": "task filter and event conditions",
+        "properties": {
+          "max_tasks": {
+            "description": "max tasks included in delivery context (default 50)",
+            "type": "integer"
+          },
+          "only_added_assignees": {
+            "description": "for task.assigned events, only fire when assignees were actually added",
+            "type": "boolean"
+          },
+          "task_filter": {
+            "description": "task filter applied to the matched task set",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "context": {
+        "additionalProperties": false,
+        "description": "delivery context include list",
+        "properties": {
+          "include": {
+            "description": "context include keys (legacy; template variables are always filled)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "description": {
+        "description": "rule description",
+        "type": "string"
+      },
+      "enabled": {
+        "description": "whether the rule starts enabled (default true)",
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "instruction_template": {
+        "description": "user message template with {{var}} placeholders",
+        "type": "string"
+      },
+      "name": {
+        "description": "rule name",
+        "type": "string"
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "system_prompt": {
+        "description": "system prompt template (default built-in agent prompt)",
+        "type": "string"
+      },
+      "trigger_config": {
+        "additionalProperties": false,
+        "description": "trigger configuration",
+        "properties": {
+          "event_type": {
+            "description": "hook event type for event trigger (task.assigned, task.completed, project.transitioned, ...)",
+            "type": "string"
+          },
+          "schedule_type": {
+            "description": "schedule trigger type: daily_at or cron",
+            "type": "string"
+          },
+          "schedule_value": {
+            "description": "HH:MM for daily_at, or a 5-field cron expression",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA timezone for schedule evaluation",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "trigger_type": {
+        "description": "trigger type: schedule or event",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "trigger_type",
+      "trigger_config",
+      "action",
+      "instruction_template"
+    ],
+    "type": "object"
+  },
+  "name": "project_automation_preview",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

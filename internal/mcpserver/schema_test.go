@@ -190,6 +190,14 @@ func TestMCPProjectRefToolsRequireProject(t *testing.T) {
 		{"project_config_set", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigSetInput](t) }},
 		{"project_config_unset", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigUnsetInput](t) }},
 		{"project_config_list", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigListInput](t) }},
+		{"project_automation_list", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationListInput](t) }},
+		{"project_automation_get", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationRefInput](t) }},
+		{"project_automation_add", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationAddInput](t) }},
+		{"project_automation_modify", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationModifyInput](t) }},
+		{"project_automation_preview_saved", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationPreviewSavedInput](t) }},
+		{"project_automation_delivery_list", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationDeliveryListInput](t) }},
+		{"project_automation_delivery_get", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationDeliveryRefInput](t) }},
+		{"project_automation_list_template_vars", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAutomationTemplateVarsInput](t) }},
 	}
 	for _, c := range checks {
 		t.Run(c.name, func(t *testing.T) {

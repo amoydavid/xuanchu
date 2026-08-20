@@ -1,0 +1,55 @@
+{
+  "description": "Get one automation delivery record; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
+    "properties": {
+      "delivery_id": {
+        "description": "automation delivery ID",
+        "type": "string"
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "required": [
+      "delivery_id"
+    ],
+    "type": "object"
+  },
+  "name": "project_automation_delivery_get",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

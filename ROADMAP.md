@@ -63,6 +63,7 @@
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
 | v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed/inherit/prompt；模板标识默认来源 slug，同标识保存追加版本 |
 | v0.6.4 | 已完成 | Workspace Agent 自动化：复用 Project Automation，支持 `project.created`、自然语言编排、MCP 回写和跨项目运行记录 |
+| v0.6.5 | 已完成 | Project Automation MCP 管理入口：14 个 `project_automation_*` tools（规则 CRUD、preview/test、投递记录查询/重放、模板变量），双 scope 鉴权（project + hook）对齐 HTTP；Workspace 级自动化仍不暴露 MCP |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
