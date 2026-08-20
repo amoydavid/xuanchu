@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -42,7 +41,7 @@ export type ProjectLayoutContextValue = {
   canReadTasks: boolean
   canWriteTasks: boolean
   closed: boolean
-  // setTabActions 允许子页面在 tabs 行右侧（收起/展开按钮左边）注册额外动作节点。
+  // setTabActions 允许子页面在 tabs 行右侧注册额外动作节点。
   // 例如任务页用它注册「导入任务」图标按钮。传 null 清空。
   setTabActions: (node: ReactNode | null) => void
   // setBreadcrumbLeaf 允许子页面在面包屑末尾追加一个叶节点（如 series 标题）。
@@ -62,7 +61,7 @@ export function useProjectLayout(): ProjectLayoutContextValue {
   return ctx
 }
 
-// ProjectLayout 负责项目级数据加载、Header、Tabs、右栏开合与整体布局。
+// ProjectLayout 负责项目级数据加载、Header、Tabs 与整体布局。
 // 子页面主体通过 children 注入；共享 Header 只放复制、状态、设置等项目级动作。
 export function ProjectLayout(props: ProjectLayoutProps) {
   return (
@@ -80,7 +79,6 @@ function ProjectLayoutContent({
 }: ProjectLayoutProps) {
   const { t } = useTranslation()
   const feedback = useEditFeedback()
-  const [railOpen, setRailOpen] = useState(true)
   const [tabActions, setTabActions] = useState<ReactNode | null>(null)
   const [breadcrumbLeaf, setBreadcrumbLeaf] = useState<string | null>(null)
   const setLeaf = (leaf: { label: string } | null) => setBreadcrumbLeaf(leaf?.label ?? null)
@@ -204,45 +202,21 @@ function ProjectLayoutContent({
             projectSlug={projectSlug}
             workspaceSlug={workspaceSlug}
           />
-          <div className="flex shrink-0 items-center gap-1">
-            {tabActions}
-            <Button
-              aria-label={
-                railOpen
-                  ? t("projectSubpages.railCollapse")
-                  : t("projectSubpages.railExpand")
-              }
-              onClick={() => setRailOpen((value) => !value)}
-              size="icon"
-              title={
-                railOpen
-                  ? t("projectSubpages.railCollapse")
-                  : t("projectSubpages.railExpand")
-              }
-              type="button"
-              variant="ghost"
-            >
-              {railOpen ? (
-                <PanelRightCloseIcon className="h-4 w-4" />
-              ) : (
-                <PanelRightOpenIcon className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+          {tabActions ? (
+            <div className="flex shrink-0 items-center gap-1">{tabActions}</div>
+          ) : null}
         </div>
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="min-w-0 flex-1">{children}</div>
-          {railOpen ? (
-            <ProjectContextRail
-              configError={homeConfig.isError}
-              configRows={homeConfig.data}
-              project={project.data}
-              summary={summary.data}
-              summaryError={summary.isError}
-              timeline={timeline.data}
-              timelineError={timeline.isError}
-            />
-          ) : null}
+          <ProjectContextRail
+            configError={homeConfig.isError}
+            configRows={homeConfig.data}
+            project={project.data}
+            summary={summary.data}
+            summaryError={summary.isError}
+            timeline={timeline.data}
+            timelineError={timeline.isError}
+          />
         </div>
       </div>
     </LayoutContext.Provider>

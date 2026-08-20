@@ -27,9 +27,7 @@ type ProjectContextRailProps = {
   timelineError?: boolean
 }
 
-// ProjectContextRail 是项目右侧信息栏，只负责渲染内容本身。
-// 开合按钮和宽度由 ProjectLayout 在 tabs 行右侧统一管理：
-// railOpen 时 Layout 渲染本组件，收起时整块不渲染，左侧主体自动占满。
+// ProjectContextRail 是项目右侧信息栏，只负责渲染内容本身，常显不提供开合。
 // 所有数字都来自 ProjectTaskSummary 后端聚合，禁止用当前任务列表派生全量统计。
 export function ProjectContextRail({
   project,

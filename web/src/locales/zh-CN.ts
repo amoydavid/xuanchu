@@ -571,8 +571,6 @@ export const zhCN = {
     recurring: "循环任务",
     activity: "活动",
     automations: "自动化",
-    railExpand: "展开右栏",
-    railCollapse: "收起右栏",
     railTitle: "项目信息",
     railSummaryError: "项目摘要暂不可用",
     railConfigError: "项目附属信息暂不可用",

@@ -586,8 +586,6 @@ export const enUS = {
     recurring: "Recurring tasks",
     activity: "Activity",
     automations: "Automations",
-    railExpand: "Expand rail",
-    railCollapse: "Collapse rail",
     railTitle: "Project info",
     railSummaryError: "Project summary unavailable",
     railConfigError: "Project facts unavailable",
