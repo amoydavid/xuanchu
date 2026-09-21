@@ -1,6 +1,6 @@
 # Workspace 级配置入口与自动化 Provider 展开逻辑修正
 
-- 状态：草案（待评审）
+- 状态：已完成
 - 日期：2026-07-29
 - 作者：协作文档（人类 + 代理）
 - 关联：`README.md` / `AGENTS.md` / `DESIGN.md`

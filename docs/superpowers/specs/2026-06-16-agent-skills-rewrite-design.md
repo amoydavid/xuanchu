@@ -1,6 +1,6 @@
 # Agent Skills 重写设计
 
-> 状态：设计稿，待评审
+> 状态：已完成
 > 日期：2026-06-16
 > 背景：`docs/skills/` 下现有 10 个 SKILL.md 严重不符合 [agentskills.io 规范](https://agentskills.io/specification)，需删除并按"使用者角色"重新组织。
 

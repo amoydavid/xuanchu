@@ -22,7 +22,7 @@ Xuanchu 的配置键按用途分组。写自定义键前必须用 `config_schema
 | `integrations.feishu.bot_token` | workspace/project（secret） | 飞书机器人 token，模板用 `secret_refs` 引用 |
 | `im.group_id` | project | IM 群 ID（可经 `project_get` 的 config_summary 读） |
 
-群绑定的完整端到端流程见 xuanchu-wire-up-automation skill 的 references/feishu-bot-setup.md。
+群绑定的完整端到端流程见 `docs/manual/notifications.md`（sink / reminder rule / notification rule 配置）与 `docs/manual/hooks.md`（事件订阅）；MCP 侧对应 `notification_sink_*`、`notification_rule_*`、`reminder_rule_*` 工具，详见 `docs/manual/mcp.md`「通知与提醒」一节。
 
 ## 业务键（workspace 级）
 

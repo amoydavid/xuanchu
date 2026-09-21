@@ -41,7 +41,7 @@ description: 管理 API token（创建/轮换/撤销）、查可用权限、调�
 
 ```
 1. config_schema_set({"workspace":"dajee","key":"integrations.feishu.webhook_url","value_type":"string","allowed_scopes":["project"]})
-2. // 之后用 project_config_set 写值（详见 xuanchu-wire-up-automation skill 的 references/feishu-bot-setup.md）
+2. // 之后用 project_config_set 写值（群通知接线端到端流程见 docs/manual/notifications.md）
 ```
 
 ## 易错点

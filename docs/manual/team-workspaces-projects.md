@@ -92,6 +92,42 @@ xuanchu --workspace dajee project archive agentapi
 
 project 归档后不能被新任务引用，但已有任务仍可读取、完成和删除。
 
+## Project 生命周期
+
+project 有显式状态机：`planning` → `active` → `archived` / `cancelled`。
+
+```bash
+xuanchu project transition agentapi active
+xuanchu project transition agentapi archived
+```
+
+- `planning`：新项目（含模板实例化）的初始状态，可正常读写任务。
+- `active`：正式进行中。
+- `archived`：等价于 `project archive`，不能被新任务引用。
+- `cancelled`：项目取消，语义上与 archived 类似但保留取消原因。
+
+状态流转记录到 audit 和项目 timeline。
+
+## 项目模板
+
+项目模板是 workspace 内的不可变项目初始化快照，用于把成熟项目的任务结构、循环任务、project config 和自动化规则复制到新项目。
+
+- **Capture**：在 Web Console 项目 Header 的「更多操作 → 另存为模板」完成，服务端筛选候选任务 / Series / config / automation，支持分页与跨页保留已选。
+- **config 策略**：每个 config 可选 `fixed`（固定当前值进快照）、`inherit`（不写 project config，沿用实例化时的 workspace/default）或 `prompt`（创建时必填/选填）。选择 automation 时其显式 config 依赖自动闭包加入。
+- **版本化**：同标识重复保存会在同一 Template 下追加不可变 Snapshot 并把 current 指向最新；已归档模板不会静默复活。
+- **实例化**：`/projects` 的「从模板创建」按 current Snapshot 的 `config_inputs` 生成 typed form，必填 prompt 必须显式填写，在单事务中创建 `planning` Project。
+
+CLI / 远程 CLI 只提供列表与实例化：
+
+```bash
+xuanchu project template list
+xuanchu project template instantiate <template-ref> <new-slug> name:<name> \
+  --snapshot <uuid> --snapshot-hash <hash> --start-date 2026-09-01 \
+  --input inputs.json
+```
+
+`--snapshot` / `--snapshot-hash` 必须来自最近一次 `project template list` 的 current Snapshot；若期间有新 Snapshot 追加，实例化返回 `project_template_snapshot_hash_mismatch`，需重新 list 确认。`--input` 提供 `config_inputs`（JSON 文件或 `-` 读 stdin，最大 1 MiB），只能包含 Snapshot 声明的 prompt key。新任务和 Series 使用全新身份，自动化规则创建后保持停用，delivery 不复制。
+
 ## Project 配置
 
 project/shared config 现在分成 schema 定义和值写入两层：

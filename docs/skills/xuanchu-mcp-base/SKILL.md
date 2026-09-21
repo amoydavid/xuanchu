@@ -5,7 +5,7 @@ description: 使用璇础 MCP skill 或把文档里的 canonical tool name 映�
 
 # 璇础 MCP 基础约定
 
-本 skill 只定义通用调用规则。业务流程分别见 xuanchu-capture-and-track-work、xuanchu-govern-projects、xuanchu-manage-access-and-config、xuanchu-report-and-review、xuanchu-wire-up-automation。
+本 skill 只定义通用调用规则。业务流程分别见 xuanchu-capture-and-track-work、xuanchu-govern-projects、xuanchu-manage-access-and-config、xuanchu-report-and-review。通知/Hook/自动化接线（sink、reminder rule、notification rule、project automation）的完整工具说明见 `docs/manual/mcp.md` 的「Hook」「通知与提醒」「Project Automation」三节，端到端流程见 `docs/manual/notifications.md` 与 `docs/manual/hooks.md`。
 
 ## 工具名解析
 

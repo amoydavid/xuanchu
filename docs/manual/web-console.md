@@ -141,6 +141,24 @@ http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{t
 
 项目设置页的配置值 tab（`/projects/$slug/settings/config`）展示 project effective 配置，读取顺序为 project 显式值 > workspace 值 > schema 默认值 > 缺失。来源、状态（已覆盖 / 继承 / 默认 / 必填缺失 / 只读）和 secret 遮掩在 UI 上区分；「恢复继承」删除 project 显式值，行保留并回落到继承来源。
 
+## Workspace 配置值与自定义字段
+
+`/workspaces` 列表中当前 effective workspace 行提供「配置」入口，进入 `/workspaces/{slug}/config` 编辑该 workspace 的全部 config 值：允许 workspace 作用域的 key 可写，仅 project 作用域的 key 只读；非当前 workspace 上下文降级为只读提示。schema 定义管理仍在 `/settings`，两边职责不重叠。
+
+`/workspaces/{slug}/settings/custom-fields` 是 workspace 级自定义字段（UDA）管理页，维护 `UDADefinition` 的 `name / type / label / values / default`。Task 与循环任务表单通过「添加自定义字段」按需选择已定义字段，不会一次铺开全部未填写字段；`default` 只作为输入提示，不自动写入。
+
+## 自动化控制台
+
+「管理」分组的 `/automations` 是 Workspace 级自动化入口，提供「规则 / 运行记录」两个 tab；Project 详情的「自动化」tab（`/workspaces/{ws}/projects/{slug}/automations`）管 project scope 规则。规则支持 `daily_at`（每天固定时刻）和标准 `cron` 表达式两种 schedule，前端提供常用预设与中文解读；事件规则监听 hook 事件类型，Workspace scope 首版开放 `project.created`。规则列表可直接启停（Switch），投递记录按状态点展示并支持 replay；「预览投递 JSON」展示脱敏后的最终请求体。Provider 配置卡片按 effective 完整性（project → workspace → default）判断是否展开，展开时明确声明写入 project 级。
+
+## 项目模板
+
+项目 Header 的「更多操作 → 另存为模板」把当前项目捕获为不可变 Snapshot：候选列表由服务端筛选分页，已选清单跨页保留，可选普通任务、循环任务、project config 和项目自动化；选择 automation 时其显式 config 依赖自动闭包加入。每个 config 可选 fixed / inherit / prompt 策略。`/settings/project-templates` 提供模板搜索、版本查看、追加 Snapshot、改名、归档和重新激活；`/projects` 的「从模板创建」按 current Snapshot 的 `config_inputs` 生成 typed form，必填 prompt 必须显式填写，实例化在单事务中创建 planning Project。
+
+## 个人首页与我的任务
+
+登录后默认进入个人首页：聚合「我的待办」「我关注的项目」「配置概览」等区块，数据来自权限感知的 `GET /api/v1/home`。`/my-tasks` 跨项目聚合分配给当前用户的任务，提供「全部 / 已开始 / 今日到期 / 逾期 / 无截止」预设视图与负载摘要。tenant / system actor 进入时显示明确的降级空状态。
+
 ## Server Admin Bootstrap
 
 Server admin 入口是独立页面：

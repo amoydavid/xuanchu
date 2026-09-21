@@ -1,7 +1,7 @@
 # Sink 模板变量可发现性设计
 
 - 日期：2026-07-08
-- 状态：草案，待用户审阅
+- 状态：已完成
 - 范围：通知投递系统（sink / reminder rule / event notification rule）的模板变量可发现性
 
 ## 1. 背景与动机

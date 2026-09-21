@@ -134,3 +134,143 @@ weight: 210
 | `remote_server_invalid` | remote server URL 非法 |
 | `remote_unsupported_command` | 远程模式不支持该命令 |
 | `server_listen_required` | server 缺少 `--listen` |
+
+## 循环任务系列
+
+| 错误码 | 含义 |
+|---|---|
+| `task_series_not_found` | 循环系列不存在 |
+| `task_series_invalid` | 系列参数非法 |
+| `task_series_invalid_rule` | 循环规则非法 |
+| `task_series_due_required` | 缺少首次截止日期 |
+| `task_series_invalid_until` | 循环结束日期非法 |
+| `task_series_invalid_effective_from` | 新规则生效日期非法 |
+| `task_series_invalid_clear` | `--clear` 字段名不支持 |
+| `task_series_unsupported_field` | 该字段不允许在系列上修改 |
+| `task_series_occurrence_not_found` | 循环实例不存在 |
+| `task_series_endpoint_required` | 循环任务必须使用 `task_series_*` 入口，普通 task 端点拒绝 |
+| `task_occurrence_not_found` | occurrence_ref 对应的实例不存在 |
+| `task_occurrence_project_immutable` | 循环实例不能改 project |
+| `task_occurrence_range_required` | 展开循环实例缺少时间范围 |
+| `task_occurrence_range_too_large` | 展开时间范围超过上限 |
+
+## 任务附件
+
+| 错误码 | 含义 |
+|---|---|
+| `attachment_not_found` | 附件不存在 |
+| `attachment_in_use` | 附件仍被 description 引用，需先删除引用 |
+| `attachment_quota_exceeded` | 附件大小或数量超过配额 |
+| `attachment_state_invalid` | 附件状态不允许该操作 |
+| `attachment_image_invalid` | 图片附件内容非法 |
+| `attachment_storage_unavailable` | 附件存储后端不可用 |
+| `attachment_remote_url_invalid` | 远程抓取 URL 非法 |
+| `attachment_remote_fetch_disabled` | 远程抓取未启用 |
+| `attachment_remote_fetch_failed` | 远程抓取失败 |
+| `attachment_draft_creator_mismatch` | 草稿附件只能由创建者操作 |
+
+## 项目模板
+
+| 错误码 | 含义 |
+|---|---|
+| `project_template_not_found` | 模板不存在 |
+| `project_template_archived` | 模板已归档 |
+| `project_template_key_conflict` | 同标识 active 模板冲突 |
+| `project_template_key_invalid` | 模板标识非法 |
+| `project_template_invalid_name` | 模板名称非法 |
+| `project_template_snapshot_not_found` | Snapshot 不存在 |
+| `project_template_snapshot_invalid` | Snapshot 内容非法 |
+| `project_template_snapshot_hash_mismatch` | current Snapshot 已变化，需重新 list 确认 |
+| `project_template_snapshot_schema_unsupported` | Snapshot schema 版本不受支持 |
+| `project_template_snapshot_version_conflict` | Snapshot 版本冲突 |
+| `project_template_candidate_invalid` | 候选项选择非法 |
+| `project_template_candidate_limit_exceeded` | 候选项数量超过上限 |
+| `project_template_selection_invalid` | 选择内容非法 |
+| `project_template_dependency_missing` | 自动化依赖的 config 未闭包 |
+| `project_template_config_invalid` | 模板内 config 非法 |
+| `project_template_config_policy_invalid` | config 策略（fixed/inherit/prompt）非法 |
+| `project_template_config_input_required` | 必填 prompt 未填写 |
+| `project_template_config_input_invalid` | config_inputs 含未声明的 key 或值非法 |
+| `project_template_secret_required` | 必填 secret prompt 未提供 |
+| `project_template_secret_copy_unavailable` | 快照内 secret_copy 无法解密复制 |
+| `project_template_member_unavailable` | 快照成员在当前 workspace 不可用且未提供替换 |
+| `project_template_date_out_of_range` | 快照内日期超出允许范围 |
+| `project_template_ref_cycle` | 任务依赖在快照内成环 |
+| `project_template_uda_invalid` | 快照内 UDA 值与当前定义不兼容 |
+| `project_template_automation_invalid` | 快照内自动化规则非法 |
+| `project_template_attachment_unsupported` | 模板不支持捕获附件 |
+| `project_template_series_schedule_confirmation_required` | 含 schedule 的 Series 需显式确认 |
+| `project_template_source_changed` | 来源项目在 Capture 期间发生变化 |
+| `project_template_concurrency_conflict` | 并发写冲突，需重试 |
+| `project_template_no_changes` | 追加 Snapshot 与 current 无差异 |
+| `project_template_status_unchanged` | 模板状态未变化 |
+
+## 自动化（Automation）
+
+| 错误码 | 含义 |
+|---|---|
+| `automation_rule_not_found` | 自动化规则不存在 |
+| `automation_rule_invalid` | 规则参数非法（trigger、模板、scope 等） |
+| `automation_scope_invalid` | scope 非法或越权（workspace 规则需 workspace scope） |
+| `automation_delivery_not_found` | 投递记录不存在 |
+| `automation_delivery_url_missing` | 投递缺少目标 URL |
+| `automation_delivery_body_missing` | 投递缺少请求体 |
+| `automation_provider_config_missing` | Agent Provider 配置缺失（`agent.provider.*`） |
+| `automation_provider_config_invalid` | Provider 配置非法 |
+| `automation_provider_allowed_hosts_invalid` | Provider allowed hosts 配置非法 |
+| `automation_provider_target_denied` | Provider 目标地址被出站防护拒绝 |
+
+## UDA / 自定义字段
+
+| 错误码 | 含义 |
+|---|---|
+| `uda_not_defined` | 字段未在 workspace UDADefinition 中定义 |
+| `uda_definition_invalid` | 字段定义非法（name/type/values） |
+| `uda_value_invalid` | 字段值与定义类型不兼容 |
+| `uda_orphan_readonly` | 孤儿字段值只读，需先补定义 |
+| `uda_runtime_readonly` | 运行时字段不允许写入 |
+| `uda_active_series_in_use` | 字段仍被活跃循环系列使用 |
+| `uda_active_series_incompatible` | 字段定义变更与活跃系列值不兼容 |
+
+## SSO / 目录同步 / Admin / Tenant
+
+| 错误码 | 含义 |
+|---|---|
+| `identity_not_found` | OIDC sub 未命中本地用户映射 |
+| `id_token_invalid` | OIDC id_token 校验失败 |
+| `sso_failed` / `sso_start_failed` | SSO 流程失败 / 发起失败 |
+| `session_expired` | browser session 过期 |
+| `csrf_invalid` | 缺少或不匹配的 `X-Xuanchu-CSRF` 头 |
+| `directory_sync_failed` | 通讯录同步失败 |
+| `directory_token_fetch_failed` | 目录同步换取访问 token 失败 |
+| `job_not_found` | 同步任务不存在 |
+| `login_required` | 需要登录 |
+| `token_web_login_disabled` | SSO 创建的 token 不允许用于 Console 登录 |
+| `token_secret_unavailable` | token 密文不可恢复，需重新签发 |
+| `config_secret_key_missing` / `config_secret_key_invalid` | 服务端缺少或非法的 `[security].config_secret_key` |
+| `admin_auth_required` / `admin_auth_invalid` | admin 接口缺少或非法凭证 |
+| `admin_setup_required` / `admin_setup_invalid` | 需要或非法的 setup-code |
+| `admin_acting_session_expired` / `admin_acting_session_not_found` | acting session 过期或不存在 |
+| `admin_acting_target_invalid` | acting 目标 workspace/用户非法 |
+| `tenant_token_not_found` / `tenant_token_expired` / `tenant_token_revoked` | 租户 token 不存在 / 过期 / 已吊销 |
+| `tenant_token_scope_invalid` / `tenant_token_workspace_invalid` / `tenant_token_project_scope_invalid` | 租户 token scope 或 allowlist 非法 |
+| `tenant_token_management_denied` | 无权管理租户 token |
+| `tenant_actor_not_user` | 租户 token 没有自然人 principal，不支持该操作 |
+
+## 导入导出 / 其他
+
+| 错误码 | 含义 |
+|---|---|
+| `task_import_invalid_schema` | 导入 bundle schema 不支持 |
+| `task_import_invalid_status` | 导入任务状态非法 |
+| `task_bundle_invalid_schema` | bundle schema 不支持 |
+| `task_bundle_series_missing` | bundle 引用的系列缺失 |
+| `task_bundle_series_project_mismatch` | bundle 系列与项目不匹配 |
+| `task_query_date_invalid` | 查询日期参数非法 |
+| `task_type_invalid` | task_type 取值非法 |
+| `assignee_not_found` | assignee 引用无法解析为用户 |
+| `annotation_not_found` / `annotation_conflict` / `annotation_content_required` | 注解不存在 / 冲突 / 内容为空 |
+| `link_not_found` / `link_type_required` / `link_url_required` | 链接不存在 / 缺类型 / 缺 URL |
+| `route_not_found` | HTTP 路由不存在 |
+| `sqlite_busy` / `sqlite_locked` | SQLite 忙或锁冲突，可重试 |
+| `activity_unavailable` | 活动时间线暂不可用 |

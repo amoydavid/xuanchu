@@ -54,6 +54,29 @@ xuanchu link remove <task-ref> --link-id <link-id>
 
 本地 CLI 的 `<target>` / `<task-ref>` 可以是 working-set ID、UUID、UUID 前缀、`task_slug` 或 occurrence_ref。HTTP API 和 MCP tool 接受完整 UUID、已物化 `task_slug` 或 occurrence_ref，不接受 working-set ID。
 
+## 循环任务系列
+
+```bash
+xuanchu series add <title> --recur daily|weekly|monthly|<N>days|<N>weeks|<N>months --first-due <YYYY-MM-DD> [--until <YYYY-MM-DD>] [--project <slug>] [--description <text>] [--priority H|M|L] [--assignee <user>...] [--tag <tag>...] [--uda name=value...]
+xuanchu series list [--status active|ended|stopped|all] [--query <text>] [--assignee <user>] [--sort next|title|modified] [--limit <n>] [--offset <n>]
+xuanchu series info <series-ref>
+xuanchu series modify <series-ref> [--recur <rule>] [--effective-from <YYYY-MM-DD>] [--until <YYYY-MM-DD>] [--title <title>] [--description <text>] [--priority <p>] [--assignee <user>...] [--tag <tag>...] [--uda name=value...] [--clear description|priority|assignees|tags|until|uda.<name>...]
+xuanchu series occurrences <series-ref> [--status pending|waiting|completed|deleted|all] [--due-after <date>] [--due-before <date>] [--limit <n>] [--offset <n>]
+xuanchu series stop <series-ref>
+xuanchu series skip <series-ref> <occurrence-ref>
+```
+
+## 任务附件
+
+```bash
+xuanchu attachment add <task-ref> <file> [--display-name <name>]
+xuanchu attachment list <task-ref>
+xuanchu attachment info <attachment-id>
+xuanchu attachment download <attachment-id> [--output <path>|-]
+xuanchu attachment rename <attachment-id> <display-name>
+xuanchu attachment remove <attachment-id>
+```
+
 ## 查询、报表、helper
 
 ```bash
@@ -103,6 +126,8 @@ xuanchu user list
 xuanchu user add <name> [email:<email>]
 xuanchu user use <name|email|uuid>
 xuanchu user info [name|email|uuid]
+xuanchu user bind <provider:external_id> [--user <name|email|uuid>]
+xuanchu user unbind <provider:external_id> [--user <name|email|uuid>]
 
 xuanchu workspace list [--all]
 xuanchu workspace add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]
@@ -126,12 +151,26 @@ xuanchu project add <slug> name:<name> [description:<text>]
 xuanchu project info <slug|uuid>
 xuanchu project modify <slug|uuid> [name:<name>] [description:<text>]
 xuanchu project archive <slug|uuid>
+xuanchu project transition <slug|uuid> <planning|active|archived|cancelled>
+
+xuanchu project annotate <project-ref> <content...>
+xuanchu project annotations <project-ref>
+xuanchu project denotate <project-ref> <annotation-id>
+xuanchu project timeline <project-ref>
 
 xuanchu project config get <project> <key>
 xuanchu project config set <project> <key> <value>
 xuanchu project config unset <project> <key>
 xuanchu project config list <project>
+
+xuanchu project template list [--q <text>] [--limit <n>] [--offset <n>]
+xuanchu project template instantiate <template-ref> <new-project-slug> name:<name> --snapshot <uuid> --snapshot-hash <hash> --start-date <YYYY-MM-DD> [--input <file>|-]
 ```
+
+说明：
+
+- `project template` 只提供 active 模板的 current Snapshot 列表与实例化；Capture、Preview、归档和版本治理在 Web Console 完成。
+- `instantiate` 的 `--snapshot` / `--snapshot-hash` 必须来自最近一次 `project template list` 返回的 current Snapshot；`--input` 提供 `config_inputs`（JSON 文件或 stdin，最大 1 MiB）。
 
 ## Config Schema
 
@@ -191,10 +230,10 @@ xuanchu notification sink disable <sink-id>
 xuanchu notification sink delete <sink-id>
 
 xuanchu reminder rule list [--project <slug>] [--all]
-xuanchu reminder rule add <name> --schedule daily@HH:MM --filter <task-filter> [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
+xuanchu reminder rule add <name> --schedule daily@HH:MM|cron-expr --filter <task-filter> [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule add <name> --trigger due_before|overdue [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule info <rule-id>
-xuanchu reminder rule modify <rule-id> [--name <name>] [--schedule daily@HH:MM] [--filter <task-filter>] [--trigger due_before|overdue] [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] [--audience assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--recipient <user-ref>] [--project <slug>]
+xuanchu reminder rule modify <rule-id> [--name <name>] [--schedule daily@HH:MM|cron-expr] [--filter <task-filter>] [--trigger due_before|overdue] [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] [--audience assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule enable <rule-id>
 xuanchu reminder rule disable <rule-id>
 xuanchu reminder rule delete <rule-id>

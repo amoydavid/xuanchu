@@ -63,7 +63,10 @@
 | v0.6.2 | 已完成 | Workspace 自定义字段管理、typed Task/Series 填写与 MCP `task_add.udas` |
 | v0.6.3 | 已完成 | 项目模板配置输入：Snapshot v2 支持 fixed/inherit/prompt；模板标识默认来源 slug，同标识保存追加版本 |
 | v0.6.4 | 已完成 | Workspace Agent 自动化：复用 Project Automation，支持 `project.created`、自然语言编排、MCP 回写和跨项目运行记录 |
-| v0.6.5 | 已完成 | Project Automation MCP 管理入口：14 个 `project_automation_*` tools（规则 CRUD、preview/test、投递记录查询/重放、模板变量），双 scope 鉴权（project + hook）对齐 HTTP；Workspace 级自动化仍不暴露 MCP |
+| v0.6.5 | 已完成 | Web 自动化页体验修复与 MCP 查询手册：规则启停 Switch、指令摘要截断、投递状态点呼吸动画、事件选项补齐、`task_query_help` 语法手册 |
+| v0.6.6 | 已完成 | Workspace 配置值编辑入口 `/workspaces/{slug}/config` 与项目自动化 provider 展开逻辑修正（按 effective 完整性判断） |
+| v0.6.7 | 已完成 | 项目活动页 timeline 合并审计日志与 annotation 交互 + Console 细节打磨（ScrollArea、移动端 tabs、SPA 导航、右栏常显） |
+| v0.6.8 | 已完成 | Project Automation MCP 管理入口：14 个 `project_automation_*` tools（规则 CRUD、preview/test、投递记录查询/重放、模板变量），双 scope 鉴权（project + hook）对齐 HTTP；Workspace 级自动化仍不暴露 MCP |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -760,6 +763,71 @@ docs/superpowers/plans/2026-07-26-project-template-config-inputs-implementation.
 ```text
 docs/superpowers/specs/2026-07-26-workspace-agent-automation-design.md
 docs/superpowers/plans/2026-07-26-workspace-agent-automation-implementation.md
+```
+
+## v0.6.5：Web 自动化页体验修复与 MCP 查询手册
+
+**状态：已完成。**
+
+针对 Workspace / Project 自动化控制台的首轮体验修复，并补齐 Agent 侧的查询语法手册：
+
+- 项目自动化页增加启动/暂停入口（Switch + 行按钮），投递列表接入状态点与中文标签，「投递中」状态点带呼吸动画。
+- 工作区自动化指令摘要列改为 `table-fixed` 单行截断并补 hover tooltip；项目页启停操作收敛为 ⋯ 菜单。
+- 自动化规则 Dialog 指令不再预填，集成变量选择器；事件模式变量选择器展示 `project_config` key；补齐项目自动化事件选项。
+- 修复 Dialog 内变量选择器鼠标滚轮无法滚动的问题：改用 callback ref 安装原生 wheel 隔离并补回归测试。
+- 修复 browser session 跳过 token capability 检查、browser session owner 看不到自动化治理入口两个鉴权边界问题。
+- MCP `task_query` 去除冗余别名，新增 `task_query_help` 语法手册 tool，说明 assignee 解析方式与飞书 external_id 用法。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-27-web-automation-toggle-summary-truncation-delivering-pulse-design.md
+docs/superpowers/plans/2026-07-27-web-automation-toggle-summary-truncation-delivering-pulse-implementation.md
+```
+
+## v0.6.6：Workspace 配置值编辑入口与 Provider 展开修正
+
+**状态：已完成。**
+
+补齐 Web Console 缺失的 workspace 级 config 值编辑能力，并修正项目自动化页 provider 配置卡片的误导性展开逻辑：
+
+- 新增 `/workspaces/{slug}/config` 页面与按 slug 寻址的 workspace config API，对标项目级 `ProjectConfigTab` 的体验；`/workspaces` 列表行新增「配置」入口（仅当前 effective 行）。
+- 抽离 effective config 编辑组件供 project / workspace 复用；schema 定义管理继续留在 `/settings`，职责不重叠。
+- 项目自动化页 provider 卡片改为按 effective 完整性判断是否展开（project → workspace → default fallback 链），展开时明确声明写入 project 级并引导用户去编辑 workspace 级配置。
+- 新增项目 provider safe facade hook；admin workspaces 列表点行与 `createResourceRoute` 导航改用 SPA 客户端导航，消除整页刷新。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-29-workspace-config-entry-design.md
+docs/superpowers/plans/2026-07-29-workspace-config-entry-implementation.md
+```
+
+## v0.6.7：项目活动时间线合并审计与 Console 细节打磨
+
+**状态：已完成。**
+
+- 项目活动页 timeline 合并审计日志，并补充 annotation 交互，项目动态与治理痕迹在同一时间线呈现。
+- 系统侧边栏原生滚动条替换为 shadcn ScrollArea；项目详情页 tab 在移动端改为横向滚动；项目详情页右栏改为常显，移除 tabs 行开合按钮。
+- 修复 task-create-dialog 日期测试对真实当前月的依赖（改为翻月后选日）。
+
+## v0.6.8：Project Automation MCP 管理入口
+
+**状态：已完成。**
+
+Project Automation 此前只有 HTTP/OpenAPI 与 Web Console 两个管理入口。本版本把 **Project scope** 的自动化管理全量暴露为 14 个 `project_automation_*` MCP tools，供 headless 治理与 Agent 平台编排使用：
+
+- 规则 CRUD：`project_automation_list` / `get` / `add` / `modify` / `remove` / `enable` / `disable`。
+- 预览与测试：`project_automation_preview`（未保存规则渲染预览，secret 脱敏）、`project_automation_preview_saved`、`project_automation_test`（入队 manual_test 投递由 dispatcher 真实发送）。
+- 投递记录：`project_automation_delivery_list` / `get` / `replay`；模板变量清单 `project_automation_list_template_vars`。
+- 双 scope 鉴权对齐 HTTP：读要求 `project:read + hook:read`，写要求 `project:write + hook:write`；输入形状镜像 HTTP DTO，全部 tool 要求显式 project 引用。
+- **Workspace scope 自动化仍不暴露 MCP CRUD**：Workspace 规则承载 Agent 自身触发器，暴露写能力会形成自指风险；provider-config facade 也不暴露，Agent 继续走 `project_config_*` 管理 `agent.provider.*`。
+- 附带修复：app 层把仓储 `ErrNotFound` 归一为 `automation_rule_not_found` / `automation_delivery_not_found` 业务错误码，不再误报 500 internal。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-08-20-project-automation-mcp-tools-design.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1755,6 +1823,10 @@ v0.5.11 已完成。该里程碑继续保持 task description 的 Markdown 字�
 
 v0.6.0 已完成。该里程碑新增 workspace 内项目模板：用户在 Web Console 通过服务端筛选、稳定分页和独立的跨页已选清单，从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；选择 automation 时服务端自动闭包其显式 config 依赖，项目级 secret 作为加密 `secret_copy` 随 Snapshot 保存并在创建项目时直接复制。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。HTTP 保留 Web 所需的完整治理接口；CLI、Remote 和 MCP 只提供模板列表与从 current Snapshot 创建项目，其中 MCP 只注册 `project_template_list` / `project_template_instantiate` 两个 tool。
 
+v0.6.1~v0.6.4 已依次完成自动化 cron 定时（统一 `internal/schedule` 调度包 + 前端可视化输入器）、Workspace 自定义字段管理与 typed 填写、项目模板配置输入（Snapshot v2 fixed/inherit/prompt）和 Workspace Agent 自动化（`project.created` 事件 + 自然语言编排 + MCP 回写）。
+
+v0.6.5~v0.6.8 已完成自动化控制台体验修复（启停 Switch、摘要截断、投递状态点、变量选择器滚轮隔离）、`task_query_help` 语法手册、Workspace 配置值编辑入口 `/workspaces/{slug}/config`、provider 展开逻辑修正、项目活动时间线合并审计日志，以及 Project Automation 全量 MCP 管理入口（14 个 `project_automation_*` tools，双 scope 鉴权；Workspace scope 自动化有意不暴露 MCP CRUD）。
+
 最新规格：
 
 ```text
@@ -1762,4 +1834,8 @@ docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
 docs/superpowers/specs/2026-07-19-task-description-rich-content-attachments-mentions-design.md
 docs/superpowers/specs/2026-07-20-project-template-snapshot-design.md
 docs/superpowers/specs/2026-07-26-project-template-config-inputs-design.md
+docs/superpowers/specs/2026-07-26-workspace-agent-automation-design.md
+docs/superpowers/specs/2026-07-27-web-automation-toggle-summary-truncation-delivering-pulse-design.md
+docs/superpowers/specs/2026-07-29-workspace-config-entry-design.md
+docs/superpowers/specs/2026-08-20-project-automation-mcp-tools-design.md
 ```

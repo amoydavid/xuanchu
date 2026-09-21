@@ -127,7 +127,12 @@ xuanchu reminder rule add overdue-daily \
   --sink openclaw
 ```
 
-`--schedule daily@HH:MM` 会保存为 `schedule_type=daily_at` 和 `schedule_value=HH:MM`。`--filter` 使用 Xuanchu 查询表达式；`status:pending and end.isnull` 覆盖未完成任务，未开始可额外加 `start.isnull`，进行中可额外加 `start.notnull`。`now+24h`、`now-2h` 这类相对时间里的 duration 直接使用 Go `time.ParseDuration` 语法，例如 `24h`、`90m`、`2h30m`，不支持 `1d`。
+`--schedule` 支持两种写法：
+
+- `daily@HH:MM`：每天固定时刻，保存为 `schedule_type=daily_at`，按天去重。
+- 标准 5 段 cron 表达式（`分 时 日 月 周`），例如 `50 8 * * 1-5` 表示每工作日 8:50，保存为 `schedule_type=cron`，按分钟去重以支持高频规则。cron 在规则时区下求值。
+
+`--filter` 使用 Xuanchu 查询表达式；`status:pending and end.isnull` 覆盖未完成任务，未开始可额外加 `start.isnull`，进行中可额外加 `start.notnull`。`now+24h`、`now-2h` 这类相对时间里的 duration 直接使用 Go `time.ParseDuration` 语法，例如 `24h`、`90m`、`2h30m`，不支持 `1d`。
 
 旧的 `--trigger due_before --offset 4h` 和 `--trigger overdue` 仍作为兼容路径保留。需要表达更丰富条件时，优先使用 `--schedule` 和 `--filter`。
 

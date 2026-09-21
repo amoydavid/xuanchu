@@ -53,7 +53,7 @@ description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序
 - 内置报表名固定：`list`、`next`、`all`、`completed`、`deleted`、`waiting`、`active`、`ready`、`overdue`、`blocked`、`blocking`。写错名字会失败。
 - `urgency_explain` 的 `id` 用 UUID、已物化 `task_slug` 或 occurrence_ref，不用数字 ID。
 - `audit_list` 的 `action` 值用点号分隔（如 `task.delete`），完整清单见 references/audit-actions.md。
-- report 是只读快照，不发通知；要广播到群需配合 xuanchu-wire-up-automation 的 notification/reminder。
+- report 是只读快照，不发通知；要广播到群需配合 notification/reminder 工具（见 `docs/manual/mcp.md`「通知与提醒」与 `docs/manual/notifications.md`）。
 
 ## 参考文档
 

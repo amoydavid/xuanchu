@@ -380,6 +380,14 @@ xuanchu --workspace dajee token create mcp-agent \
 | `occurrence_mode` | string | 否 | `auto`/`materialized`/`expand` |
 | `task_type` | string | 否 | `all`/`normal`/`occurrence` |
 
+#### `task_query_help`
+
+返回 `task_query` / `report_run` 的 `query` 参数所用 filter 表达式的完整语法手册（Markdown）。只读，无参数，无副作用。
+
+`data.syntax` 是手册正文，覆盖：高频场景速查、逻辑组合（`and`/`or`/`not` 必须小写、隐式 AND、括号）、谓词形态（`+tag`、`-tag`、`/text/`、`field:value`、`field.before/after/isnull/notnull`）、字段表（含 `assignee` 四种引用形式：UUID / 用户名 / email / `provider:external_id`）、日期值语法（`today`/`eow`/`now+24h` 等）、UDA 规则、循环任务字段（`task_type`/`series_id`/`recurrence_at`）和常见陷阱清单。
+
+Agent 在构造 `query` 前如不确定语法，应先调用本 tool 获取权威手册，不要凭记忆拼表达式。
+
 #### `task_get`
 
 读取单个任务。只读。

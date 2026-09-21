@@ -24,13 +24,13 @@ description: 建立和归档项目、从已有模板创建项目、给项目分�
 
 ### 场景 A：新项目开工并开群
 
-新项目开工后通常要在对应 IM 群里跟进通知，分三步：建项目 → 拉人 → 接群通知（接群见 xuanchu-wire-up-automation skill）。
+新项目开工后通常要在对应 IM 群里跟进通知，分三步：建项目 → 拉人 → 接群通知（接群流程见 `docs/manual/notifications.md`，MCP 工具见 `docs/manual/mcp.md`「通知与提醒」）。
 
 ```
 1. project_add({"workspace":"dajee","slug":"apiplat","name":"API 平台"})
 2. member_add({"workspace":"dajee","user":"alice","role":"member"})   // 相关人逐个加
 3. user_bind({"user":"alice","provider":"feishu_user_id","external_id":"ou_xxx"})  // 绑飞书
-4. // 群通知接线见 xuanchu-wire-up-automation：给 project 配 feishu webhook config + 建 sink/rule
+4. // 群通知接线：给 project 配 feishu webhook config + 建 sink/rule（见 docs/manual/notifications.md）
 ```
 
 ### 场景 B：巡查项目健康

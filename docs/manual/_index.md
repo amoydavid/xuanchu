@@ -71,12 +71,17 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 
 - 本地 CLI 与 SQLite / PostgreSQL 存储
 - Taskwarrior 风格任务字段、查询、报表、urgency 和 helper 命令
-- 配置、context、UDA、`.taskrc` 只读导入
+- 循环任务系列（TaskSeries）：规则化 recurrence、occurrence 物化、`task_slug` / `occurrence_ref` 引用
+- 配置、context、UDA（workspace 级 `UDADefinition` + typed 值）、`.taskrc` 只读导入
 - 多 user、多 workspace、member role、audit
-- project 实体化与 project 级配置
-- HTTP/JSON API、远程 CLI、PAT / Agent token
+- project 实体化、project 级配置、项目生命周期（planning / active / archived / cancelled）
+- 项目模板：不可变 Snapshot、config_inputs（fixed / inherit / prompt）、版本化追加与实例化
+- 任务附件：workspace 级通用附件、description 引用、本地 FS 或私有 S3/MinIO 存储
+- HTTP/JSON API、远程 CLI、PAT / Agent token、tenant access token
+- Workspace OIDC 单点登录（SSO）、通讯录同步、browser session + CSRF
 - 嵌入式 Web Admin Console（`/`）与 Server Admin Bootstrap（`/admin/login`）
-- MCP stdio 与 HTTP transport
+- MCP stdio 与 HTTP transport（含 `task_query_help` 语法手册、project automation 管理 tools）
 - 服务端 Webhook Hook、投递重试、dead-letter、manual replay
 - 定时通知、HTTP request template sink、动态 endpoint 与 delivery replay
+- Workspace / Project 自动化：schedule（daily_at / cron）与 event 触发、Agent Provider 投递
 - PostgreSQL 后端支持（`--db-url`）

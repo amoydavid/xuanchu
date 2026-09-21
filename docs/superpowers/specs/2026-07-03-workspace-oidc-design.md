@@ -1,7 +1,7 @@
 # Workspace OIDC 接入设计（yaoguang IdP）
 
 - 日期：2026-07-03
-- 状态：草案
+- 状态：已完成
 - 里程碑：v0.5.0
 - 关联文档：[ROADMAP.md](../../../ROADMAP.md)、[README.md](../../../README.md)、`docs/superpowers/specs/2026-06-19-xuanchu-authz-decision-design.md`
 
