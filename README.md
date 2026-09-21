@@ -1269,3 +1269,10 @@ Audit log 同时记录 `actor_user_id`（目标用户）和 `delegator_token_id`
 HTTP MCP 的每个 tool call 都支持 `X-Xuanchu-As` header 透传。stdio MCP 不支持 impersonation。
 
 部署、TLS、备份恢复请参考 [`docs/deployment.md`](./docs/deployment.md) 和 [`docs/backup-restore.md`](./docs/backup-restore.md)。
+
+## 许可证
+
+本项目基于 [Apache License 2.0](./LICENSE) 开源发布。
+
+Copyright 2026 David Liu (liuw.net)
+

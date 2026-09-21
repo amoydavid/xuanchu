@@ -1,0 +1,5 @@
+xuanchu (璇础)
+Copyright 2026 David Liu (liuw.net)
+
+本产品使用的第三方依赖（清单见 go.mod 与 web/package.json）保留其
+各自的版权与许可声明，均为 Apache-2.0、MIT、BSD、ISC 等宽松许可。
