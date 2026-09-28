@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -102,6 +103,99 @@ func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
 	}
 	if member.Role != "owner" {
 		t.Fatalf("role = %q, want owner", member.Role)
+	}
+}
+
+func TestSQLiteConcurrentWriterWaitsForLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "busy.db")
+	store1, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store1.Close()
+	if err := store1.DB().Exec("CREATE TABLE IF NOT EXISTS busy_probe (v INTEGER)").Error; err != nil {
+		t.Fatalf("create probe table error = %v", err)
+	}
+	store2, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store2.Close()
+
+	// 连接 A 持有写锁 100ms；连接 B 的写入必须等待而不是立即 SQLITE_BUSY。
+	// server 的后台 dispatcher 与请求处理并发写库，busy_timeout 缺失时
+	// 锁冲突直接外溢为 HTTP 500 api_internal（CI 负载下偶发）。
+	tx := store1.DB().Begin()
+	if tx.Error != nil {
+		t.Fatalf("Begin() error = %v", tx.Error)
+	}
+	if err := tx.Exec("INSERT INTO busy_probe (v) VALUES (1)").Error; err != nil {
+		t.Fatalf("hold write lock error = %v", err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_ = tx.Commit()
+	}()
+
+	start := time.Now()
+	if err := store2.DB().Exec("INSERT INTO busy_probe (v) VALUES (2)").Error; err != nil {
+		t.Fatalf("concurrent insert error = %v, want it to wait for the write lock", err)
+	}
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Fatalf("insert returned after %v, want >= 100ms waiting for the write lock", elapsed)
+	}
+}
+
+// TestSQLiteTransactionRetriesLockUpgradeContention 锁定写事务与后台写
+// 撞车的场景：连接 A（绕过 Transaction，模拟 dispatcher 的写事务）持
+// RESERVED 锁期间，连接 B 的 deferred 事务「先读后写」升级锁会被 SQLite
+// 立即拒绝（不调用 busy handler）。Store.Transaction 必须重试整个事务，
+// 等 A 提交后成功，而不是把 "database is locked" 外溢给调用方。
+func TestSQLiteTransactionRetriesLockUpgradeContention(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	store1, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store1.Close()
+	if err := store1.DB().Exec("CREATE TABLE upgrade_probe (v INTEGER)").Error; err != nil {
+		t.Fatalf("create probe table error = %v", err)
+	}
+	store2, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store2.Close()
+
+	// A：deferred 事务写一行后持 RESERVED 锁 100ms。
+	tx1 := store1.DB().Begin()
+	if err := tx1.Exec("INSERT INTO upgrade_probe (v) VALUES (1)").Error; err != nil {
+		t.Fatalf("writer A insert error = %v", err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_ = tx1.Commit()
+	}()
+
+	// B：走 Store.Transaction（服务端写路径的入口），先读后写。
+	start := time.Now()
+	if err := store2.Transaction(func(tx *Store) error {
+		if err := tx.DB().Raw("SELECT count(*) FROM upgrade_probe").Scan(new(int)).Error; err != nil {
+			return err
+		}
+		return tx.DB().Exec("INSERT INTO upgrade_probe (v) VALUES (2)").Error
+	}); err != nil {
+		t.Fatalf("Transaction with lock contention failed after %v: %v (want retry until writer A commits)", time.Since(start), err)
+	}
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Fatalf("Transaction returned after %v, want >= 100ms waiting for the competing writer", elapsed)
+	}
+	var count int
+	if err := store1.DB().Raw("SELECT count(*) FROM upgrade_probe").Scan(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("rows = %d, want 2", count)
 	}
 }
 

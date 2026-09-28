@@ -41,7 +41,7 @@ func (s *Server) handleWorkspaceSsoConfigGet(w http.ResponseWriter, r *http.Requ
 	ref := chi.URLParam(r, "workspace")
 	_, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionSsoConfigRead, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
@@ -58,7 +58,7 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 	ref := chi.URLParam(r, "workspace")
 	_, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionSsoConfigWrite, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var in struct {
@@ -123,7 +123,7 @@ func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) 
 	ref := chi.URLParam(r, "workspace")
 	_, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionSsoConfigWrite, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	workspaceID := authn.EffectiveWorkspace.ID
@@ -173,7 +173,7 @@ func (s *Server) handleWorkspaceSsoSyncJob(w http.ResponseWriter, r *http.Reques
 	ref := chi.URLParam(r, "workspace")
 	_, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionSsoConfigRead, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	jobID := chi.URLParam(r, "job_id")

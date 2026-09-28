@@ -77,12 +77,12 @@ func (s *Server) handleHookList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListHooks(projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]hookResponse, 0, len(rows))
@@ -105,7 +105,7 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 	projectRef := req.ProjectRef
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	created, err := scoped.AddHook(app.HookAddInput{
@@ -118,7 +118,7 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 		MaxAttempts:    req.MaxAttempts,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, hookResponseFromView(created), nil)
@@ -127,13 +127,13 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	hookID := chi.URLParam(r, "hookID")
 	hook, err := scoped.HookInfo(hookID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookResponseFromView(hook), nil)
@@ -142,7 +142,7 @@ func (s *Server) handleHookInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var req hookModifyRequest
@@ -163,7 +163,7 @@ func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
 		MaxAttempts:    req.MaxAttempts,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookResponseFromView(updated), nil)
@@ -172,12 +172,12 @@ func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	hookID := chi.URLParam(r, "hookID")
 	if err := scoped.DeleteHook(hookID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -186,13 +186,13 @@ func (s *Server) handleHookDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookEnable(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	hookID := chi.URLParam(r, "hookID")
 	updated, err := scoped.EnableHook(hookID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookResponseFromView(updated), nil)
@@ -201,13 +201,13 @@ func (s *Server) handleHookEnable(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookDisable(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	hookID := chi.URLParam(r, "hookID")
 	updated, err := scoped.DisableHook(hookID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookResponseFromView(updated), nil)
@@ -216,7 +216,7 @@ func (s *Server) handleHookDisable(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	hookID := chi.URLParam(r, "hookID")
@@ -232,7 +232,7 @@ func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) 
 	}
 	rows, err := scoped.ListHookDeliveries(hookID, status, limit, 0)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]hookDeliveryResponse, 0, len(rows))
@@ -245,13 +245,13 @@ func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleHookDeliveryInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	deliveryID := chi.URLParam(r, "deliveryID")
 	delivery, err := scoped.HookDeliveryInfo(deliveryID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookDeliveryResponseFromView(delivery), nil)
@@ -260,13 +260,13 @@ func (s *Server) handleHookDeliveryInfo(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleHookDeliveryReplay(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	deliveryID := chi.URLParam(r, "deliveryID")
 	replayed, err := scoped.ReplayHookDelivery(deliveryID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, hookDeliveryResponseFromView(replayed), nil)

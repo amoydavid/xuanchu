@@ -66,7 +66,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if authn.Authn.TenantActor {
-		writeAppError(w, app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"})
+		s.writeAppError(w, app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"})
 		return
 	}
 	actor := task.UserInfo{
@@ -81,12 +81,12 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		DisableScopeBootstrap: true,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	userView, err := svc.UserInfo(authn.Authn.User.ID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	actor = task.UserInfo{
@@ -168,7 +168,7 @@ func (s *Server) handleCredentialsCurrent(w http.ResponseWriter, r *http.Request
 		DisableScopeBootstrap: true,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	// Web Console 登录入口：SSO browser session 创建的 PAT/Agent token 标记了 WebLoginDisabled，
@@ -180,7 +180,7 @@ func (s *Server) handleCredentialsCurrent(w http.ResponseWriter, r *http.Request
 	}
 	userView, err := svc.UserInfo(authn.Authn.User.ID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	actor := task.UserInfo{

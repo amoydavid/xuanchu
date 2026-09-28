@@ -233,7 +233,7 @@ func (s *Server) handleProjectTemplateTaskCandidates(w http.ResponseWriter, r *h
 		DueBefore: q.Get("due_before"), Query: q.Get("query"), Sort: q.Get("sort"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	items := make([]projectTemplateTaskCandidateResponse, 0, len(page.Items))
@@ -263,7 +263,7 @@ func (s *Server) handleProjectTemplateSeriesCandidates(w http.ResponseWriter, r 
 		Sort: q.Get("sort"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	items := make([]projectTemplateSeriesCandidateResponse, 0, len(page.Items))
@@ -291,7 +291,7 @@ func (s *Server) handleProjectTemplateConfigCandidates(w http.ResponseWriter, r 
 		SourceProjectRef: projectRef, Refs: queryStringList(r.URL.Query()["ref"]), Q: r.URL.Query().Get("q"), Mode: r.URL.Query().Get("mode"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, page, nil)
@@ -312,7 +312,7 @@ func (s *Server) handleProjectTemplateAutomationCandidates(w http.ResponseWriter
 		SourceProjectRef: projectRef, Refs: queryStringList(q["ref"]), Q: q.Get("q"), Status: q.Get("status"), TriggerType: q.Get("trigger_type"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	items := make([]projectTemplateAutomationCandidateResponse, 0, len(page.Items))
@@ -332,7 +332,7 @@ func (s *Server) handleProjectTemplateResolveSelection(w http.ResponseWriter, r 
 		return
 	}
 	if err := req.validate(); err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	projectRef := chi.URLParam(r, "projectRef")
@@ -349,7 +349,7 @@ func (s *Server) handleProjectTemplateResolveSelection(w http.ResponseWriter, r 
 	}
 	view, err := scoped.ResolveProjectTemplateCandidateSelection(req.appInput(projectRef))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -370,7 +370,7 @@ func (s *Server) handleProjectTemplateCapturePreview(w http.ResponseWriter, r *h
 	}
 	view, err := scoped.PreviewProjectTemplateCapture(input)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -391,7 +391,7 @@ func (s *Server) handleProjectTemplateCreate(w http.ResponseWriter, r *http.Requ
 	}
 	view, err := scoped.CreateProjectTemplate(app.CreateTemplateInput{Key: req.Key, Name: req.Name, Description: req.Description, Capture: input})
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, projectTemplateDetailToResponse(view), nil)
@@ -408,7 +408,7 @@ func (s *Server) handleProjectTemplateList(w http.ResponseWriter, r *http.Reques
 	}
 	page, err := scoped.ListProjectTemplates(r.URL.Query().Get("status"), r.URL.Query().Get("q"), limit, offset)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectTemplatePageToResponse(page), nil)
@@ -425,7 +425,7 @@ func (s *Server) handleProjectTemplateInfo(w http.ResponseWriter, r *http.Reques
 	}
 	view, err := scoped.ProjectTemplateInfo(chi.URLParam(r, "templateRef"), snapshotID)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	if !s.requireTemplateDetailCapabilities(w, r, view) {
@@ -445,7 +445,7 @@ func (s *Server) handleProjectTemplateModify(w http.ResponseWriter, r *http.Requ
 	}
 	view, err := scoped.ModifyProjectTemplate(chi.URLParam(r, "templateRef"), app.ModifyTemplateInput{Name: req.Name, Description: req.Description})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectTemplateDetailToResponse(view), nil)
@@ -461,7 +461,7 @@ func (s *Server) handleProjectTemplateArchive(w http.ResponseWriter, r *http.Req
 	}
 	view, err := scoped.ArchiveProjectTemplate(chi.URLParam(r, "templateRef"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectTemplateDetailToResponse(view), nil)
@@ -477,7 +477,7 @@ func (s *Server) handleProjectTemplateReactivate(w http.ResponseWriter, r *http.
 	}
 	view, err := scoped.ReactivateProjectTemplate(chi.URLParam(r, "templateRef"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectTemplateDetailToResponse(view), nil)
@@ -494,7 +494,7 @@ func (s *Server) handleProjectTemplateSnapshotCapturePreview(w http.ResponseWrit
 		return
 	}
 	if err := requireActiveProjectTemplate(scoped, chi.URLParam(r, "templateRef")); err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	if !s.requireCaptureCapabilities(w, r, input) {
@@ -502,7 +502,7 @@ func (s *Server) handleProjectTemplateSnapshotCapturePreview(w http.ResponseWrit
 	}
 	view, err := scoped.PreviewProjectTemplateCapture(input)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -523,7 +523,7 @@ func (s *Server) handleProjectTemplateSnapshotCreate(w http.ResponseWriter, r *h
 	}
 	view, err := scoped.CreateProjectTemplateSnapshot(chi.URLParam(r, "templateRef"), input)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, projectTemplateDetailToResponse(view), nil)
@@ -540,7 +540,7 @@ func (s *Server) handleProjectTemplateInstantiatePreview(w http.ResponseWriter, 
 	}
 	view, err := scoped.PreviewProjectTemplateInstantiation(chi.URLParam(r, "templateRef"), req)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	if !s.requireInstantiateCapabilities(w, r, view.Counts) {
@@ -560,7 +560,7 @@ func (s *Server) handleProjectTemplateInstantiate(w http.ResponseWriter, r *http
 	}
 	preview, err := scoped.PreviewProjectTemplateInstantiation(chi.URLParam(r, "templateRef"), req.InstantiateInput)
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	if !s.requireInstantiateCapabilities(w, r, preview.Counts) {
@@ -573,7 +573,7 @@ func (s *Server) handleProjectTemplateInstantiate(w http.ResponseWriter, r *http
 		view, err = scoped.InstantiateProjectTemplate(chi.URLParam(r, "templateRef"), req.InstantiateInput)
 	}
 	if err != nil {
-		writeProjectTemplateAppError(w, err)
+		writeProjectTemplateAppError(s, w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, projectTemplateInstantiateResponse{Project: projectResponseFromView(view.Project), Counts: view.Counts}, nil)
@@ -709,7 +709,7 @@ func requireProjectTemplateCaptureSelection(w http.ResponseWriter, selection pro
 	return true
 }
 
-func writeProjectTemplateAppError(w http.ResponseWriter, err error) {
+func writeProjectTemplateAppError(s *Server, w http.ResponseWriter, err error) {
 	var validationErr app.ProjectTemplateValidationError
 	if errors.As(err, &validationErr) {
 		code := validationErr.PrimaryCode()
@@ -729,7 +729,7 @@ func writeProjectTemplateAppError(w http.ResponseWriter, err error) {
 		writeError(w, status, code, err.Error(), nil)
 		return
 	}
-	writeAppError(w, err)
+	s.writeAppError(w, err)
 }
 
 func (s *Server) projectTemplateScopedService(w http.ResponseWriter, r *http.Request, capability string, permission app.Permission, projectRef string) (*app.Service, bool) {
@@ -740,7 +740,7 @@ func (s *Server) projectTemplateScopedService(w http.ResponseWriter, r *http.Req
 	}
 	scoped, _, err := s.scopedServiceWithWorkspace(r, capability, permission, workspace, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return nil, false
 	}
 	return scoped, true

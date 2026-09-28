@@ -93,7 +93,7 @@ type projectResponse struct {
 func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	statusFilter := r.URL.Query().Get("status")
@@ -102,7 +102,7 @@ func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := scoped.ListProjectsByStatus(statusFilter)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]projectResponse, 0, len(rows))
@@ -115,7 +115,7 @@ func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var req addProjectRequest
@@ -129,7 +129,7 @@ func (s *Server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 		Description: strings.TrimSpace(req.Description),
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, projectResponseFromView(created), nil)
@@ -138,12 +138,12 @@ func (s *Server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProjectInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.ProjectInfo(chi.URLParam(r, "projectRef"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
@@ -158,11 +158,11 @@ func (s *Server) handleProjectModify(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ModifyProject(ref, app.ModifyProjectInput{Slug: req.Slug, Name: req.Name, Description: req.Description}); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.ProjectInfo(ref)
@@ -170,7 +170,7 @@ func (s *Server) handleProjectModify(w http.ResponseWriter, r *http.Request) {
 		project, err = scoped.ProjectInfo(*req.Slug)
 	}
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
@@ -180,12 +180,12 @@ func (s *Server) handleProjectArchive(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.ArchiveProject(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
@@ -202,12 +202,12 @@ func (s *Server) handleProjectTransition(w http.ResponseWriter, r *http.Request)
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.TransitionProject(ref, strings.TrimSpace(req.Status))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
@@ -217,12 +217,12 @@ func (s *Server) handleProjectConfigList(w http.ResponseWriter, r *http.Request)
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectConfigRead, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	values, err := scoped.ProjectConfigList(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, values, nil)
@@ -232,12 +232,12 @@ func (s *Server) handleProjectConfigGet(w http.ResponseWriter, r *http.Request) 
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectConfigRead, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	value, ok, err := scoped.ProjectConfigGet(ref, chi.URLParam(r, "key"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if !ok {
@@ -256,11 +256,11 @@ func (s *Server) handleProjectConfigSet(w http.ResponseWriter, r *http.Request) 
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectConfigWrite, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ProjectConfigSet(ref, chi.URLParam(r, "key"), req.Value); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]string{"value": req.Value}, nil)
@@ -270,11 +270,11 @@ func (s *Server) handleProjectConfigUnset(w http.ResponseWriter, r *http.Request
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectConfigWrite, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ProjectConfigUnset(ref, chi.URLParam(r, "key")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -344,7 +344,7 @@ func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Reque
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var req addProjectAnnotationRequest
@@ -354,7 +354,7 @@ func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Reque
 	}
 	annotation, err := scoped.ProjectAnnotate(ref, req.Content)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, projectAnnotationToJSON(annotation), nil)
@@ -364,12 +364,12 @@ func (s *Server) handleProjectAnnotationList(w http.ResponseWriter, r *http.Requ
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	annotations, err := scoped.ProjectAnnotations(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectAnnotationsToJSON(annotations), nil)
@@ -380,11 +380,11 @@ func (s *Server) handleProjectAnnotationDelete(w http.ResponseWriter, r *http.Re
 	annotationID := chi.URLParam(r, "annotationID")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ProjectDenotate(ref, annotationID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -394,7 +394,7 @@ func (s *Server) handleProjectTimeline(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	opts := app.TimelineOptions{Limit: 50}
@@ -416,7 +416,7 @@ func (s *Server) handleProjectTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := scoped.ProjectTimeline(ref, opts)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, timelineEntriesToJSON(entries), nil)
@@ -426,12 +426,12 @@ func (s *Server) handleProjectTaskSummary(w http.ResponseWriter, r *http.Request
 	ref := chi.URLParam(r, "projectRef")
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	summary, err := scoped.ProjectTaskSummary(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectTaskSummaryToJSON(summary), nil)

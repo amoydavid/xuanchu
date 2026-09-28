@@ -87,7 +87,7 @@ func (s *Server) handleAdminWorkspaceCreate(w http.ResponseWriter, r *http.Reque
 		DisableScopeBootstrap: true,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	result, err := svc.AdminCreateWorkspace(app.AdminCreateWorkspaceInput{
@@ -102,7 +102,7 @@ func (s *Server) handleAdminWorkspaceCreate(w http.ResponseWriter, r *http.Reque
 		},
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, map[string]any{
@@ -125,7 +125,7 @@ func (s *Server) handleAdminWorkspaceAdminCreate(w http.ResponseWriter, r *http.
 		DisableScopeBootstrap: true,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	result, err := svc.AdminCreateWorkspaceAdmin(app.AdminCreateWorkspaceAdminInput{
@@ -136,7 +136,7 @@ func (s *Server) handleAdminWorkspaceAdminCreate(w http.ResponseWriter, r *http.
 		Role:           app.Role(req.Role),
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, map[string]any{
@@ -167,7 +167,7 @@ func (s *Server) handleAdminAgentTokenCreate(w http.ResponseWriter, r *http.Requ
 		DisableScopeBootstrap: true,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	projectRefs := append([]string(nil), req.ProjectRefs...)
@@ -182,7 +182,7 @@ func (s *Server) handleAdminAgentTokenCreate(w http.ResponseWriter, r *http.Requ
 		ExpiresIn:      ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, createdTokenResponse{
@@ -300,12 +300,12 @@ func newAdminWorkspaceService(s *Server, r *http.Request) (*app.Service, error) 
 func (s *Server) handleAdminWorkspaceList(w http.ResponseWriter, r *http.Request) {
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := svc.AdminListWorkspaces(r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]adminWorkspaceSummaryResponse, 0, len(rows))
@@ -318,12 +318,12 @@ func (s *Server) handleAdminWorkspaceList(w http.ResponseWriter, r *http.Request
 func (s *Server) handleAdminWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	detail, err := svc.AdminWorkspaceInfo(chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	members := make([]adminWorkspaceMemberResponse, 0, len(detail.Members))
@@ -359,7 +359,7 @@ func (s *Server) handleAdminWorkspaceUserModify(w http.ResponseWriter, r *http.R
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := svc.AdminModifyWorkspaceUser(app.AdminModifyWorkspaceUserInput{
@@ -369,7 +369,7 @@ func (s *Server) handleAdminWorkspaceUserModify(w http.ResponseWriter, r *http.R
 		DisplayName:    req.DisplayName,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, adminUserResponseFromView(user), nil)
@@ -388,7 +388,7 @@ func (s *Server) handleAdminActingSessionCreate(w http.ResponseWriter, r *http.R
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	created, err := svc.AdminCreateActingSession(app.AdminCreateActingSessionInput{
@@ -399,7 +399,7 @@ func (s *Server) handleAdminActingSessionCreate(w http.ResponseWriter, r *http.R
 		ExpiresIn:      ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, adminActingSessionResponse{
@@ -425,7 +425,7 @@ func (s *Server) handleAdminTenantAccessSessionCreate(w http.ResponseWriter, r *
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	projectRefs := append([]string(nil), req.Projects...)
@@ -440,7 +440,7 @@ func (s *Server) handleAdminTenantAccessSessionCreate(w http.ResponseWriter, r *
 		ExpiresIn:      ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, adminTenantAccessSessionResponse{
@@ -454,11 +454,11 @@ func (s *Server) handleAdminActingSessionRevoke(w http.ResponseWriter, r *http.R
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminWorkspaceService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := svc.AdminRevokeActingSession(chi.URLParam(r, "sessionID"), admin.TokenName); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -580,12 +580,12 @@ func newAdminTokenService(s *Server, r *http.Request) (*app.Service, error) {
 func (s *Server) handleAdminTokenList(w http.ResponseWriter, r *http.Request) {
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := svc.AdminListTokens(r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]tokenResponse, 0, len(rows))
@@ -604,7 +604,7 @@ func (s *Server) handleAdminTokenModify(w http.ResponseWriter, r *http.Request) 
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
@@ -616,7 +616,7 @@ func (s *Server) handleAdminTokenModify(w http.ResponseWriter, r *http.Request) 
 		AdminTokenName: admin.TokenName,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tokenResponseFromView(*view), nil)
@@ -626,11 +626,11 @@ func (s *Server) handleAdminTokenRevoke(w http.ResponseWriter, r *http.Request) 
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := svc.AdminRevokeToken(chi.URLParam(r, "tokenRef"), admin.TokenName); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -639,7 +639,7 @@ func (s *Server) handleAdminTokenRevoke(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleAdminTenantTokenList(w http.ResponseWriter, r *http.Request) {
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := svc.AdminListTenantAccessTokens(
@@ -647,7 +647,7 @@ func (s *Server) handleAdminTenantTokenList(w http.ResponseWriter, r *http.Reque
 		r.URL.Query().Get("include_admin_switch") == "true",
 	)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]tenantTokenResponse, 0, len(rows))
@@ -666,7 +666,7 @@ func (s *Server) handleAdminTenantTokenModify(w http.ResponseWriter, r *http.Req
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
@@ -679,7 +679,7 @@ func (s *Server) handleAdminTenantTokenModify(w http.ResponseWriter, r *http.Req
 		AdminTokenName: admin.TokenName,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tenantTokenResponseFromView(*view), nil)
@@ -689,11 +689,11 @@ func (s *Server) handleAdminTenantTokenRevoke(w http.ResponseWriter, r *http.Req
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminTokenService(s, r)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := svc.AdminRevokeTenantAccessToken(chi.URLParam(r, "tokenRef"), admin.TokenName); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)

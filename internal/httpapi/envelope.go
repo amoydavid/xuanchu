@@ -3,7 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"runtime/debug"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
@@ -43,7 +45,10 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func writeAppError(w http.ResponseWriter, err error) {
+// writeAppError 把 app 层错误映射为 HTTP 错误响应。落到 catch-all 分支的
+// 未知错误意味着服务端 bug（或环境故障），必须留档：对外仍只返回通用
+// api_internal，对内记录完整 error 与调用栈，否则线上/CI 只见 500 无从排查。
+func (s *Server) writeAppError(w http.ResponseWriter, err error) {
 	var runtimeErr app.RuntimeError
 	if errors.As(err, &runtimeErr) {
 		writeError(w, statusForAppErrorCode(runtimeErr.Code), runtimeErr.Code, runtimeErr.Message, nil)
@@ -56,5 +61,16 @@ func writeAppError(w http.ResponseWriter, err error) {
 		writeError(w, statusForAppErrorCode(permissionErr.Code), permissionErr.Code, permissionErr.Message, nil)
 		return
 	}
+	s.logUnhandledAppError(err)
 	writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
+}
+
+func (s *Server) logUnhandledAppError(err error) {
+	msg := fmt.Sprintf("unhandled app error: %v", err)
+	stack := string(debug.Stack())
+	if s.logger != nil {
+		s.logger.Error(msg, "stack", stack)
+	} else if s.stderr != nil {
+		fmt.Fprintf(s.stderr, "%s\n%s", msg, stack)
+	}
 }

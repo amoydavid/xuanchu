@@ -205,12 +205,12 @@ func (s *Server) handleBearerAuth(w http.ResponseWriter, r *http.Request, raw st
 	}
 	authn, err := svc.AuthenticateBearerToken(raw)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	visible, effective, err := s.visibleAndEffectiveWorkspaces(authn)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {

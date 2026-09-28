@@ -20,21 +20,21 @@ func (s *Server) handleMeActiveWorkspace(w http.ResponseWriter, r *http.Request)
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.UseWorkspace(req.Workspace); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	scoped2, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, req.Workspace, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped2.WorkspaceInfo(req.Workspace)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)

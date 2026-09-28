@@ -41,12 +41,12 @@ type homeResponse struct {
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "", "", "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.Home()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, homeResponseFromView(view), nil)

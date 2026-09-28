@@ -236,7 +236,7 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	// report 路径仍走 RunTaskViewReport（spec §17.3）。
@@ -260,7 +260,7 @@ func (s *Server) handleTaskListReport(w http.ResponseWriter, r *http.Request, sc
 	if len(filters) > 0 {
 		expr, err := query.ParseFilterExpr(filters)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		queryExpr = query.And(queryExpr, expr)
@@ -274,7 +274,7 @@ func (s *Server) handleTaskListReport(w http.ResponseWriter, r *http.Request, sc
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
@@ -308,7 +308,7 @@ func (s *Server) handleTaskListReport(w http.ResponseWriter, r *http.Request, sc
 	}
 	page, err := scoped.RunTaskViewReport(reportInput)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
@@ -342,18 +342,18 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := ensureProjectRefsMatch(scoped, req.Project, req.ProjectID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project := strings.TrimSpace(req.Project)
 	if project == "" && strings.TrimSpace(req.ProjectID) != "" {
 		view, err := scoped.ProjectInfo(req.ProjectID)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		project = view.Slug
@@ -388,7 +388,7 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		AttachmentDraftTarget: strings.TrimSpace(req.AttachmentDraftTarget),
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, occurrenceViewToJSON(created), nil)
@@ -413,29 +413,29 @@ func (s *Server) ensureTaskAddProjectRefs(w http.ResponseWriter, r *http.Request
 		WorkspaceRef: workspaceRef,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return false
 	}
 	if err := ensureProjectRefsMatch(preflightSvc, req.Project, req.ProjectID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return false
 	}
 	return true
 }
 
 func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	resolved, err := scoped.ResolveTaskReferenceForRead(taskRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskResolutionToJSON(scoped, resolved), nil)
@@ -474,7 +474,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 			"recur/clear_recur 字段已移除，循环任务请使用 /api/v1/task-series", nil)
 		return
 	}
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -484,12 +484,12 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if req.Project != nil && req.ProjectID != nil {
 		if err := ensureProjectRefsMatch(scoped, *req.Project, *req.ProjectID); err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 	}
@@ -497,7 +497,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	if project == nil && req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
 		view, err := scoped.ProjectInfo(*req.ProjectID)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		project = &view.Slug
@@ -533,10 +533,10 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		UDAs:             req.UDAs,
 		ClearUDAs:        req.ClearUDAs,
 	}); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskRef)
+	writeTaskAfterMutation(s, w, scoped, taskRef)
 }
 
 func decodeStrictJSON(r *http.Request, target any) error {
@@ -619,13 +619,13 @@ func (s *Server) handleTaskAnnotationUpdate(w http.ResponseWriter, r *http.Reque
 // handleTaskAnnotationList 处理 GET /api/v1/tasks/{taskRef}/annotations，
 // 按 entry 倒序分页返回注解。
 func (s *Server) handleTaskAnnotationList(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	offset := 0
@@ -646,7 +646,7 @@ func (s *Server) handleTaskAnnotationList(w http.ResponseWriter, r *http.Request
 	}
 	annotations, total, err := scoped.ListAnnotations(taskRef, offset, limit)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{
@@ -658,18 +658,18 @@ func (s *Server) handleTaskAnnotationList(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	result, err := scoped.ExplainUrgency(taskRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, result, nil)
@@ -681,36 +681,36 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	link, err := scoped.TaskAddLink(taskRef, req.Type, req.URL, req.Title)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, taskLinkToJSON(link), nil)
 }
 
 func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.GetTaskView(taskRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskLinksToJSON(view.Links), nil)
@@ -719,26 +719,26 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 // handleTaskChildren 列出任务的直接子任务（手动 sub-task 与 recurring child）。
 // include_closed=true 时返回 completed/deleted，默认只返回 open（spec §8.3）。
 func (s *Server) handleTaskChildren(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	includeClosed := isTruthyQueryValue(r.URL.Query().Get("include_closed"))
 	children, err := scoped.ListChildren(taskRef, includeClosed)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tasksToJSON(children), nil)
 }
 
 func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -749,14 +749,14 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.TaskRemoveLink(taskRef, linkID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskRef)
+	writeTaskAfterMutation(s, w, scoped, taskRef)
 }
 
 func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
@@ -765,7 +765,7 @@ func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -776,12 +776,12 @@ func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	link, err := scoped.TaskUpdateLink(taskRef, linkID, req.Type, req.URL, req.Title)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskLinkToJSON(link), nil)
@@ -791,7 +791,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	// /reports/{name} 与 /tasks?report={name} 共用同一逻辑（spec §17.3）。
@@ -799,39 +799,39 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn func(*app.Service, string) error) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := fn(scoped, taskRef); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskRef)
+	writeTaskAfterMutation(s, w, scoped, taskRef)
 }
 
-func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskRef string) {
+func writeTaskAfterMutation(s *Server, w http.ResponseWriter, svc *app.Service, taskRef string) {
 	resolved, err := svc.ResolveTaskReferenceForRead(taskRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskResolutionToJSON(svc, resolved), nil)
 }
 
-func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
+func requireTaskRef(s *Server, w http.ResponseWriter, r *http.Request) (string, bool) {
 	taskRef, err := decodedPathParam(r, "taskRef")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return "", false
 	}
 	if err := app.ValidateProtocolTaskRef(taskRef); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return "", false
 	}
 	return taskRef, true

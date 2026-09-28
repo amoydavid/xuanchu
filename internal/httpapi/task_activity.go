@@ -43,7 +43,7 @@ type taskActivityPageResponse struct {
 }
 
 func (s *Server) handleTaskActivity(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -53,14 +53,14 @@ func (s *Server) handleTaskActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	page, err := scoped.ListTaskActivity(taskRef, app.TaskActivityInput{
 		Limit: limit, Cursor: strings.TrimSpace(r.URL.Query().Get("cursor")),
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskActivityPageToResponse(page), nil)

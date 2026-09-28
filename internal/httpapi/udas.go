@@ -20,12 +20,12 @@ type workspaceUDARequest struct {
 func (s *Server) handleWorkspaceUDAList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionUDARead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.WorkspaceListUDAs()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
@@ -39,14 +39,14 @@ func (s *Server) handleWorkspaceUDASet(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionUDAManage, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	row, err := scoped.WorkspaceSetUDA(chi.URLParam(r, "name"), app.WorkspaceUDAInput{
 		Type: req.Type, Label: req.Label, Values: req.Values, Default: req.Default,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, row, nil)
@@ -55,11 +55,11 @@ func (s *Server) handleWorkspaceUDASet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWorkspaceUDADelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionUDAManage, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.WorkspaceDeleteUDA(chi.URLParam(r, "name")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)

@@ -266,6 +266,7 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.userRepo = storage.NewUserRepository(store.DB())
 	clone.workspaceRepo = storage.NewWorkspaceRepository(store.DB())
 	clone.memberRepo = storage.NewMemberRepository(store.DB())
+	clone.extIDRepo = storage.NewExternalIDRepository(store.DB())
 	// Tests can inject a custom audit repo to force append failures; keep it
 	// attached while production services get a tx-bound repository.
 	if _, ok := s.auditRepo.(*storage.AuditRepository); ok || s.auditRepo == nil {

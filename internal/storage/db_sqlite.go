@@ -46,6 +46,12 @@ func configureSQLite(s *Store) error {
 func sqliteDSN(path string) string {
 	values := url.Values{}
 	values.Add("_pragma", "foreign_keys(1)")
+	// busy_timeout 吸收跨连接的锁竞争（默认 0 = 冲突立即报错）。
+	// 注意 SQLite 对 deferred 事务「先读后写」的锁升级冲突不调用 busy
+	// handler、直接返回 SQLITE_BUSY（升级死锁保护），该路径由
+	// Store.Transaction 的有界重试兜底，不要用 _txlock=immediate——那会
+	// 让读路径事务也串行抢全局写锁。
+	values.Add("_pragma", "busy_timeout(5000)")
 	separator := "?"
 	if strings.Contains(path, "?") {
 		separator = "&"

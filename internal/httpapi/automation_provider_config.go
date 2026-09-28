@@ -57,12 +57,12 @@ func (s *Server) scopedAutomationProviderConfigService(r *http.Request, projectR
 func (s *Server) handleWorkspaceAutomationProviderConfigGet(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedAutomationProviderConfigService(r, "", false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.WorkspaceAutomationProviderConfig().View()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -76,7 +76,7 @@ func (s *Server) handleWorkspaceAutomationProviderConfigPut(w http.ResponseWrite
 	}
 	scoped, err := s.scopedAutomationProviderConfigService(r, "", true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.WorkspaceAutomationProviderConfig().Update(app.AutomationProviderConfigInput{
@@ -87,7 +87,7 @@ func (s *Server) handleWorkspaceAutomationProviderConfigPut(w http.ResponseWrite
 		ClearAPIKey:  req.ClearAPIKey,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -99,17 +99,17 @@ func (s *Server) handleProjectAutomationProviderConfigGet(w http.ResponseWriter,
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedAutomationProviderConfigService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.ResolveProject(projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ProjectAutomationProviderConfig(project.ID).View()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -124,12 +124,12 @@ func (s *Server) handleProjectAutomationProviderConfigPut(w http.ResponseWriter,
 	}
 	scoped, err := s.scopedAutomationProviderConfigService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	project, err := scoped.ResolveProject(projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ProjectAutomationProviderConfig(project.ID).Update(app.AutomationProviderConfigInput{
@@ -140,7 +140,7 @@ func (s *Server) handleProjectAutomationProviderConfigPut(w http.ResponseWriter,
 		ClearAPIKey:  req.ClearAPIKey,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)

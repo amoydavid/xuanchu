@@ -52,14 +52,14 @@ type createdTenantTokenResponse struct {
 func (s *Server) handleTenantTokenList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListTenantAccessTokens(app.ListTenantAccessTokensInput{
 		IncludeRevoked: r.URL.Query().Get("all") == "true",
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]tenantTokenResponse, 0, len(rows))
@@ -77,7 +77,7 @@ func (s *Server) handleTenantTokenCreate(w http.ResponseWriter, r *http.Request)
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var ttl *time.Duration
@@ -94,7 +94,7 @@ func (s *Server) handleTenantTokenCreate(w http.ResponseWriter, r *http.Request)
 		ExpiresIn:   ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, createdTenantTokenResponse{
@@ -111,7 +111,7 @@ func (s *Server) handleTenantTokenModify(w http.ResponseWriter, r *http.Request)
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
@@ -123,7 +123,7 @@ func (s *Server) handleTenantTokenModify(w http.ResponseWriter, r *http.Request)
 		ExpiresIn:   ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tenantTokenResponseFromView(*view), nil)
@@ -132,11 +132,11 @@ func (s *Server) handleTenantTokenModify(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleTenantTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.RevokeTenantAccessToken(chi.URLParam(r, "tokenRef")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -145,12 +145,12 @@ func (s *Server) handleTenantTokenRevoke(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleTenantTokenMCPConfig(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.RevealTenantTokenMCPConfig(chi.URLParam(r, "tokenRef"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tokenMCPConfigResponseFromView(view), nil)

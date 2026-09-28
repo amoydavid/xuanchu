@@ -32,7 +32,7 @@ func (s *Server) handleContentReferenceSuggestions(w http.ResponseWriter, r *htt
 	}
 	scoped, _, err := s.scopedService(r, scopeForRefType(refType), permissionForRefType(refType), "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	results, err := scoped.SuggestContentReferences(r.Context(), app.ContentReferenceSuggestionInput{
@@ -42,7 +42,7 @@ func (s *Server) handleContentReferenceSuggestions(w http.ResponseWriter, r *htt
 		Limit:      limit,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"results": results, "count": len(results)}, nil)
@@ -70,7 +70,7 @@ func (s *Server) handleContentReferenceResolve(w http.ResponseWriter, r *http.Re
 	// 判断 workspace:read 与 task:read，缺少一种时只返回对应项 unavailable。
 	scoped, _, err := s.scopedService(r, "", "", "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	keys := make([]app.ContentReferenceKeyInput, 0, len(req.References))
@@ -79,7 +79,7 @@ func (s *Server) handleContentReferenceResolve(w http.ResponseWriter, r *http.Re
 	}
 	results, err := scoped.ResolveContentReferences(r.Context(), keys)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"results": results}, nil)

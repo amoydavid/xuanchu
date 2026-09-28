@@ -111,12 +111,12 @@ type eventNotificationRuleModifyRequest struct {
 func (s *Server) handleNotificationSinkList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListNotificationSinks(r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))
@@ -134,7 +134,7 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AddNotificationSink(app.NotificationSinkAddInput{
@@ -156,7 +156,7 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 		MaxConcurrency:  req.MaxConcurrency,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, notificationSinkResponse(view), nil)
@@ -165,12 +165,12 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 func (s *Server) handleNotificationSinkInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.NotificationSinkInfo(chi.URLParam(r, "sinkID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
@@ -184,7 +184,7 @@ func (s *Server) handleNotificationSinkModify(w http.ResponseWriter, r *http.Req
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ModifyNotificationSink(chi.URLParam(r, "sinkID"), app.NotificationSinkModifyInput{
@@ -205,7 +205,7 @@ func (s *Server) handleNotificationSinkModify(w http.ResponseWriter, r *http.Req
 		MaxConcurrency:  req.MaxConcurrency,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
@@ -222,13 +222,13 @@ func (s *Server) handleNotificationSinkDisable(w http.ResponseWriter, r *http.Re
 func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if enabled {
 		view, err := scoped.EnableNotificationSink(chi.URLParam(r, "sinkID"))
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
@@ -236,7 +236,7 @@ func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Req
 	}
 	view, err := scoped.DisableNotificationSink(chi.URLParam(r, "sinkID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
@@ -245,11 +245,11 @@ func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Req
 func (s *Server) handleNotificationSinkDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DeleteNotificationSink(chi.URLParam(r, "sinkID")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -270,7 +270,7 @@ func (s *Server) handleNotificationSinkTest(w http.ResponseWriter, r *http.Reque
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.TestNotificationSink(chi.URLParam(r, "sinkID"), app.NotificationSinkTestInput{
@@ -280,7 +280,7 @@ func (s *Server) handleNotificationSinkTest(w http.ResponseWriter, r *http.Reque
 		ProjectRef: req.ProjectRef,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationSinkTestResponse(view), nil)
@@ -307,12 +307,12 @@ func (s *Server) handleReminderRuleList(w http.ResponseWriter, r *http.Request) 
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderRead, app.PermissionReminderRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListReminderRules(projectRef, r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))
@@ -331,7 +331,7 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 	projectRef := req.ProjectRef
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AddReminderRule(app.ReminderRuleAddInput{
@@ -350,7 +350,7 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 		SinkRef:       req.SinkRef,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, reminderRuleResponse(view), nil)
@@ -359,12 +359,12 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 func (s *Server) handleReminderRuleInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderRead, app.PermissionReminderRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ReminderRuleInfo(chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
@@ -382,7 +382,7 @@ func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ModifyReminderRule(chi.URLParam(r, "ruleID"), app.ReminderRuleModifyInput{
@@ -401,7 +401,7 @@ func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request
 		SinkRef:       req.SinkRef,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
@@ -418,13 +418,13 @@ func (s *Server) handleReminderRuleDisable(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if enabled {
 		view, err := scoped.EnableReminderRule(chi.URLParam(r, "ruleID"))
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
@@ -432,7 +432,7 @@ func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request
 	}
 	view, err := scoped.DisableReminderRule(chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
@@ -441,11 +441,11 @@ func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request
 func (s *Server) handleReminderRuleDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DeleteReminderRule(chi.URLParam(r, "ruleID")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -455,12 +455,12 @@ func (s *Server) handleEventNotificationRuleList(w http.ResponseWriter, r *http.
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListEventNotificationRules(projectRef, r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))
@@ -482,7 +482,7 @@ func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *htt
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, req.ProjectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AddEventNotificationRule(app.EventNotificationRuleAddInput{
@@ -497,7 +497,7 @@ func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *htt
 		TemplateBody:    req.TemplateBody,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, eventNotificationRuleResponse(view), nil)
@@ -506,12 +506,12 @@ func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *htt
 func (s *Server) handleEventNotificationRuleInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.EventNotificationRuleInfo(chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
@@ -533,7 +533,7 @@ func (s *Server) handleEventNotificationRuleModify(w http.ResponseWriter, r *htt
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ModifyEventNotificationRule(chi.URLParam(r, "ruleID"), app.EventNotificationRuleModifyInput{
@@ -548,7 +548,7 @@ func (s *Server) handleEventNotificationRuleModify(w http.ResponseWriter, r *htt
 		TemplateBody:    req.TemplateBody,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
@@ -565,13 +565,13 @@ func (s *Server) handleEventNotificationRuleDisable(w http.ResponseWriter, r *ht
 func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if enabled {
 		view, err := scoped.EnableEventNotificationRule(chi.URLParam(r, "ruleID"))
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
@@ -579,7 +579,7 @@ func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *htt
 	}
 	view, err := scoped.DisableEventNotificationRule(chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
@@ -588,11 +588,11 @@ func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *htt
 func (s *Server) handleEventNotificationRuleDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DeleteEventNotificationRule(chi.URLParam(r, "ruleID")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -601,7 +601,7 @@ func (s *Server) handleEventNotificationRuleDelete(w http.ResponseWriter, r *htt
 func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	limit := 50
@@ -615,7 +615,7 @@ func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.R
 	}
 	rows, err := scoped.ListNotificationDeliveries(r.URL.Query().Get("sink"), r.URL.Query().Get("status"), limit, 0)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))
@@ -628,12 +628,12 @@ func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.R
 func (s *Server) handleNotificationDeliveryInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.NotificationDeliveryInfo(chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationDeliveryResponse(view), nil)
@@ -642,12 +642,12 @@ func (s *Server) handleNotificationDeliveryInfo(w http.ResponseWriter, r *http.R
 func (s *Server) handleNotificationDeliveryReplay(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ReplayNotificationDelivery(chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, notificationDeliveryResponse(view), nil)

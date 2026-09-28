@@ -270,7 +270,7 @@ func TestProjectTemplateErrorStatusMapping(t *testing.T) {
 
 func TestProjectTemplateValidationErrorReturnsTypedIssues(t *testing.T) {
 	rr := httptest.NewRecorder()
-	writeProjectTemplateAppError(rr, app.ProjectTemplateValidationError{Issues: []app.ProjectTemplateIssue{{
+	writeProjectTemplateAppError(&Server{}, rr, app.ProjectTemplateValidationError{Issues: []app.ProjectTemplateIssue{{
 		Code: "project_template_config_invalid", Severity: "blocking", Component: "config", SourceRef: "agent.api_key", Field: "value", Message: "invalid config",
 	}}})
 	assertHTTPErrorCode(t, rr, http.StatusUnprocessableEntity, "project_template_config_invalid")

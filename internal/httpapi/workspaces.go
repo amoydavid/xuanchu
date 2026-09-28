@@ -57,12 +57,12 @@ type memberResponse struct {
 func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListWorkspaces(r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, workspaceResponsesFromViews(rows), nil)
@@ -72,12 +72,12 @@ func (s *Server) handleWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.WorkspaceInfo(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)
@@ -91,7 +91,7 @@ func (s *Server) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.AddWorkspaceInput{Slug: req.Slug}
@@ -106,7 +106,7 @@ func (s *Server) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := scoped.AddWorkspace(input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, workspaceResponseFromView(view), nil)
@@ -121,7 +121,7 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ModifyWorkspace(ref, app.ModifyWorkspaceInput{
@@ -129,12 +129,12 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description,
 		Visibility:  req.Visibility,
 	}); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.WorkspaceInfo(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)
@@ -144,11 +144,11 @@ func (s *Server) handleWorkspaceArchive(w http.ResponseWriter, r *http.Request) 
 	ref := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceArchive, ref, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ArchiveWorkspace(ref); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -158,12 +158,12 @@ func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeMemberRead, app.PermissionWorkspaceRead, workspace, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListMembers(workspace)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, memberResponsesFromViews(rows), nil)
@@ -178,7 +178,7 @@ func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeMemberWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.AddMemberInput{WorkspaceRef: workspace, UserRef: req.User, Role: app.Role(req.Role)}
@@ -192,7 +192,7 @@ func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := scoped.AddMember(input); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, map[string]bool{"ok": true}, nil)
@@ -208,7 +208,7 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 	user := chi.URLParam(r, "user")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeMemberWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var role *app.Role
@@ -223,7 +223,7 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 		DisplayName:  req.DisplayName,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, memberResponseFromView(member), nil)
@@ -234,11 +234,11 @@ func (s *Server) handleMemberDelete(w http.ResponseWriter, r *http.Request) {
 	user := chi.URLParam(r, "user")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeMemberWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.RemoveMember(workspace, user); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)

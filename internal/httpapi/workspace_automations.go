@@ -84,12 +84,12 @@ func (s *Server) scopedWorkspaceAutomationService(r *http.Request, write bool) (
 func (s *Server) handleWorkspaceAutomationList(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListWorkspaceAutomationRules(r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
@@ -103,12 +103,12 @@ func (s *Server) handleWorkspaceAutomationCreate(w http.ResponseWriter, r *http.
 	}
 	scoped, err := s.scopedWorkspaceAutomationService(r, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AddWorkspaceAutomationRule(workspaceAutomationRuleInput(req))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -117,12 +117,12 @@ func (s *Server) handleWorkspaceAutomationCreate(w http.ResponseWriter, r *http.
 func (s *Server) handleWorkspaceAutomationInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.WorkspaceAutomationRuleInfo(chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -136,12 +136,12 @@ func (s *Server) handleWorkspaceAutomationModify(w http.ResponseWriter, r *http.
 	}
 	scoped, err := s.scopedWorkspaceAutomationService(r, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ModifyWorkspaceAutomationRule(chi.URLParam(r, "ruleID"), workspaceAutomationModifyInput(req))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -150,11 +150,11 @@ func (s *Server) handleWorkspaceAutomationModify(w http.ResponseWriter, r *http.
 func (s *Server) handleWorkspaceAutomationDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DeleteWorkspaceAutomationRule(chi.URLParam(r, "ruleID")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"deleted": true}, nil)
@@ -171,7 +171,7 @@ func (s *Server) handleWorkspaceAutomationDisable(w http.ResponseWriter, r *http
 func (s *Server) enableDisableWorkspaceAutomation(w http.ResponseWriter, r *http.Request, enable bool) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var view app.AutomationRuleView
@@ -181,7 +181,7 @@ func (s *Server) enableDisableWorkspaceAutomation(w http.ResponseWriter, r *http
 		view, err = scoped.DisableWorkspaceAutomationRule(chi.URLParam(r, "ruleID"))
 	}
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -191,7 +191,7 @@ func (s *Server) handleAutomationTemplateVars(w http.ResponseWriter, r *http.Req
 	// template vars 只描述可用变量，不读取 sample Project/config/secret；
 	// 仍要求 Automation 读权限避免向无权用户暴露变量名结构。
 	if _, err := s.scopedWorkspaceAutomationService(r, false); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, app.WorkspaceAutomationTemplateVars(), nil)
@@ -202,13 +202,13 @@ func (s *Server) handleAutomationTemplateVars(w http.ResponseWriter, r *http.Req
 func (s *Server) handleWorkspaceAutomationDeliveryList(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := automationDeliveryListInputFromQuery(r)
 	rows, total, err := scoped.ListAutomationDeliveries(app.AutomationScopeWorkspaceValue, input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, map[string]any{"total": total, "limit": input.Limit, "offset": input.Offset})
@@ -217,12 +217,12 @@ func (s *Server) handleWorkspaceAutomationDeliveryList(w http.ResponseWriter, r 
 func (s *Server) handleWorkspaceAutomationDeliveryInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AutomationDeliveryInfo(app.AutomationScopeWorkspaceValue, chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -231,12 +231,12 @@ func (s *Server) handleWorkspaceAutomationDeliveryInfo(w http.ResponseWriter, r 
 func (s *Server) handleWorkspaceAutomationDeliveryReplay(w http.ResponseWriter, r *http.Request) {
 	scoped, err := s.scopedWorkspaceAutomationService(r, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ReplayAutomationDelivery(app.AutomationScopeWorkspaceValue, chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)

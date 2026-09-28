@@ -39,12 +39,12 @@ type configSchemaRequest struct {
 func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
 	scoped, authn, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ContextList()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	activeName := ""
@@ -52,7 +52,7 @@ func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
 		var err error
 		activeName, _, err = scoped.ActiveContextName()
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 	}
@@ -77,11 +77,11 @@ func (s *Server) handleContextDefine(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextManage, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DefineContext(req.Name, req.Filter); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, map[string]string{"name": req.Name, "filter": req.Filter}, nil)
@@ -91,12 +91,12 @@ func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	scoped, authn, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ContextList()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	for _, row := range rows {
@@ -106,7 +106,7 @@ func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 				var err error
 				activeName, _, err = scoped.ActiveContextName()
 				if err != nil {
-					writeAppError(w, err)
+					s.writeAppError(w, err)
 					return
 				}
 			}
@@ -126,11 +126,11 @@ func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextManage, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ContextDelete(chi.URLParam(r, "name")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -139,15 +139,15 @@ func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
 	scoped, authn, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := rejectTenantActor(authn); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.UseContext(chi.URLParam(r, "name")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -156,15 +156,15 @@ func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
 	scoped, authn, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := rejectTenantActor(authn); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ContextNone(); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -173,12 +173,12 @@ func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleConfigList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	values, err := scoped.ConfigValues()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	filtered := make(map[string]string, len(values))
@@ -198,12 +198,12 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	value, ok, err := scoped.GetConfig(key)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if !ok {
@@ -226,11 +226,11 @@ func (s *Server) handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.SetConfig(key, req.Value); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]string{"value": req.Value}, nil)
@@ -244,11 +244,11 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.UnsetConfig(key); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -257,12 +257,12 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleConfigSchemaList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ConfigSchemaList()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
@@ -271,12 +271,12 @@ func (s *Server) handleConfigSchemaList(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleConfigSchemaGet(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	row, ok, err := scoped.ConfigSchemaGet(chi.URLParam(r, "key"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if !ok {
@@ -294,7 +294,7 @@ func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionConfigSchemaWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.ConfigSchemaInput{
@@ -310,12 +310,12 @@ func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
 		ShowOnConsoleHome: req.ShowOnConsoleHome,
 	}
 	if err := scoped.ConfigSchemaSet(input); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	row, ok, err := scoped.ConfigSchemaGet(input.Key)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if !ok {
@@ -329,11 +329,11 @@ func (s *Server) handleConfigSchemaDelete(w http.ResponseWriter, r *http.Request
 	purge := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("purge")), "true")
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionConfigSchemaWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.ConfigSchemaDelete(chi.URLParam(r, "key"), purge); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"ok": true, "purge": purge}, nil)
@@ -348,12 +348,12 @@ const consoleHomeSecretMask = "••••••"
 func (s *Server) handleConfigSchemaUsage(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	usage, err := scoped.ConfigSchemaUsage(chi.URLParam(r, "key"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, usage, nil)
@@ -362,13 +362,13 @@ func (s *Server) handleConfigSchemaUsage(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleProjectConfigEffective(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionProjectConfigRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	consoleHome := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("console_home")), "true")
 	rows, err := scoped.ProjectConfigEffectiveValues(chi.URLParam(r, "projectRef"), app.ConfigEffectiveFilter{ConsoleHomeOnly: consoleHome})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	// 项目工作台首页 effective 视图必须遮掩 secret 值，不提供 reveal。
@@ -390,13 +390,13 @@ func (s *Server) handleProjectConfigEffective(w http.ResponseWriter, r *http.Req
 func (s *Server) handleConfigEffective(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	consoleHome := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("console_home")), "true")
 	rows, err := scoped.WorkspaceConfigEffectiveValues(app.ConfigEffectiveFilter{ConsoleHomeOnly: consoleHome})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	// 首页 effective 视图必须遮掩 secret 值，不提供 reveal。

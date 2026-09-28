@@ -13,7 +13,7 @@ func (s *Server) handleProjectAutomationTemplateVars(w http.ResponseWriter, r *h
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	_ = scoped

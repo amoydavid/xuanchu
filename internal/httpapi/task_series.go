@@ -260,7 +260,7 @@ func (s *Server) handleTaskSeriesList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	q := r.URL.Query()
@@ -283,7 +283,7 @@ func (s *Server) handleTaskSeriesList(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := scoped.ListTaskSeries(input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	items := make([]taskSeriesJSON, 0, len(page.Items))
@@ -299,7 +299,7 @@ func (s *Server) handleTaskSeriesAdd(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var req taskSeriesRequest
@@ -309,12 +309,12 @@ func (s *Server) handleTaskSeriesAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	input, err := seriesRequestToInput(req, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	result, err := scoped.AddTaskSeries(input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	resp := taskSeriesCreateResultJSON{Series: seriesViewToJSON(result.Series)}
@@ -328,13 +328,13 @@ func (s *Server) handleTaskSeriesAdd(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTaskSeriesGet(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
 	detail, err := scoped.GetTaskSeries(seriesRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	response := seriesViewToJSON(detail.Series)
@@ -347,7 +347,7 @@ func (s *Server) handleTaskSeriesGet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
@@ -368,7 +368,7 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 	if req.UntilDate != nil {
 		ts, err := parseDeadlineDate(*req.UntilDate)
 		if err != nil {
-			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()})
+			s.writeAppError(w, app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()})
 			return
 		}
 		input.Until = &ts
@@ -382,18 +382,18 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 	if req.EffectiveFromDate != nil {
 		ts, err := parseDeadlineDate(*req.EffectiveFromDate)
 		if err != nil {
-			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_effective_from", Message: err.Error()})
+			s.writeAppError(w, app.RuntimeError{Code: "task_series_invalid_effective_from", Message: err.Error()})
 			return
 		}
 		input.EffectiveFrom = &ts
 	}
 	if err := app.ApplyTaskSeriesClearFields(&input, req.Clear); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ModifyTaskSeries(seriesRef, input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, seriesViewToJSON(view), nil)
@@ -402,14 +402,14 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleTaskSeriesDelete(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
 	deleteOpen := isTruthyQueryValue(r.URL.Query().Get("delete_open_occurrences"))
 	view, err := scoped.StopTaskSeries(seriesRef, app.StopTaskSeriesInput{DeleteOpenOccurrences: &deleteOpen})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, seriesViewToJSON(view), nil)
@@ -418,7 +418,7 @@ func (s *Server) handleTaskSeriesDelete(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
@@ -448,7 +448,7 @@ func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.
 	}
 	page, err := scoped.ListTaskSeriesOccurrences(seriesRef, input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
@@ -457,18 +457,18 @@ func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.
 func (s *Server) handleTaskSeriesOccurrenceSkip(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
 	occurrenceRef, decodeErr := decodedPathParam(r, "occurrenceRef")
 	if decodeErr != nil {
-		writeAppError(w, decodeErr)
+		s.writeAppError(w, decodeErr)
 		return
 	}
 	view, err := scoped.SkipTaskSeriesOccurrence(seriesRef, occurrenceRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
@@ -588,7 +588,7 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	if target := strings.TrimSpace(q.Get("target")); target != "" {
 		tsk, err := scoped.ResolveProtocolTarget(target)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		queryExpr = query.And(queryExpr, query.Predicate{
@@ -602,7 +602,7 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	if len(filters) > 0 {
 		expr, err := query.ParseFilterExpr(filters)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		queryExpr = query.And(queryExpr, expr)
@@ -623,14 +623,14 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
 		if err != nil {
-			writeAppError(w, err)
+			s.writeAppError(w, err)
 			return
 		}
 		input.ProjectID = project.ID
 	}
 	page, err := scoped.QueryTaskViews(input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)

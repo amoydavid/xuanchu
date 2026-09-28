@@ -66,12 +66,12 @@ func (s *Server) handleProjectAutomationList(w http.ResponseWriter, r *http.Requ
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListProjectAutomationRules(projectRef, r.URL.Query().Get("all") == "true")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
@@ -86,12 +86,12 @@ func (s *Server) handleProjectAutomationCreate(w http.ResponseWriter, r *http.Re
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.AddProjectAutomationRule(projectRef, projectAutomationAddInput(req))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -101,12 +101,12 @@ func (s *Server) handleProjectAutomationInfo(w http.ResponseWriter, r *http.Requ
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ProjectAutomationRuleInfo(projectRef, chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -121,7 +121,7 @@ func (s *Server) handleProjectAutomationModify(w http.ResponseWriter, r *http.Re
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.ProjectAutomationRuleModifyInput{
@@ -138,7 +138,7 @@ func (s *Server) handleProjectAutomationModify(w http.ResponseWriter, r *http.Re
 	}
 	view, err := scoped.ModifyProjectAutomationRule(projectRef, chi.URLParam(r, "ruleID"), input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -148,11 +148,11 @@ func (s *Server) handleProjectAutomationDelete(w http.ResponseWriter, r *http.Re
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.DeleteProjectAutomationRule(projectRef, chi.URLParam(r, "ruleID")); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"deleted": true}, nil)
@@ -170,7 +170,7 @@ func (s *Server) enableDisableProjectAutomation(w http.ResponseWriter, r *http.R
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var view app.ProjectAutomationRuleView
@@ -180,7 +180,7 @@ func (s *Server) enableDisableProjectAutomation(w http.ResponseWriter, r *http.R
 		view, err = scoped.DisableProjectAutomationRule(projectRef, chi.URLParam(r, "ruleID"))
 	}
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -195,12 +195,12 @@ func (s *Server) handleProjectAutomationPreview(w http.ResponseWriter, r *http.R
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.PreviewProjectAutomation(projectRef, app.ProjectAutomationPreviewInput(projectAutomationAddInput(req)))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -210,12 +210,12 @@ func (s *Server) handleProjectAutomationSavedPreview(w http.ResponseWriter, r *h
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.PreviewSavedProjectAutomation(projectRef, chi.URLParam(r, "ruleID"), nil)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -225,12 +225,12 @@ func (s *Server) handleProjectAutomationTest(w http.ResponseWriter, r *http.Requ
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.TestProjectAutomationRule(projectRef, chi.URLParam(r, "ruleID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -240,7 +240,7 @@ func (s *Server) handleProjectAutomationDeliveryList(w http.ResponseWriter, r *h
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.ProjectAutomationDeliveryListInput{
@@ -250,7 +250,7 @@ func (s *Server) handleProjectAutomationDeliveryList(w http.ResponseWriter, r *h
 	}
 	rows, err := scoped.ListProjectAutomationDeliveries(projectRef, input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
@@ -260,12 +260,12 @@ func (s *Server) handleProjectAutomationDeliveryInfo(w http.ResponseWriter, r *h
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, false)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ProjectAutomationDeliveryInfo(projectRef, chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -275,12 +275,12 @@ func (s *Server) handleProjectAutomationDeliveryReplay(w http.ResponseWriter, r 
 	projectRef := chi.URLParam(r, "projectRef")
 	scoped, err := s.scopedProjectAutomationService(r, projectRef, true)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ReplayProjectAutomationDelivery(projectRef, chi.URLParam(r, "deliveryID"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)

@@ -94,12 +94,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	bundle, err := scoped.ExportTaskBundle()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, bundle, nil)
@@ -108,7 +108,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, requestProjectRef(r))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var bundle app.TaskBundleV1
@@ -118,7 +118,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := scoped.ImportTaskBundle(bundle)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, result, nil)
@@ -130,7 +130,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleOrdinaryTaskImport(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, requestProjectRef(r))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var request ordinaryTaskImportRequest
@@ -156,7 +156,7 @@ func (s *Server) handleOrdinaryTaskImport(w http.ResponseWriter, r *http.Request
 	}
 	count, err := scoped.Import(request.Tasks)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]int{"imported": count}, nil)
@@ -178,7 +178,7 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeAuditRead, app.PermissionAuditRead, requestProjectRef(r))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	projectRef := r.URL.Query().Get("project")
@@ -187,7 +187,7 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := scoped.ListAudit(app.AuditListInput{ProjectRef: projectRef, Limit: limit})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, auditRowsToResponse(rows), nil)

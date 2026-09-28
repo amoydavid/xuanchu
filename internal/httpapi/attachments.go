@@ -17,7 +17,7 @@ import (
 //
 // file=<binary>（必填），mode=attachment|description_draft（必填），display_name=<text>（可选）。
 func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -40,7 +40,7 @@ func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) 
 
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.UploadAttachment(r.Context(), "task", taskRef, app.AttachmentUploadInput{
@@ -51,7 +51,7 @@ func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) 
 		Mode:         mode,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -77,7 +77,7 @@ func (s *Server) handleTaskCreationDraftAttachmentUpload(w http.ResponseWriter, 
 	defer file.Close()
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.UploadAttachment(r.Context(), "task_draft", draftRef, app.AttachmentUploadInput{
@@ -88,7 +88,7 @@ func (s *Server) handleTaskCreationDraftAttachmentUpload(w http.ResponseWriter, 
 		Mode:         "description_draft",
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -96,7 +96,7 @@ func (s *Server) handleTaskCreationDraftAttachmentUpload(w http.ResponseWriter, 
 
 // handleAttachmentImportURL 处理远程图片转存。
 func (s *Server) handleAttachmentImportURL(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
@@ -119,7 +119,7 @@ func (s *Server) handleAttachmentImportURL(w http.ResponseWriter, r *http.Reques
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ImportAttachmentURL(r.Context(), "task", taskRef, app.AttachmentImportURLInput{
@@ -128,7 +128,7 @@ func (s *Server) handleAttachmentImportURL(w http.ResponseWriter, r *http.Reques
 		Mode:        req.Mode,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -150,7 +150,7 @@ func (s *Server) handleTaskCreationDraftAttachmentImportURL(w http.ResponseWrite
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.ImportAttachmentURL(r.Context(), "task_draft", draftRef, app.AttachmentImportURLInput{
@@ -159,7 +159,7 @@ func (s *Server) handleTaskCreationDraftAttachmentImportURL(w http.ResponseWrite
 		Mode:        "description_draft",
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, view, nil)
@@ -167,19 +167,19 @@ func (s *Server) handleTaskCreationDraftAttachmentImportURL(w http.ResponseWrite
 
 // handleAttachmentList 列出 task 的附件。
 func (s *Server) handleAttachmentList(w http.ResponseWriter, r *http.Request) {
-	taskRef, ok := requireTaskRef(w, r)
+	taskRef, ok := requireTaskRef(s, w, r)
 	if !ok {
 		return
 	}
 	includeDrafts := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("include_drafts")), "true")
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	list, err := scoped.ListAttachments("task", taskRef, includeDrafts)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, list, nil)
@@ -193,12 +193,12 @@ func (s *Server) handleAttachmentGet(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.GetAttachment(attachmentID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -212,12 +212,12 @@ func (s *Server) handleAttachmentContent(w http.ResponseWriter, r *http.Request)
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	content, err := scoped.OpenAttachmentContent(r.Context(), attachmentID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	defer content.Reader.Close()
@@ -258,12 +258,12 @@ func (s *Server) handleAttachmentRename(w http.ResponseWriter, r *http.Request) 
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.RenameAttachment(attachmentID, req.DisplayName)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, view, nil)
@@ -277,11 +277,11 @@ func (s *Server) handleAttachmentRemove(w http.ResponseWriter, r *http.Request) 
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.RemoveAttachment(r.Context(), attachmentID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

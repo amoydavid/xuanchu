@@ -92,14 +92,14 @@ func durationFromOptionalSeconds(value optionalInt64) *time.Duration {
 func (s *Server) handleTokenList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	rows, err := scoped.ListTokens(app.ListTokensInput{
 		IncludeRevoked: r.URL.Query().Get("all") == "true",
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]tokenResponse, 0, len(rows))
@@ -117,7 +117,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, authn, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var ttl *time.Duration
@@ -140,7 +140,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 		ParentToken:   &authn.Authn.Token,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, createdTokenResponse{
@@ -152,11 +152,11 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	scoped, authn, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.RevokeTokenWithLimit(chi.URLParam(r, "tokenRef"), &authn.Authn.Token); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
@@ -165,7 +165,7 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	var req modifyTokenRequest
@@ -183,7 +183,7 @@ func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn:     ttl,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tokenResponseFromView(*view), nil)
@@ -240,12 +240,12 @@ func tokenMCPConfigResponseFromView(view app.TokenMCPConfigView) tokenMCPConfigR
 func (s *Server) handleTokenMCPConfig(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	view, err := scoped.RevealTokenMCPConfig(chi.URLParam(r, "tokenRef"))
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, tokenMCPConfigResponseFromView(view), nil)

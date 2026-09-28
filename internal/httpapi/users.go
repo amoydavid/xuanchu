@@ -38,12 +38,12 @@ type bindExternalIDRequest struct {
 func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	users, err := scoped.ListUsers()
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, userResponsesFromViews(users), nil)
@@ -57,7 +57,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	input := app.AddUserInput{Name: req.Name}
@@ -69,7 +69,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := scoped.AddUser(input)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, userResponseFromView(user), nil)
@@ -84,14 +84,14 @@ func (s *Server) handleUserModify(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "user")
 	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := scoped.ModifyUser(ref, app.ModifyUserInput{
 		DisplayName: req.DisplayName,
 	})
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, userResponseFromView(user), nil)
@@ -101,12 +101,12 @@ func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "user")
 	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := scoped.UserInfo(ref)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, userResponseFromView(user), nil)
@@ -151,16 +151,16 @@ func (s *Server) handleExternalIDBind(w http.ResponseWriter, r *http.Request) {
 	}
 	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := scoped.UserInfo(userRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.BindExternalID(user.ID, req.Provider, req.UserType, req.ExternalID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, task.JSONExternalID{Provider: req.Provider, UserType: req.UserType, ExternalID: req.ExternalID}, nil)
@@ -172,16 +172,16 @@ func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) 
 	externalID := chi.URLParam(r, "externalID")
 	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := scoped.UserInfo(userRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	if err := scoped.UnbindExternalID(user.ID, provider, externalID); err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusNoContent, nil, nil)
@@ -191,17 +191,17 @@ func (s *Server) handleExternalIDList(w http.ResponseWriter, r *http.Request) {
 	userRef := chi.URLParam(r, "user")
 	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	user, err := scoped.UserInfo(userRef)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	extIDs, err := scoped.ListExternalIDs(user.ID)
 	if err != nil {
-		writeAppError(w, err)
+		s.writeAppError(w, err)
 		return
 	}
 	out := make([]task.JSONExternalID, len(extIDs))
