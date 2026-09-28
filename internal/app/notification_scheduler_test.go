@@ -164,13 +164,13 @@ func TestReminderSchedulerDedupePreventsDuplicateDelivery(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterEnqueuesOncePerDay(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +179,7 @@ func TestReminderSchedulerDailyFilterEnqueuesOncePerDay(t *testing.T) {
 		Name:          "daily-filter",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -212,14 +213,14 @@ func TestReminderSchedulerDailyFilterEnqueuesOncePerDay(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterReminderSequenceAndWindow(t *testing.T) {
 	store := newTestStore(t)
-	day1 := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
-	day2 := time.Date(2026, 6, 9, 8, 55, 0, 0, time.Local).Unix()
+	day1 := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
+	day2 := time.Date(2026, 6, 9, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: day1}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 7, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 7, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "已经逾期", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,6 +240,7 @@ func TestReminderSchedulerDailyFilterReminderSequenceAndWindow(t *testing.T) {
 		Name:          "daily-overdue",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "due.before:now",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -293,8 +295,10 @@ func TestReminderSchedulerDailyFilterReminderSequenceAndWindow(t *testing.T) {
 			t.Fatalf("window = (%#v, %#v), want (%d, %d)", reminder["window_start"], reminder["window_end"], start, start+24*60*60)
 		}
 	}
-	day1Start := time.Date(2026, 6, 8, 8, 50, 0, 0, time.Local).Unix()
-	day2Start := time.Date(2026, 6, 9, 8, 50, 0, 0, time.Local).Unix()
+	// 本测试的规则与时间构造统一锚定 UTC（Timezone: "UTC" + time.UTC），
+	// 不吃默认时区 Asia/Shanghai；否则在非 +08 时区的环境（如 UTC CI）会错位 8 小时。
+	day1Start := time.Date(2026, 6, 8, 8, 50, 0, 0, time.UTC).Unix()
+	day2Start := time.Date(2026, 6, 9, 8, 50, 0, 0, time.UTC).Unix()
 	assertReminderPayload(t, firstPayload, 1, day1Start)
 	assertReminderPayload(t, secondPayload, 2, day2Start)
 	if !strings.Contains(rows[0].RenderedBody, `"sequence":2`) || !strings.Contains(rows[0].RenderedBody, `"overdue_sequence":2`) {
@@ -307,13 +311,13 @@ func TestReminderSchedulerDailyFilterReminderSequenceAndWindow(t *testing.T) {
 
 func TestReminderSchedulerDailyDueSoonReminderOverdueSequenceIsZero(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +326,7 @@ func TestReminderSchedulerDailyDueSoonReminderOverdueSequenceIsZero(t *testing.T
 		Name:          "daily-due-soon",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -358,13 +363,13 @@ func TestReminderSchedulerDailyDueSoonReminderOverdueSequenceIsZero(t *testing.T
 
 func TestReminderSchedulerDailyFilterNotDueBeforeNowIsNotOverdue(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "未逾期任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -373,6 +378,7 @@ func TestReminderSchedulerDailyFilterNotDueBeforeNowIsNotOverdue(t *testing.T) {
 		Name:          "daily-not-overdue",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "not due.before:now",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -409,13 +415,13 @@ func TestReminderSchedulerDailyFilterNotDueBeforeNowIsNotOverdue(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterOrFutureBranchIsNotOverdue(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 10, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 10, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "未来任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -424,6 +430,7 @@ func TestReminderSchedulerDailyFilterOrFutureBranchIsNotOverdue(t *testing.T) {
 		Name:          "daily-overdue-or-future",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "due.before:now or due.after:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -460,13 +467,13 @@ func TestReminderSchedulerDailyFilterOrFutureBranchIsNotOverdue(t *testing.T) {
 
 func TestReminderSchedulerSequenceCountsDifferentEventTypeHistory(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	created, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatal(err)
@@ -476,6 +483,7 @@ func TestReminderSchedulerSequenceCountsDifferentEventTypeHistory(t *testing.T) 
 		Name:          "daily-due-soon",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -521,13 +529,13 @@ func TestReminderSchedulerSequenceCountsDifferentEventTypeHistory(t *testing.T) 
 
 func TestReminderSchedulerDedupeIgnoresEventType(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	created, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatal(err)
@@ -537,6 +545,7 @@ func TestReminderSchedulerDedupeIgnoresEventType(t *testing.T) {
 		Name:          "daily-due-soon",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -575,13 +584,13 @@ func TestReminderSchedulerDedupeIgnoresEventType(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterSkipsBeforeScheduleTime(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 45, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 45, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -590,6 +599,7 @@ func TestReminderSchedulerDailyFilterSkipsBeforeScheduleTime(t *testing.T) {
 		Name:          "daily-filter",
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -609,7 +619,7 @@ func TestReminderSchedulerDailyFilterSkipsBeforeScheduleTime(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterHonorsProjectScope(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
@@ -623,7 +633,7 @@ func TestReminderSchedulerDailyFilterHonorsProjectScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "alpha task", Project: &projectA.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -636,6 +646,7 @@ func TestReminderSchedulerDailyFilterHonorsProjectScope(t *testing.T) {
 		ProjectRef:    projectA.ID,
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
@@ -662,7 +673,7 @@ func TestReminderSchedulerDailyFilterHonorsProjectScope(t *testing.T) {
 
 func TestReminderSchedulerDailyFilterAppliesProjectScopeBeforeLimit(t *testing.T) {
 	store := newTestStore(t)
-	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.Local).Unix()
+	now := time.Date(2026, 6, 8, 8, 55, 0, 0, time.UTC).Unix()
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
@@ -676,7 +687,7 @@ func TestReminderSchedulerDailyFilterAppliesProjectScopeBeforeLimit(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
+	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.UTC).Unix()
 	if _, err := svc.Add(AddInput{Title: "beta first", Project: &projectB.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -689,6 +700,7 @@ func TestReminderSchedulerDailyFilterAppliesProjectScopeBeforeLimit(t *testing.T
 		ProjectRef:    projectA.ID,
 		ScheduleType:  "daily_at",
 		ScheduleValue: "08:50",
+		Timezone:      "UTC",
 		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		SinkRef:       sink.ID,
